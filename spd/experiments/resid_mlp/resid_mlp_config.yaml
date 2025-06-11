@@ -40,7 +40,7 @@ save_freq: null
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.resid_mlp.models.ResidualMLP"
-pretrained_model_path: "wandb:spd-train-resid-mlp/runs/94k7vefb"
+pretrained_model_path: "wandb:spd-train-resid-mlp/runs/4p05k7vn"
 
 # --- Task Specific ---
 task_config:
@@ -90,7 +90,7 @@ task_config:
 
 # # --- Pretrained model info ---
 # pretrained_model_class: "spd.experiments.resid_mlp.models.ResidualMLP"
-# pretrained_model_path: wandb:spd-train-resid-mlp/runs/ouplwggr # 2 layers
+# pretrained_model_path: wandb:spd-train-resid-mlp/runs/5lu9pkmr # 2 layers
 
 # # --- Task Specific ---
 # task_config:
@@ -140,7 +140,7 @@ task_config:
 
 # # --- Pretrained model info ---
 # pretrained_model_class: "spd.experiments.resid_mlp.models.ResidualMLP"
-# pretrained_model_path: wandb:spd-train-resid-mlp/runs/xyyt2ylg # 3 layers
+# pretrained_model_path: wandb:spd-train-resid-mlp/runs/mqy6vbry # 3 layers
 
 # # --- Task Specific ---
 # task_config:

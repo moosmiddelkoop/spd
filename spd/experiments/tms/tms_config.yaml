@@ -38,8 +38,8 @@
 
 # # --- Pretrained model info ---
 # pretrained_model_class: "spd.experiments.tms.models.TMSModel"
-# # pretrained_model_path: "wandb:spd-train-tms/runs/268t0wfp"
-# pretrained_model_path: "wandb:spd-train-tms/runs/ydih8ss4" # 1 hidden w/fixed identity
+# # pretrained_model_path: "wandb:spd-train-tms/runs/bohlithe"
+# pretrained_model_path: "wandb:spd-train-tms/runs/2pmvzbbe" # 1 hidden w/fixed identity
 
 # # --- Task Specific ---
 # task_config:
@@ -90,8 +90,8 @@ save_freq: null
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.tms.models.TMSModel"
-pretrained_model_path: "wandb:spd-train-tms/runs/wckft4gh"
-# pretrained_model_path: "wandb:spd-train-tms/runs/95fmll0x" # 1 hidden w/fixed identity
+pretrained_model_path: "wandb:spd-train-tms/runs/2gbkt21m"
+# pretrained_model_path: "wandb:spd-train-tms/runs/5b5jinc7" # 1 hidden w/fixed identity
 
 # --- Task Specific ---
 task_config:
