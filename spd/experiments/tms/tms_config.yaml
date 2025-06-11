@@ -15,11 +15,11 @@
 
 # # --- Loss Coefficients ---
 # faithfulness_coeff: 1.0
-# ci_masked_recon_coeff: null
-# stochastic_ci_masked_recon_coeff: 1
-# layerwise_ci_masked_recon_coeff: null
-# layerwise_stochastic_ci_masked_recon_coeff: 1.0
-# importance_loss_coeff: 3e-3
+# recon_coeff: null
+# stochastic_recon_coeff: 1
+# recon_layerwise_coeff: null
+# stochastic_recon_layerwise_coeff: 1.0
+# importance_minimality_coeff: 3e-3
 # pnorm: 1.0
 # output_loss_type: mse
 
@@ -64,12 +64,12 @@ target_module_patterns: ["linear1", "linear2"]
 
 # --- Loss Coefficients ---
 faithfulness_coeff: 1.0
-ci_masked_recon_coeff: null
 pnorm: 2.0
-importance_loss_coeff: 1e-4
-stochastic_ci_masked_recon_coeff: 1
-layerwise_ci_masked_recon_coeff: null
-layerwise_stochastic_ci_masked_recon_coeff: 1.0
+importance_minimality_coeff: 1e-4
+recon_coeff: null
+stochastic_recon_coeff: 1
+recon_layerwise_coeff: null
+stochastic_recon_layerwise_coeff: 1.0
 output_loss_type: "mse"
 
 # --- Training ---

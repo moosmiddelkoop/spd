@@ -124,25 +124,25 @@ class Config(BaseModel):
         default=1.0,
         description="Coefficient for matching parameters between components and target weights",
     )
-    ci_masked_recon_coeff: NonNegativeFloat | None = Field(
+    recon_coeff: NonNegativeFloat | None = Field(
         default=None,
-        description="Coefficient for reconstruction loss with a causal importance mask",
+        description="Coefficient for recon loss with a causal importance mask",
     )
-    stochastic_ci_masked_recon_coeff: NonNegativeFloat | None = Field(
+    stochastic_recon_coeff: NonNegativeFloat | None = Field(
         default=None,
-        description="Coefficient for reconstruction loss with stochastically sampled masks",
+        description="Coefficient for recon loss with stochastically sampled masks",
     )
-    layerwise_ci_masked_recon_coeff: NonNegativeFloat | None = Field(
+    recon_layerwise_coeff: NonNegativeFloat | None = Field(
         default=None,
-        description="Coefficient for per-layer reconstruction loss with a causal importance mask",
+        description="Coefficient for per-layer recon loss with a causal importance mask",
     )
-    layerwise_stochastic_ci_masked_recon_coeff: NonNegativeFloat | None = Field(
+    stochastic_recon_layerwise_coeff: NonNegativeFloat | None = Field(
         default=None,
-        description="Coefficient for per-layer reconstruction loss with stochastically sampled masks",
+        description="Coefficient for per-layer recon loss with stochastically sampled masks",
     )
-    importance_loss_coeff: NonNegativeFloat = Field(
+    importance_minimality_coeff: NonNegativeFloat = Field(
         ...,
-        description="Coefficient for importance loss",
+        description="Coefficient for importance minimality loss",
     )
     schatten_coeff: NonNegativeFloat | None = Field(
         default=None,
@@ -150,23 +150,23 @@ class Config(BaseModel):
     )
     out_recon_coeff: NonNegativeFloat | None = Field(
         default=None,
-        description="Coefficient for output reconstruction loss",
+        description="Coefficient for output recon loss",
     )
     embedding_recon_coeff: float | None = Field(
         default=None,
-        description="Coefficient for additional embedding reconstruction loss (LM only)",
+        description="Coefficient for additional embedding recon loss (LM only)",
     )
     is_embed_unembed_recon: bool = Field(
         default=False,
-        description="If True, apply embedding reconstruction jointly to embed & unembed matrices",
+        description="If True, apply embedding recon jointly to embed & unembed matrices",
     )
     pnorm: PositiveFloat = Field(
         ...,
-        description="The p-value used for the importance loss",
+        description="The p-value used for the importance minimality loss",
     )
     output_loss_type: Literal["mse", "kl"] = Field(
         ...,
-        description="Metric used to measure reconstruction error between model outputs and targets",
+        description="Metric used to measure recon error between model outputs and targets",
     )
 
     # --- Training ---
@@ -265,10 +265,10 @@ class Config(BaseModel):
     def validate_model(self) -> Self:
         # If any of the coeffs are 0, raise a warning
         msg = "is 0, you may wish to instead set it to null to avoid calculating the loss"
-        if self.ci_masked_recon_coeff == 0:
-            logger.warning(f"ci_masked_recon_coeff {msg}")
-        if self.importance_loss_coeff == 0:
-            logger.warning(f"importance_loss_coeff {msg}")
+        if self.recon_coeff == 0:
+            logger.warning(f"recon_coeff {msg}")
+        if self.importance_minimality_coeff == 0:
+            logger.warning(f"importance_minimality_coeff {msg}")
         if self.faithfulness_coeff == 0:
             logger.warning(f"faithfulness_coeff {msg}")
 

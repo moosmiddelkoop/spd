@@ -63,10 +63,10 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
     }
 
 
-def plot_increasing_importance_coeff_ci_vals(
+def plot_increasing_importance_minimality_coeff_ci_vals(
     run_ids: list[str], input_magnitude: float = 0.75, best_idx: list[int] | None = None
 ) -> plt.Figure:
-    """Plot increasing importance coeff for multiple runs in a combined figure.
+    """Plot increasing importance minimality coeff for multiple runs in a combined figure.
 
     Args:
         run_ids: List of wandb run IDs to load models from
@@ -110,7 +110,7 @@ def plot_increasing_importance_coeff_ci_vals(
 
         all_mask_data[run_id] = {
             "mask_data": mask_data,
-            "importance_loss_coeff": config.importance_loss_coeff,
+            "importance_minimality_coeff": config.importance_minimality_coeff,
         }
         plt.close(ci_vals_fig)  # Close the individual figure
 
@@ -162,15 +162,15 @@ def plot_increasing_importance_coeff_ci_vals(
             ax.xaxis.set_label_position("bottom")
 
             if row_idx == 0:
-                # Add importance_loss_coeff as column title
-                lp_coeff = all_mask_data[run_id]["importance_loss_coeff"]
-                title_text = f"Importance coeff={lp_coeff:.0e}"
+                # Add importance_minimality_coeff as column title
+                lp_coeff = all_mask_data[run_id]["importance_minimality_coeff"]
+                title_text = f"Importance minimality coeff={lp_coeff:.0e}"
 
                 # Add "BEST" indicator if this is one of the best runs
                 if best_idx is not None and col_idx in best_idx:
                     title_text += " (BEST)"
 
-                ax.set_title(title_text, fontsize=14, pad=13)
+                ax.set_title(title_text, fontsize=12, pad=11)
 
     # Highlight best runs with visual distinctions
     if best_idx is not None:
@@ -222,13 +222,15 @@ if __name__ == "__main__":
     best_idx = [2]
 
     # Create and save the combined figure
-    fig = plot_increasing_importance_coeff_ci_vals(run_ids, best_idx=best_idx)
+    fig = plot_increasing_importance_minimality_coeff_ci_vals(run_ids, best_idx=best_idx)
     out_dir = REPO_ROOT / "spd/experiments/resid_mlp/out/"
     out_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(
-        out_dir / "resid_mlp_varying_importance_coeff_ci_vals.png",
+        out_dir / "resid_mlp_varying_importance_minimality_coeff_ci_vals.png",
         bbox_inches="tight",
         dpi=400,
     )
-    print(f"Saved figure to {out_dir / 'resid_mlp_varying_importance_coeff_ci_vals.png'}")
+    print(
+        f"Saved figure to {out_dir / 'resid_mlp_varying_importance_minimality_coeff_ci_vals.png'}"
+    )
     plt.show()

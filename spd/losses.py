@@ -21,7 +21,7 @@ def calc_embedding_recon_loss(
     unembed: bool = False,
 ) -> Float[Tensor, ""]:
     """
-    Reconstruction loss that directly compares the outputs of the (optionally masked)
+    recon loss that directly compares the outputs of the (optionally masked)
     ``EmbeddingComponent``(s) to the outputs of the original ``nn.Embedding`` modules.
 
     If ``unembed`` is ``True``, both the masked embedding output and the target embedding
@@ -78,7 +78,7 @@ def calc_schatten_loss(
 
     Args:
         ci_upper_leaky: Dictionary of upper leaky relu causal importances for each layer.
-        pnorm: The pnorm to use for the importance loss. Must be positive.
+        pnorm: The pnorm to use for the importance minimality loss. Must be positive.
         components: Dictionary of components for each layer.
         device: The device to compute the loss on.
 
@@ -98,17 +98,17 @@ def calc_schatten_loss(
     return total_loss
 
 
-def calc_importance_loss(
+def calc_importance_minimality_loss(
     ci_upper_leaky: dict[str, Float[Tensor, "... C"]], pnorm: float
 ) -> Float[Tensor, ""]:
-    """Calculate the importance loss on the upper leaky relu causal importances.
+    """Calculate the importance minimality loss on the upper leaky relu causal importances.
 
     Args:
         ci_upper_leaky: Dictionary of causal importances upper leaky relu for each layer.
-        pnorm: The pnorm to use for the importance loss. Must be positive.
+        pnorm: The pnorm to use for the importance minimality loss. Must be positive.
 
     Returns:
-        The importance loss on the upper leaky relu causal importances.
+        The importance minimality loss on the upper leaky relu causal importances.
     """
     total_loss = torch.zeros_like(next(iter(ci_upper_leaky.values())))
 
@@ -120,7 +120,7 @@ def calc_importance_loss(
     return total_loss.sum(dim=-1).mean()
 
 
-def calc_layerwise_masked_recon_loss(
+def calc_masked_recon_layerwise_loss(
     model: ComponentModel,
     batch: Int[Tensor, "..."],
     device: str,
@@ -159,13 +159,11 @@ def calc_masked_recon_loss(
 ) -> Float[Tensor, ""]:
     """Calculate the MSE over all masks."""
     # Do a forward pass with all components
-    out_masked_random_mask = model.forward_with_components(
-        batch, components=components, masks=masks
-    )
+    out = model.forward_with_components(batch, components=components, masks=masks)
     if loss_type == "mse":
-        loss = ((out_masked_random_mask - target_out) ** 2).mean()
+        loss = ((out - target_out) ** 2).mean()
     elif loss_type == "kl":
-        loss = calc_kl_divergence_lm(pred=out_masked_random_mask, target=target_out)
+        loss = calc_kl_divergence_lm(pred=out, target=target_out)
     else:
         raise ValueError(f"Invalid loss type: {loss_type}")
     return loss
