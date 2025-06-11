@@ -1,7 +1,7 @@
 # SPD - Stochastic Parameter Decomposition
 Code used in the paper [Stochastic Parameter Decomposition (forthcoming)](TODO)
 
-Weights and Bias [report](https://wandb.ai/apollo-interp/spd-tms/reports/SPD-paper-report--VmlldzoxMzE0NzE1OA?accessToken=h7mgfw2k37gfyssr65fn2960w9yz53jge7uz9oxugbbl28di4a0xep5kpgbf4z8g) accompanying the paper.
+Weights and Bias [report](https://wandb.ai/goodfire/spd-tms/reports/SPD-paper-report--VmlldzoxMzE3NzU0MQ?accessToken=427spmsbxig5cyp4jsprg9p183tysclk7ttzyxjlsiwafh8badzlpgxcvopsormm) accompanying the paper.
 
 ## Installation
 From the root of the repository, run one of
@@ -21,7 +21,7 @@ analyse results, and optionally a train a target model:
   representations
 - `spd/experiments/lm` - Language model loaded from huggingface.
 
-### Run DPD
+### Run SPD
 SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
 subdirectories. A config file is required for each experiment, which can be found in the same
 directory. For example:
