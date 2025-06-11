@@ -50,7 +50,7 @@ def permute_to_identity(
 
 def _plot_causal_importances_figure(
     ci_vals: dict[str, Float[Tensor, "... C"]],
-    title_suffix: str,
+    title_prefix: str,
     colormap: str,
     input_magnitude: float,
     has_pos_dim: bool,
@@ -59,7 +59,7 @@ def _plot_causal_importances_figure(
 
     Args:
         ci_vals: Dictionary of causal importances (or causal importances upper leaky relu) to plot
-        title_suffix: String to append to titles (e.g., "causal importances" or
+        title_prefix: String to prepend to the title (e.g., "causal importances" or
             "causal importances upper leaky relu")
         colormap: Matplotlib colormap name
         input_magnitude: Input magnitude value for the title
@@ -93,7 +93,7 @@ def _plot_causal_importances_figure(
         axs[j, 0].xaxis.set_label_position("bottom")
         axs[j, 0].set_xlabel("Subcomponent index")
         axs[j, 0].set_ylabel("Input feature index")
-        axs[j, 0].set_title(f"{mask_name} ({title_suffix})")
+        axs[j, 0].set_title(mask_name)
 
     # Add unified colorbar
     norm = plt.Normalize(
@@ -104,8 +104,8 @@ def _plot_causal_importances_figure(
         im.set_norm(norm)
     fig.colorbar(images[0], ax=axs.ravel().tolist())
 
-    # Capitalize first letter of title suffix for the figure title
-    fig.suptitle(f"{title_suffix.capitalize()} - Input magnitude: {input_magnitude}")
+    # Capitalize first letter of title prefix for the figure title
+    fig.suptitle(f"{title_prefix.capitalize()} - Input magnitude: {input_magnitude}")
 
     return fig
 
@@ -166,7 +166,7 @@ def plot_causal_importance_vals(
     if plot_raw_cis:
         ci_fig = _plot_causal_importances_figure(
             ci_vals=ci,
-            title_suffix="importance value lower leaky relu",
+            title_prefix="importance_val lower leaky relu",
             colormap="Blues",
             input_magnitude=input_magnitude,
             has_pos_dim=has_pos_dim,
@@ -175,7 +175,7 @@ def plot_causal_importance_vals(
 
     ci_upper_leaky_fig = _plot_causal_importances_figure(
         ci_vals=ci_upper_leaky,
-        title_suffix="importance value upper leaky relu",
+        title_prefix="importance_val upper leaky relu",
         colormap="Reds",
         input_magnitude=input_magnitude,
         has_pos_dim=has_pos_dim,
