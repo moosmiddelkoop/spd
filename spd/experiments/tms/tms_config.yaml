@@ -1,0 +1,100 @@
+# # TMS 5-2
+# # --- WandB ---
+# wandb_project: spd-tms
+# wandb_run_name: null
+# wandb_run_name_prefix: ""
+
+# # --- General ---
+# seed: 0
+# C: 20
+# n_mask_samples: 1
+# n_ci_mlp_neurons: 16
+# # n_ci_mlp_neurons: 0
+# # target_module_patterns: ["linear1", "linear2"]
+# target_module_patterns: ["linear1", "linear2", "hidden_layers.0"]
+
+# # --- Loss Coefficients ---
+# faithfulness_coeff: 1.0
+# ci_masked_recon_coeff: null
+# stochastic_ci_masked_recon_coeff: 1
+# layerwise_ci_masked_recon_coeff: null
+# layerwise_stochastic_ci_masked_recon_coeff: 1.0
+# importance_loss_coeff: 3e-3
+# pnorm: 1.0
+# output_loss_type: mse
+
+# # --- Training ---
+# batch_size: 4096
+# steps: 40_000
+# lr: 1e-3
+# lr_schedule: cosine
+# lr_warmup_pct: 0.0
+# n_eval_steps: 100
+
+# # --- Logging & Saving ---
+# image_freq: 5_000
+# print_freq: 1000
+# save_freq: null
+
+# # --- Pretrained model info ---
+# pretrained_model_class: "spd.experiments.tms.models.TMSModel"
+# # pretrained_model_path: "wandb:spd-train-tms/runs/268t0wfp"
+# pretrained_model_path: "wandb:spd-train-tms/runs/ydih8ss4" # 1 hidden w/fixed identity
+
+# # --- Task Specific ---
+# task_config:
+#   task_name: tms
+#   feature_probability: 0.05
+#   data_generation_type: "at_least_zero_active"
+
+# TMS 40-10
+# --- WandB ---
+wandb_project: spd-tms
+wandb_run_name: null
+wandb_run_name_prefix: ""
+
+# --- General ---
+seed: 0
+C: 200
+n_mask_samples: 1
+n_ci_mlp_neurons: 16
+# n_ci_mlp_neurons: 0
+target_module_patterns: ["linear1", "linear2"]
+# target_module_patterns: ["linear1", "linear2", "hidden_layers.0"]
+
+# --- Loss Coefficients ---
+faithfulness_coeff: 1.0
+ci_masked_recon_coeff: null
+pnorm: 2.0
+importance_loss_coeff: 1e-4
+stochastic_ci_masked_recon_coeff: 1
+layerwise_ci_masked_recon_coeff: null
+layerwise_stochastic_ci_masked_recon_coeff: 1.0
+output_loss_type: "mse"
+
+# --- Training ---
+batch_size: 4096
+steps: 40_000
+image_freq: 5_000
+print_freq: 1000
+save_freq: null
+lr: 1e-3
+lr_schedule: cosine
+lr_warmup_pct: 0.0
+n_eval_steps: 100
+
+# --- Logging & Saving ---
+image_freq: 5_000
+print_freq: 1000
+save_freq: null
+
+# --- Pretrained model info ---
+pretrained_model_class: "spd.experiments.tms.models.TMSModel"
+pretrained_model_path: "wandb:spd-train-tms/runs/wckft4gh"
+# pretrained_model_path: "wandb:spd-train-tms/runs/95fmll0x" # 1 hidden w/fixed identity
+
+# --- Task Specific ---
+task_config:
+  task_name: tms
+  feature_probability: 0.05
+  data_generation_type: "at_least_zero_active"
