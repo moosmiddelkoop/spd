@@ -51,6 +51,7 @@ def component_activation_statistics(
     | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_steps: int,
     device: str,
+    threshold: float = 0.2,
 ) -> tuple[dict[str, float], dict[str, Float[Tensor, " C"]]]:
     """Get the number and strength of the masks over the full dataset."""
     # We used "-" instead of "." as module names can't have "." in them
@@ -88,8 +89,8 @@ def component_activation_statistics(
             # mask (batch, pos, C) or (batch, C)
             n_tokens[module_name] += ci.shape[:-1].numel()
 
-            # Count the number of components that are active at all
-            active_components = ci > 0
+            # Count the number of components that are active above the threshold
+            active_components = ci > threshold
             total_n_active_components[module_name] += int(active_components.sum().item())
 
             sum_dims = tuple(range(ci.ndim - 1))
