@@ -48,13 +48,11 @@ def plot_lm_results(
     )
 
 
-def main(
-    config_path_or_obj: Path | str | Config, sweep_config_path: Path | str | None = None
-) -> None:
+def main(config_path_or_obj: Path | str | Config) -> None:
     config = load_config(config_path_or_obj, config_model=Config)
 
     if config.wandb_project:
-        config = init_wandb(config, config.wandb_project, sweep_config_path)
+        config = init_wandb(config, config.wandb_project)
 
     set_seed(config.seed)
     logger.info(config)

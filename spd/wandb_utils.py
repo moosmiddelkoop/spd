@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import TypeVar
 
 import wandb
-import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from wandb.apis.public import File, Run
@@ -81,22 +80,12 @@ def download_wandb_file(run: Run, wandb_run_dir: Path, file_name: str) -> Path:
     return path
 
 
-def init_wandb(
-    config: T, project: str, sweep_config_path: Path | str | None = None, name: str | None = None
-) -> T:
+def init_wandb(config: T, project: str, name: str | None = None) -> T:
     """Initialize Weights & Biases and return a config updated with sweep hyperparameters.
-
-    If no sweep config is provided, the config is returned as is.
-
-    If a sweep config is provided, wandb is first initialized with the sweep config. This will
-    cause wandb to choose specific hyperparameters for this instance of the sweep and store them
-    in wandb.config. We then update the config with these hyperparameters.
 
     Args:
         config: The base config.
         project: The name of the wandb project.
-        sweep_config_path: The path to the sweep config file. If provided, updates the config with
-            the hyperparameters from this instance of the sweep.
         name: The name of the wandb run.
 
     Returns:
@@ -104,12 +93,7 @@ def init_wandb(
     """
     load_dotenv(override=True)
 
-    if sweep_config_path is not None:
-        with open(sweep_config_path) as f:
-            sweep_data = yaml.safe_load(f)
-        wandb.init(config=sweep_data, entity=os.getenv("WANDB_ENTITY"), save_code=True, name=name)
-    else:
-        wandb.init(project=project, entity=os.getenv("WANDB_ENTITY"), save_code=True, name=name)
+    wandb.init(project=project, entity=os.getenv("WANDB_ENTITY"), save_code=True, name=name)
     assert wandb.run is not None
     wandb.run.log_code(REPO_ROOT)
 

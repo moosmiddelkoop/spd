@@ -53,15 +53,13 @@ def save_target_model_info(
         wandb.save(str(out_dir / "tms_train_config.yaml"), base_path=out_dir, policy="now")
 
 
-def main(
-    config_path_or_obj: Path | str | Config, sweep_config_path: Path | str | None = None
-) -> None:
+def main(config_path_or_obj: Path | str | Config) -> None:
     device = get_device()
 
     config = load_config(config_path_or_obj, config_model=Config)
 
     if config.wandb_project:
-        config = init_wandb(config, config.wandb_project, sweep_config_path)
+        config = init_wandb(config, config.wandb_project)
 
     task_config = config.task_config
     assert isinstance(task_config, TMSTaskConfig)
