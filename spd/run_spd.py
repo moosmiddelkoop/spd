@@ -172,10 +172,6 @@ def optimize(
             pre_weight_acts=pre_weight_acts, As=As, gates=gates, detach_inputs=False
         )
 
-        stochastic_masks = calc_stochastic_masks(
-            causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
-        )
-
         for layer_name, ci in causal_importances.items():
             alive_components[layer_name] = alive_components[layer_name] | (ci > 0.1).any(dim=(0, 1))
 
@@ -205,6 +201,9 @@ def optimize(
 
         ####### stochastic recon loss #######
         if config.stochastic_recon_coeff is not None:
+            stochastic_masks = calc_stochastic_masks(
+                causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            )
             stochastic_recon_loss = torch.tensor(0.0, device=target_out.device)
             for i in range(len(stochastic_masks)):
                 stochastic_recon_loss += calc_masked_recon_loss(
@@ -235,12 +234,15 @@ def optimize(
 
         ####### stochastic recon layerwise loss #######
         if config.stochastic_recon_layerwise_coeff is not None:
+            layerwise_stochastic_masks = calc_stochastic_masks(
+                causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            )
             stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
                 model=model,
                 batch=batch,
                 device=device,
                 components=components,
-                masks=stochastic_masks,
+                masks=layerwise_stochastic_masks,
                 target_out=target_out,
                 loss_type=config.output_loss_type,
             )
@@ -281,6 +283,9 @@ def optimize(
 
         ####### embedding recon loss #######
         if config.embedding_recon_coeff is not None:
+            stochastic_masks = calc_stochastic_masks(
+                causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            )
             assert len(components) == 1, "Only one embedding component is supported"
             component = list(components.values())[0]
             assert isinstance(component, EmbeddingComponent)
