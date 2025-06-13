@@ -35,7 +35,7 @@ class PlotConfig:
     heatmap_plot_size: tuple[float, float] = (3.4, 3)
 
     # Thresholds
-    subnet_norm_threshold: float = 0.0281
+    subnet_norm_threshold: float = 0.017
     hidden_layer_threshold: float = 0.009
 
     # Styling
@@ -75,7 +75,7 @@ class TMSAnalyzer:
         return subnets
 
     def compute_cosine_similarities(
-        self,
+        self, eps=1e-12
     ) -> tuple[
         Float[Tensor, "n_subnets n_features"],
         Float[Tensor, " n_features"],
@@ -86,8 +86,8 @@ class TMSAnalyzer:
         target_weights = self.target_model.linear1.weight.T  # (n_features, n_hidden)
 
         # Normalize weights
-        subnets_norm = subnets / torch.norm(subnets, dim=-1, keepdim=True)
-        target_norm = target_weights / torch.norm(target_weights, dim=-1, keepdim=True)
+        subnets_norm = subnets / (torch.norm(subnets, dim=-1, keepdim=True) + eps)
+        target_norm = target_weights / (torch.norm(target_weights, dim=-1, keepdim=True) + eps)
 
         # Compute cosine similarities
         cosine_sims = torch.einsum("C f h, f h -> C f", subnets_norm, target_norm)
@@ -115,7 +115,7 @@ class TMSAnalyzer:
 
         # Apply threshold
         mask = subnet_feature_norms > self.config.subnet_norm_threshold
-        n_significant = int((subnet_feature_norms > self.config.subnet_norm_threshold).sum().item())
+        n_significant = int(mask.sum().item())
 
         # Filter subnets
         filtered_subnets = subnets[mask]
@@ -528,15 +528,13 @@ class FullNetworkDiagramPlotter:
         )
 
         # Ensure axs is always iterable
-        if n_plots == 1:
-            axs_array = [axs]
-        else:
-            axs_array = np.array(axs).flatten()
+        axs_array = [axs] if n_plots == 1 else np.array(axs).flatten()
 
         # Plot each configuration
         for plot_idx, (ax, config) in enumerate(zip_longest(axs_array, plot_configs)):
             if ax is None or config is None:
                 break
+            assert isinstance(ax, Axes)
             self._plot_full_network(
                 ax,
                 config["linear1_weights"],
@@ -802,7 +800,7 @@ class HiddenLayerPlotter:
                 title = "Sum of components"
             else:
                 title = f"Subcomponent {subnets_order[idx - 2].item()}"
-            ax.set_title(title, pad=10, fontsize="large")
+            ax.set_title(title, pad=10, fontsize="large")  # type: ignore
 
             # Style axis
             ax.set_xticks([])
@@ -963,111 +961,87 @@ class TMSPlotter:
             print(f"Mean bias: {self.analyzer.target_model.b_final.mean():.4f}")
 
 
-def calc_mmcs_and_ml2r(model: ComponentModel, eps: float = 1e-12) -> None:
-    target_model = model.model
-    assert isinstance(target_model, TMSModel)
-    layer = model.components["linear1"]
-    components_outer = torch.einsum("f C, C h -> C f h", layer.A, layer.B)
-    target_weight: Float[Tensor, "n_features n_hidden"] = target_model.linear1.weight.T
-
-    cosine_sims = torch.einsum(
-        "C f h, f h -> C f",
-        components_outer / (torch.norm(components_outer, dim=-1, keepdim=True) + eps),
-        target_weight / (torch.norm(target_weight, dim=-1, keepdim=True) + eps),
-    )
-    max_cosine_sim = cosine_sims.max(dim=0).values
-    print(f"Max cosine similarity:\n{max_cosine_sim}")
-    print(f"Mean max cosine similarity: {max_cosine_sim.mean()}")
-    print(f"std max cosine similarity: {max_cosine_sim.std()}")
-
-    # Get the component weights at the max cosine similarity
-    component_weights_at_max_cosine_sim: Float[Tensor, "n_features n_hidden"] = components_outer[
-        cosine_sims.max(dim=0).indices, torch.arange(target_model.config.n_features)
-    ]
-    # Get the norm of the target model weights
-    target_model_weights_norm: Float[Tensor, "n_features 1"] = (
-        torch.norm(target_model.linear1.weight.T, dim=-1, keepdim=True) + eps
-    )
-    component_weights_at_max_cosine_sim_norm = torch.norm(
-        component_weights_at_max_cosine_sim, dim=-1, keepdim=True
-    )
-    # Divide the component weights by the target model weights ratio
-    l2_ratio = component_weights_at_max_cosine_sim_norm / target_model_weights_norm
-    print(f"Mean L2 ratio: {l2_ratio.mean()}")
-    print(f"std L2 ratio: {l2_ratio.std()}")
-
-    # Mean bias
-    print(f"Mean bias: {target_model.linear2.bias.mean()}")
-
-
 def main():
     """Main execution function."""
     # Configuration
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    # run_id = "wandb:spd-tms/runs/dd6yam30"  # TMS 5-2
-    run_id = "wandb:spd-tms/runs/mms7sxca"  # TMS 5-2 w/ identity
-    # run_id = "wandb:spd-tms/runs/pafpl0wj"  # TMS 40-10
-    # run_id = "wandb:spd-tms/runs/804in6ej"  # TMS 40-10 w/ identity
-    run_id_stem = run_id.split("/")[-1]
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Setup output directory
-    out_dir = REPO_ROOT / "spd/experiments/tms/out/figures" / run_id_stem
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # Define run configurations with custom PlotConfig for each
+    run_configs = {
+        # "wandb:spd-tms/runs/f63itpo1": {"config": PlotConfig(), "name": "5-2"},
+        "wandb:spd-tms/runs/8bxfjeu5": {
+            "config": PlotConfig(subnet_norm_threshold=0.03, hidden_layer_threshold=0.0115),
+            "name": "5-2-identity",
+        },
+        # "wandb:spd-tms/runs/xq1ivc6b": {"config": PlotConfig(), "name": "40-10"},
+        # "wandb:spd-tms/runs/xyq22lbc": {"config": PlotConfig(), "name": "40-10-identity"},
+    }
 
-    # Load models
-    model, config, _ = ComponentModel.from_pretrained(run_id)
-    target_model = model.model
-    assert isinstance(target_model, TMSModel)
+    for run_id, run_info in run_configs.items():
+        run_id_stem = run_id.split("/")[-1]
 
-    calc_mmcs_and_ml2r(model)
+        # Setup output directory
+        out_dir = REPO_ROOT / "spd/experiments/tms/out/figures" / run_id_stem
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create plotter
-    plotter = TMSPlotter(comp_model=model, target_model=target_model)
+        # Load models
+        model, config, _ = ComponentModel.from_pretrained(run_id)
+        target_model = model.model
+        assert isinstance(target_model, TMSModel)
 
-    # Print analysis
-    print("=" * 50)
-    print("TMS Analysis Summary")
-    print("=" * 50)
-    plotter.print_analysis_summary()
+        # Get custom config and name for this run
+        plot_config = run_info["config"]
+        assert isinstance(plot_config, PlotConfig)
+        run_name = run_info["name"]
 
-    # Generate plots based on model architecture
-    if target_model.config.n_hidden == 2:
-        if target_model.config.n_hidden_layers == 0:
-            # Model without hidden layers - use combined plot
-            fig = plotter.plot_combined_diagram()
-            fig.savefig(
-                out_dir / "tms_combined_diagram.png", bbox_inches="tight", dpi=plotter.config.dpi
-            )
-            print(f"\nSaved combined diagram to {out_dir / 'tms_combined_diagram.png'}")
-        else:
-            # Model with hidden layers - use separate plots
-            # Vector plot
-            fig = plotter.plot_vectors()
-            fig.savefig(out_dir / "tms_vectors.png", bbox_inches="tight", dpi=plotter.config.dpi)
-            print(f"\nSaved vectors plot to {out_dir / 'tms_vectors.png'}")
+        # Create plotter with custom config
+        plotter = TMSPlotter(comp_model=model, target_model=target_model, config=plot_config)
 
-            # Full network plot
-            fig = plotter.plot_full_network()
-            fig.savefig(
-                out_dir / "tms_full_network.png", bbox_inches="tight", dpi=plotter.config.dpi
-            )
-            print(f"Saved full network diagram to {out_dir / 'tms_full_network.png'}")
+        # Print analysis
+        print("=" * 50)
+        print(f"TMS Analysis Summary - {run_name}")
+        print("=" * 50)
+        plotter.print_analysis_summary()
 
-    # Hidden layer heatmaps (if applicable)
-    if target_model.config.n_hidden_layers > 0:
-        fig = plotter.plot_hidden_layers()
-        if fig:
-            fig.savefig(
-                out_dir / "tms_hidden_layers.png", bbox_inches="tight", dpi=plotter.config.dpi
-            )
-            print(f"Saved hidden layers plot to {out_dir / 'tms_hidden_layers.png'}")
+        # Generate plots based on model architecture
+        if target_model.config.n_hidden == 2:
+            if target_model.config.n_hidden_layers == 0:
+                # Model without hidden layers - use combined plot
+                fig = plotter.plot_combined_diagram()
+                filename = f"tms_combined_diagram_{run_name}.png"
+                fig.savefig(
+                    out_dir / filename,
+                    bbox_inches="tight",
+                    dpi=plotter.config.dpi,
+                )
+                print(f"\nSaved combined diagram to {out_dir / filename}")
+            else:
+                # Model with hidden layers - use separate plots
+                # Vector plot
+                fig = plotter.plot_vectors()
+                filename = f"tms_vectors_{run_name}.png"
+                fig.savefig(out_dir / filename, bbox_inches="tight", dpi=plotter.config.dpi)
+                print(f"\nSaved vectors plot to {out_dir / filename}")
 
-    # Plot cosine similarity analysis
-    fig = plotter.plot_cosine_similarity_analysis()
-    fig.savefig(
-        out_dir / "cosine_similarity_analysis.png", bbox_inches="tight", dpi=plotter.config.dpi
-    )
-    print(f"Saved cosine similarity analysis to {out_dir / 'cosine_similarity_analysis.png'}")
+                # Full network plot
+                fig = plotter.plot_full_network()
+                filename = f"tms_full_network_{run_name}.png"
+                fig.savefig(out_dir / filename, bbox_inches="tight", dpi=plotter.config.dpi)
+                print(f"Saved full network diagram to {out_dir / filename}")
+
+        # Hidden layer heatmaps (if applicable)
+        if target_model.config.n_hidden_layers > 0:
+            fig = plotter.plot_hidden_layers()
+            if fig:
+                filename = f"tms_hidden_layers_{run_name}.png"
+                fig.savefig(out_dir / filename, bbox_inches="tight", dpi=plotter.config.dpi)
+                print(f"Saved hidden layers plot to {out_dir / filename}")
+
+        # Plot cosine similarity analysis
+        fig = plotter.plot_cosine_similarity_analysis()
+        filename = f"cosine_similarity_analysis_{run_name}.png"
+        fig.savefig(out_dir / filename, bbox_inches="tight", dpi=plotter.config.dpi)
+        print(f"Saved cosine similarity analysis to {out_dir / filename}")
 
 
 if __name__ == "__main__":

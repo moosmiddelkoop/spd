@@ -121,7 +121,7 @@ def upper_leaky_relu(x: Tensor, alpha: float = 0.01) -> Tensor:
 def calc_causal_importances(
     pre_weight_acts: dict[str, Float[Tensor, "... d_in"] | Int[Tensor, "... pos"]],
     As: Mapping[str, Float[Tensor, "d_in C"]],
-    gates: dict[str, Gate | GateMLP],
+    gates: Mapping[str, Gate | GateMLP],
     detach_inputs: bool = False,
 ) -> tuple[dict[str, Float[Tensor, "... C"]], dict[str, Float[Tensor, "... C"]]]:
     """Calculate component activations and causal importances in one pass to save memory.

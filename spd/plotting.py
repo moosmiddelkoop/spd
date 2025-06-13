@@ -1,4 +1,6 @@
 import math
+from collections.abc import Callable, Mapping
+from typing import Literal
 
 import matplotlib.ticker as tkr
 import numpy as np
@@ -54,6 +56,8 @@ def _plot_causal_importances_figure(
     colormap: str,
     input_magnitude: float,
     has_pos_dim: bool,
+    orientation: Literal["vertical", "horizontal"] = "vertical",
+    title_formatter: Callable[[str], str] | None = None,
 ) -> plt.Figure:
     """Helper function to plot a single mask figure.
 
@@ -64,14 +68,22 @@ def _plot_causal_importances_figure(
         colormap: Matplotlib colormap name
         input_magnitude: Input magnitude value for the title
         has_pos_dim: Whether the masks have a position dimension
+        orientation: The orientation of the subplots
+        title_formatter: Optional callable to format subplot titles. Takes mask_name as input.
 
     Returns:
         The matplotlib figure
     """
+    if orientation == "vertical":
+        n_rows, n_cols = len(ci_vals), 1
+        figsize = (5, 5 * len(ci_vals))
+    else:
+        n_rows, n_cols = 1, len(ci_vals)
+        figsize = (5 * len(ci_vals), 5)
     fig, axs = plt.subplots(
-        len(ci_vals),
-        1,
-        figsize=(5, 5 * len(ci_vals)),
+        n_rows,
+        n_cols,
+        figsize=figsize,
         constrained_layout=True,
         squeeze=False,
         dpi=300,
@@ -85,15 +97,22 @@ def _plot_causal_importances_figure(
         if has_pos_dim:
             assert mask_data.ndim == 3
             mask_data = mask_data[:, 0, :]
-        im = axs[j, 0].matshow(mask_data, aspect="auto", cmap=colormap)
+        if orientation == "vertical":
+            ax = axs[j, 0]
+        else:
+            ax = axs[0, j]
+        im = ax.matshow(mask_data, aspect="auto", cmap=colormap)
         images.append(im)
 
         # Move x-axis ticks to bottom
-        axs[j, 0].xaxis.tick_bottom()
-        axs[j, 0].xaxis.set_label_position("bottom")
-        axs[j, 0].set_xlabel("Subcomponent index")
-        axs[j, 0].set_ylabel("Input feature index")
-        axs[j, 0].set_title(mask_name)
+        ax.xaxis.tick_bottom()
+        ax.xaxis.set_label_position("bottom")
+        ax.set_xlabel("Subcomponent index")
+        ax.set_ylabel("Input feature index")
+
+        # Apply custom title formatting if provided
+        title = title_formatter(mask_name) if title_formatter is not None else mask_name
+        ax.set_title(title)
 
     # Add unified colorbar
     norm = plt.Normalize(
@@ -112,12 +131,14 @@ def _plot_causal_importances_figure(
 
 def plot_causal_importance_vals(
     model: ComponentModel,
-    components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
+    components: Mapping[str, LinearComponent | EmbeddingComponent],
+    gates: Mapping[str, Gate | GateMLP],
     batch_shape: tuple[int, ...],
     device: str | torch.device,
     input_magnitude: float,
     plot_raw_cis: bool = True,
+    orientation: Literal["vertical", "horizontal"] = "vertical",
+    title_formatter: Callable[[str], str] | None = None,
 ) -> tuple[dict[str, plt.Figure], dict[str, Float[Tensor, " C"]]]:
     """Plot the values of the causal importances for a batch of inputs with single active features.
 
@@ -129,6 +150,8 @@ def plot_causal_importance_vals(
         device: Device to use
         input_magnitude: Magnitude of input features
         plot_raw_cis: Whether to plot the raw causal importances (blue plots)
+        orientation: The orientation of the subplots
+        title_formatter: Optional callable to format subplot titles. Takes mask_name as input.
 
     Returns:
         Tuple of:
@@ -166,19 +189,23 @@ def plot_causal_importance_vals(
     if plot_raw_cis:
         ci_fig = _plot_causal_importances_figure(
             ci_vals=ci,
-            title_prefix="importance_val lower leaky relu",
+            title_prefix="importance values lower leaky relu",
             colormap="Blues",
             input_magnitude=input_magnitude,
             has_pos_dim=has_pos_dim,
+            orientation=orientation,
+            title_formatter=title_formatter,
         )
         figures["causal_importances"] = ci_fig
 
     ci_upper_leaky_fig = _plot_causal_importances_figure(
         ci_vals=ci_upper_leaky,
-        title_prefix="importance_val upper leaky relu",
+        title_prefix="importance values",
         colormap="Reds",
         input_magnitude=input_magnitude,
         has_pos_dim=has_pos_dim,
+        orientation=orientation,
+        title_formatter=title_formatter,
     )
     figures["causal_importances_upper_leaky"] = ci_upper_leaky_fig
 
