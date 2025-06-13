@@ -10,7 +10,6 @@ from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.models.component_model import ComponentModel
 from spd.models.components import LinearComponent
 from spd.settings import REPO_ROOT
-from spd.spd_types import ModelPath
 from spd.utils import set_seed
 
 
@@ -27,13 +26,7 @@ def feature_contribution_plot(
 
     # Define colors for different layers
     assert n_layers in [1, 2, 3]
-    layer_colors = (
-        ["grey"]
-        if n_layers == 1
-        else ["blue", "red"]
-        if n_layers == 2
-        else ["blue", "red", "green"]
-    )
+    layer_colors = ["blue", "red", "green"]  # Always use same colors regardless of n_layers
 
     distinct_colors = [
         "#E41A1C",  # red
@@ -292,40 +285,180 @@ def plot_spd_feature_contributions_truncated(
     return fig1
 
 
+def plot_neuron_contribution_pairs(
+    components: dict[str, LinearComponent],
+    target_model: ResidualMLP,
+    n_features: int | None = 50,
+) -> plt.Figure:
+    """Create a scatter plot comparing target model and SPD component neuron contributions.
+
+    Each point represents a (component, input_feature, neuron) combination across all layers.
+    X-axis: neuron contribution from the target model
+    Y-axis: neuron contribution from the SPD component
+    """
+    n_layers = target_model.config.n_layers
+    n_features = target_model.config.n_features if n_features is None else n_features
+    d_mlp = target_model.config.d_mlp
+
+    # Assert that there are no biases
+    assert not target_model.config.in_bias and not target_model.config.out_bias, (
+        "Biases are not supported for these plots"
+    )
+
+    # Compute neuron contribution tensors
+    relu_conns: Float[Tensor, "n_layers n_features d_mlp"] = (
+        compute_target_weight_neuron_contributions(
+            target_model=target_model,
+            n_features=n_features,
+        )
+    )
+
+    relu_conns_spd: Float[Tensor, "n_layers n_features C d_mlp"] = (
+        compute_spd_weight_neuron_contributions(
+            components=components,
+            target_model=target_model,
+            n_features=n_features,
+        )
+    )
+
+    # For each layer and feature, find the component with the largest max value over d_mlp
+    max_component_indices = []
+    for i in range(n_layers):
+        # For each feature, find the C component with the largest max value over d_mlp
+        max_component_indices.append(relu_conns_spd[i].max(dim=-1).values.argmax(dim=-1))
+
+    # For each feature, use the C values based on the max_component_indices
+    max_component_contributions: Float[Tensor, "n_layers n_features d_mlp"] = torch.stack(
+        [
+            relu_conns_spd[i, torch.arange(n_features), max_component_indices[i], :]
+            for i in range(n_layers)
+        ],
+        dim=0,
+    )
+
+    # Define colors for different layers (same as in plot_spd_feature_contributions_truncated)
+    assert n_layers in [1, 2, 3]
+    layer_colors = ["blue", "red", "green"]  # Always use same colors regardless of n_layers
+
+    # Create scatter plot
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Plot points separately for each layer with different colors
+    for layer in range(n_layers):
+        x_values = relu_conns[layer].flatten().cpu().detach().numpy()
+        y_values = max_component_contributions[layer].flatten().cpu().detach().numpy()
+
+        layer_label = {0: "First MLP", 1: "Second MLP", 2: "Third MLP"}.get(layer, f"Layer {layer}")
+
+        ax.scatter(
+            x_values,
+            y_values,
+            alpha=0.3,
+            s=10,
+            color=layer_colors[layer],
+            edgecolors="none",
+            label=layer_label if n_layers > 1 else None,
+        )
+
+    # Add y=x reference line
+    lims = [
+        np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
+        np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
+    ]
+    ax.plot(lims, lims, "k--", alpha=0.2, zorder=0, label="y=x")
+
+    # Labels and title
+    ax.set_xlabel("Target Model Neuron Contribution", fontsize=12)
+    ax.set_ylabel("SPD Component Neuron Contribution (Max Subcomponent)", fontsize=12)
+    ax.set_title(
+        f"{n_features} input features, {n_layers} layer{'s' if n_layers != 1 else ''}", fontsize=12
+    )
+
+    # Make axes equal and square
+    ax.set_aspect("equal", adjustable="box")
+
+    # Add grid for better readability
+    ax.grid(True, alpha=0.3)
+
+    # Remove top and right spines
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Add legend if there are multiple layers
+    if n_layers > 1:
+        ax.legend(loc="lower right")
+
+    # Add some statistics to the plot
+    # Calculate correlation for all points combined
+    all_x = relu_conns.flatten().cpu().detach().numpy()
+    all_y = max_component_contributions.flatten().cpu().detach().numpy()
+    correlation = np.corrcoef(all_x, all_y)[0, 1]
+    ax.text(
+        0.05,
+        0.95,
+        f"Correlation: {correlation:.3f}",
+        transform=ax.transAxes,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+    )
+
+    return fig
+
+
 def main():
     out_dir = REPO_ROOT / "spd/experiments/resid_mlp/out/figures/"
     out_dir.mkdir(parents=True, exist_ok=True)
     set_seed(0)
     device = "cpu" if torch.cuda.is_available() else "cpu"
 
-    # path_spd: ModelPath = "wandb:spd-resid-mlp/runs/aswyb4eh"  # 1 layer
-    # path_spd: ModelPath = "wandb:spd-resid-mlp/runs/sakvc0ad"  # 2 layer
-    path_spd: ModelPath = "wandb:/spd-resid-mlp/runs/x57ji7oj"  # 3 layer
+    paths: list[str] = [
+        "wandb:spd-resid-mlp/runs/ziro93xq",  # 1 layer
+        "wandb:spd-resid-mlp/runs/wau744ht",  # 2 layer
+        "wandb:spd-resid-mlp/runs/qqdugze1",  # 3 layer
+    ]
 
-    wandb_id = path_spd.split("/")[-1]
+    for path in paths:
+        wandb_id = path.split("/")[-1]
 
-    model = ComponentModel.from_pretrained(path_spd)[0]
-    model.to(device)
+        model = ComponentModel.from_pretrained(path)[0]
+        model.to(device)
 
-    target_model = model.model
-    assert isinstance(target_model, ResidualMLP)
-    n_layers = target_model.config.n_layers
+        target_model = model.model
+        assert isinstance(target_model, ResidualMLP)
+        n_layers = target_model.config.n_layers
 
-    components: dict[str, LinearComponent] = {
-        k.removeprefix("components.").replace("-", "."): v
-        for k, v in model.components.items()
-        if isinstance(v, LinearComponent)
-    }  # type: ignore
+        components: dict[str, LinearComponent] = {
+            k.removeprefix("components.").replace("-", "."): v
+            for k, v in model.components.items()
+            if isinstance(v, LinearComponent)
+        }  # type: ignore
 
-    fig = plot_spd_feature_contributions_truncated(
-        components=components,
-        target_model=target_model,
-        n_features=10,
-    )
-    fig.savefig(
-        out_dir / f"resid_mlp_weights_{n_layers}layers_{wandb_id}.png", bbox_inches="tight", dpi=500
-    )
-    print(f"Saved figure to {out_dir / f'resid_mlp_weights_{n_layers}layers_{wandb_id}.png'}")
+        fig = plot_spd_feature_contributions_truncated(
+            components=components,
+            target_model=target_model,
+            n_features=10,
+        )
+        fig.savefig(
+            out_dir / f"resid_mlp_weights_{n_layers}layers_{wandb_id}.png",
+            bbox_inches="tight",
+            dpi=500,
+        )
+        print(f"Saved figure to {out_dir / f'resid_mlp_weights_{n_layers}layers_{wandb_id}.png'}")
+
+        # Generate and save neuron contribution pairs plot
+        fig_pairs = plot_neuron_contribution_pairs(
+            components=components,
+            target_model=target_model,
+            n_features=None,  # Using same number of features as above
+        )
+        fig_pairs.savefig(
+            out_dir / f"neuron_contribution_pairs_{n_layers}layers_{wandb_id}.png",
+            bbox_inches="tight",
+            dpi=500,
+        )
+        print(
+            f"Saved figure to {out_dir / f'neuron_contribution_pairs_{n_layers}layers_{wandb_id}.png'}"
+        )
 
 
 if __name__ == "__main__":

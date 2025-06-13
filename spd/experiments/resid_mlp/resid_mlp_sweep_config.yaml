@@ -6,6 +6,8 @@ metric:
 parameters:
   seed:
     values: [0, 1, 2, 3, 4]
+  # importance_minimality_coeff:
+  #   values: [1e-6, 3e-6, 1e-5, 1e-4, 1e-3]
 
 command:
 - ${env}
