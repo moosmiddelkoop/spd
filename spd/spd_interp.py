@@ -1,6 +1,8 @@
 from typing import Any
 
+import matplotlib.colors as colors
 import matplotlib.pyplot as plt
+import numpy as np
 
 from spd.configs import Config
 from spd.experiments.resid_mlp.models import ResidualMLP
@@ -51,7 +53,7 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
         batch_shape=batch_shape,
         device=device,
         input_magnitude=input_magnitude,
-        plot_raw_cis=False,
+        plot_raw_cis=True,
     )
 
     return {
@@ -89,8 +91,8 @@ def plot_increasing_importance_minimality_coeff_ci_vals(
         config = extraction_result["config"]
         assert isinstance(config, Config)
 
-        # Extract causal importances data from the figure
-        ci_vals_fig = figures["causal_importances"]
+        # Extract causal importances_upper_leaky data from the figure
+        ci_vals_fig = figures["causal_importances_upper_leaky"]
 
         # Get mask data from the figure axes
         mask_data = {}
@@ -131,7 +133,7 @@ def plot_increasing_importance_minimality_coeff_ci_vals(
     images = []
     vmin, vmax = float("inf"), float("-inf")
 
-    component_name_map = {"layers.0.mlp_in": "$W_{IN}$", "layers.0.mlp_out": "$W_{OUT}$"}
+    component_name_map = {"layers.0.mlp_in": "$W_{in}$", "layers.0.mlp_out": "$W_{out}$"}
     for col_idx, run_id in enumerate(run_ids):
         for row_idx, component_name in enumerate(all_components):
             ax = axs[row_idx, col_idx]
@@ -164,7 +166,7 @@ def plot_increasing_importance_minimality_coeff_ci_vals(
             if row_idx == 0:
                 # Add importance_minimality_coeff as column title
                 lp_coeff = all_mask_data[run_id]["importance_minimality_coeff"]
-                title_text = f"Importance minimality coeff={lp_coeff:.0e}"
+                title_text = f"imp_min_coeff={lp_coeff:.0e}"
 
                 # Add "BEST" indicator if this is one of the best runs
                 if best_idx is not None and col_idx in best_idx:
@@ -198,8 +200,19 @@ def plot_increasing_importance_minimality_coeff_ci_vals(
 
     # Add unified colorbar
     if images:
-        # Normalize all images to the same scale
-        norm = plt.Normalize(vmin=vmin, vmax=vmax)
+        # Clip values at upper bound only (values should already be >= 0)
+        vmax_clip = 1
+
+        # Clip all values at the maximum
+        for im in images:
+            data = im.get_array()
+            if data is not None:
+                # Clip values at 1
+                clipped_data = np.minimum(data, vmax_clip)
+                im.set_array(clipped_data)
+
+        # Use a simple linear normalization from 0 to 1
+        norm = colors.Normalize(vmin=0, vmax=vmax_clip)
         for im in images:
             im.set_norm(norm)
 
@@ -212,12 +225,13 @@ def plot_increasing_importance_minimality_coeff_ci_vals(
 
 
 if __name__ == "__main__":
+    # Resid_mlp 1-layer varying sparsity
     run_ids = [
-        "wandb:spd-resid-mlp/runs/5whdnjhz",  # 1e-6
-        "wandb:spd-resid-mlp/runs/18v49hfa",  # 3e-6
-        "wandb:spd-resid-mlp/runs/howbugfl",  # Best. 1e-5
-        "wandb:spd-resid-mlp/runs/flaqx6dr",  # 1e-4
-        "wandb:spd-resid-mlp/runs/bfgxcmnb",  # 1e-3
+        "wandb:spd-resid-mlp/runs/xh0qlbkj",  # 1e-6
+        "wandb:spd-resid-mlp/runs/kkpzirac",  # 3e-6
+        "wandb:spd-resid-mlp/runs/ziro93xq",  # Best. 1e-5
+        "wandb:spd-resid-mlp/runs/pnxu3d22",  # 1e-4
+        "wandb:spd-resid-mlp/runs/aahzg3zu",  # 1e-3
     ]
     best_idx = [2]
 

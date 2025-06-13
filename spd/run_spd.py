@@ -106,6 +106,7 @@ def optimize(
 
     if tied_weights is not None:
         # Tie component weights. Assume that the first element is a transpose of the second element
+        # NOTE: Tying weights will make your training nondeterministic
         for src_name, tgt_name in tied_weights:
             components[tgt_name].B.data = components[src_name].A.data.T
             components[tgt_name].A.data = components[src_name].B.data.T
