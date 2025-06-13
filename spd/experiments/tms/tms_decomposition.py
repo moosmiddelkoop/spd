@@ -55,6 +55,7 @@ def save_target_model_info(
 
 def main(config_path_or_obj: Path | str | Config) -> None:
     device = get_device()
+    logger.info(f"Using device: {device}")
 
     config = load_config(config_path_or_obj, config_model=Config)
 
