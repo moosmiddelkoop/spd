@@ -51,7 +51,7 @@ def component_activation_statistics(
     | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_steps: int,
     device: str,
-    threshold: float = 0.2,
+    threshold: float = 0.1,
 ) -> tuple[dict[str, float], dict[str, Float[Tensor, " C"]]]:
     """Get the number and strength of the masks over the full dataset."""
     # We used "-" instead of "." as module names can't have "." in them
