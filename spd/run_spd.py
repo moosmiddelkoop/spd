@@ -17,18 +17,12 @@ from spd.configs import Config
 from spd.log import logger
 from spd.losses import (
     calc_ce_losses,
-    calc_embedding_recon_loss,
-    calc_faithfulness_loss,
-    calc_importance_minimality_loss,
-    calc_masked_recon_layerwise_loss,
-    calc_masked_recon_loss,
-    calc_schatten_loss,
+    calculate_losses,
 )
 from spd.models.component_model import ComponentModel, init_As_and_Bs_
 from spd.models.component_utils import (
     calc_causal_importances,
     calc_ci_l_zero,
-    calc_stochastic_masks,
     component_activation_statistics,
 )
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
@@ -124,10 +118,7 @@ def optimize(
     lr_schedule_fn = get_lr_schedule_fn(config.lr_schedule, config.lr_exponential_halflife)
     logger.info(f"Base LR scheduler created: {config.lr_schedule}")
 
-    n_params = 0
-    for module_name in components:
-        weight = model.model.get_parameter(module_name + ".weight")
-        n_params += weight.numel()
+    n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
     log_data = {}
     data_iter = iter(train_loader)
@@ -136,9 +127,8 @@ def optimize(
         layer_name: torch.zeros(config.C, device=device).bool() for layer_name in components
     }
 
-    # Use tqdm directly in the loop, iterate one extra step for final logging/plotting/saving
+    # Iterate one extra step for final logging/plotting/saving
     for step in tqdm(range(config.steps + 1), ncols=0):
-        # --- LR Scheduling Step --- #
         step_lr = get_lr_with_warmup(
             step=step,
             steps=config.steps,
@@ -146,12 +136,10 @@ def optimize(
             lr_schedule_fn=lr_schedule_fn,
             lr_warmup_pct=config.lr_warmup_pct,
         )
-        # Manually update optimizer's learning rate
         for group in optimizer.param_groups:
             group["lr"] = step_lr
         log_data["lr"] = step_lr
 
-        # --- Zero Gradients --- #
         optimizer.zero_grad()
 
         try:
@@ -176,130 +164,17 @@ def optimize(
         for layer_name, ci in causal_importances.items():
             alive_components[layer_name] = alive_components[layer_name] | (ci > 0.1).any(dim=(0, 1))
 
-        # --- Calculate Losses --- #
-        total_loss = torch.tensor(0.0, device=device)
-        loss_terms = {}
-
-        ####### faithfulness loss #######
-        faithfulness_loss = calc_faithfulness_loss(
-            components=components, target_model=model.model, n_params=n_params, device=device
+        total_loss, loss_terms = calculate_losses(
+            model=model,
+            batch=batch,
+            config=config,
+            components=components,
+            causal_importances=causal_importances,
+            causal_importances_upper_leaky=causal_importances_upper_leaky,
+            target_out=target_out,
+            device=device,
+            n_params=n_params,
         )
-        total_loss += config.faithfulness_coeff * faithfulness_loss
-        loss_terms["loss/faithfulness"] = faithfulness_loss.item()
-
-        ####### recon loss #######
-        if config.recon_coeff is not None:
-            recon_loss = calc_masked_recon_loss(
-                model=model,
-                batch=batch,
-                components=components,
-                masks=causal_importances,
-                target_out=target_out,
-                loss_type=config.output_loss_type,
-            )
-            total_loss += config.recon_coeff * recon_loss
-            loss_terms["loss/recon"] = recon_loss.item()
-
-        ####### stochastic recon loss #######
-        if config.stochastic_recon_coeff is not None:
-            stochastic_masks = calc_stochastic_masks(
-                causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
-            )
-            stochastic_recon_loss = torch.tensor(0.0, device=target_out.device)
-            for i in range(len(stochastic_masks)):
-                stochastic_recon_loss += calc_masked_recon_loss(
-                    model=model,
-                    batch=batch,
-                    components=components,
-                    masks=stochastic_masks[i],
-                    target_out=target_out,
-                    loss_type=config.output_loss_type,
-                )
-            stochastic_recon_loss = stochastic_recon_loss / len(stochastic_masks)
-            total_loss += config.stochastic_recon_coeff * stochastic_recon_loss
-            loss_terms["loss/stochastic_recon"] = stochastic_recon_loss.item()
-
-        ####### recon layerwise loss #######
-        if config.recon_layerwise_coeff is not None:
-            recon_layerwise_loss = calc_masked_recon_layerwise_loss(
-                model=model,
-                batch=batch,
-                device=device,
-                components=components,
-                masks=[causal_importances],
-                target_out=target_out,
-                loss_type=config.output_loss_type,
-            )
-            total_loss += config.recon_layerwise_coeff * recon_layerwise_loss
-            loss_terms["loss/recon_layerwise"] = recon_layerwise_loss.item()
-
-        ####### stochastic recon layerwise loss #######
-        if config.stochastic_recon_layerwise_coeff is not None:
-            layerwise_stochastic_masks = calc_stochastic_masks(
-                causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
-            )
-            stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
-                model=model,
-                batch=batch,
-                device=device,
-                components=components,
-                masks=layerwise_stochastic_masks,
-                target_out=target_out,
-                loss_type=config.output_loss_type,
-            )
-            total_loss += config.stochastic_recon_layerwise_coeff * stochastic_recon_layerwise_loss
-            loss_terms["loss/stochastic_recon_layerwise"] = stochastic_recon_layerwise_loss.item()
-
-        ####### importance minimality loss #######
-        importance_minimality_loss = calc_importance_minimality_loss(
-            ci_upper_leaky=causal_importances_upper_leaky, pnorm=config.pnorm
-        )
-        total_loss += config.importance_minimality_coeff * importance_minimality_loss
-        loss_terms["loss/importance_minimality"] = importance_minimality_loss.item()
-
-        ####### Schatten loss #######
-        if config.schatten_coeff is not None:
-            schatten_loss = calc_schatten_loss(
-                ci_upper_leaky=causal_importances_upper_leaky,
-                pnorm=config.pnorm,
-                components=components,
-                device=device,
-            )
-            total_loss += config.schatten_coeff * schatten_loss
-            loss_terms["loss/schatten"] = schatten_loss.item()
-
-        ####### output recon loss #######
-        if config.out_recon_coeff is not None:
-            masks_all_ones = {k: torch.ones_like(v) for k, v in causal_importances.items()}
-            out_recon_loss = calc_masked_recon_loss(
-                model=model,
-                batch=batch,
-                components=components,
-                masks=masks_all_ones,
-                target_out=target_out,
-                loss_type=config.output_loss_type,
-            )
-            total_loss += config.out_recon_coeff * out_recon_loss
-            loss_terms["loss/output_recon"] = out_recon_loss.item()
-
-        ####### embedding recon loss #######
-        if config.embedding_recon_coeff is not None:
-            stochastic_masks = calc_stochastic_masks(
-                causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
-            )
-            assert len(components) == 1, "Only one embedding component is supported"
-            component = list(components.values())[0]
-            assert isinstance(component, EmbeddingComponent)
-            embedding_recon_loss = calc_embedding_recon_loss(
-                model=model,
-                batch=batch,
-                component=component,
-                masks=stochastic_masks,
-                embed_module_name=next(iter(components.keys())),
-                unembed=config.is_embed_unembed_recon,
-            )
-            total_loss += config.embedding_recon_coeff * embedding_recon_loss
-            loss_terms["loss/embedding_recon"] = embedding_recon_loss.item()
 
         log_data["loss/total"] = total_loss.item()
         log_data.update(loss_terms)
@@ -311,14 +186,11 @@ def optimize(
                 tqdm.write(f"LR: {step_lr:.6f}")
                 tqdm.write(f"Total Loss: {log_data['loss/total']:.7f}")
                 for name, value in loss_terms.items():
-                    if value is not None:
-                        tqdm.write(f"{name}: {value:.7f}")
+                    tqdm.write(f"{name}: {value:.7f}")
 
                 if step > 0:
                     for layer_name, layer_alive_components in alive_components.items():
-                        log_data[f"{layer_name}/n_alive_components_01"] = (
-                            layer_alive_components.sum().item()
-                        )
+                        log_data[f"{layer_name}/n_alive_01"] = layer_alive_components.sum().item()
                         alive_components[layer_name] = torch.zeros(config.C, device=device).bool()
 
                 # Calculate component logits and KL losses
@@ -331,15 +203,12 @@ def optimize(
 
                 target_logits = model(batch)
 
-                unmasked_kl_loss = calc_kl_divergence_lm(
+                log_data["misc/unmasked_kl_loss_vs_target"] = calc_kl_divergence_lm(
                     pred=unmasked_component_logits, target=target_logits
-                )
-                masked_kl_loss = calc_kl_divergence_lm(
+                ).item()
+                log_data["misc/masked_kl_loss_vs_target"] = calc_kl_divergence_lm(
                     pred=masked_component_logits, target=target_logits
-                )
-
-                log_data["misc/unmasked_kl_loss_vs_target"] = unmasked_kl_loss.item()
-                log_data["misc/masked_kl_loss_vs_target"] = masked_kl_loss.item()
+                ).item()
 
                 if config.log_ce_losses:
                     ce_losses = calc_ce_losses(
@@ -422,7 +291,6 @@ def optimize(
             total_loss.backward(retain_graph=True)
 
             if step % config.print_freq == 0 and config.wandb_project:
-                # Calculate gradient norm
                 grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
                 for param in model.parameters():
                     if param.grad is not None:
