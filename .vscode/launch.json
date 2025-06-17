@@ -19,6 +19,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/spd/experiments/tms/tms_decomposition.py",
             "args": "${workspaceFolder}/spd/experiments/tms/tms_config.yaml",
+            "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
@@ -31,6 +32,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp_decomposition.py",
             "args": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp_config.yaml",
+            "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
@@ -43,6 +45,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/spd/experiments/lm/lm_decomposition.py",
             "args": "${workspaceFolder}/spd/experiments/lm/ss_config.yaml",
+            "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
@@ -55,6 +58,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/spd/experiments/lm/lm_decomposition.py",
             "args": "${workspaceFolder}/spd/experiments/lm/ts_config.yaml",
+            "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
