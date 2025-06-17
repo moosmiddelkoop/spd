@@ -3,6 +3,7 @@ name = "spd"
 version = "0.0.1"
 description = "Sparse Parameter Decomposition"
 requires-python = ">=3.11"
+urls = { "Homepage" = "https://github.com/goodfire-ai/spd" }
 readme = "README.md"
 dependencies = [
     "torch<2.6.0",
@@ -37,8 +38,9 @@ dev = [
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["spd", "spd.models", "spd.experiments"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["spd*"]
 
 [tool.ruff]
 line-length = 100
