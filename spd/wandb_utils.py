@@ -95,10 +95,10 @@ def init_wandb(config: T, project: str, name: str | None = None) -> T:
 
     wandb.init(project=project, entity=os.getenv("WANDB_ENTITY"), save_code=True, name=name)
     assert wandb.run is not None
-    wandb.run.log_code(REPO_ROOT)
+    wandb.run.log_code(str(REPO_ROOT))
 
     # Update the config with the hyperparameters for this sweep (if any)
-    config = replace_pydantic_model(config, wandb.config)
+    config = replace_pydantic_model(config, wandb.config)  # type: ignore
 
     # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))

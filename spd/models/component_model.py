@@ -1,4 +1,5 @@
 import fnmatch
+from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
@@ -115,7 +116,7 @@ class ComponentModel(nn.Module):
     @contextmanager
     def _replaced_modules(
         self,
-        components: dict[str, LinearComponent | EmbeddingComponent],
+        components: Mapping[str, LinearComponent | EmbeddingComponent],
         masks: dict[str, Float[Tensor, "... C"]] | None = None,
     ):
         """Context manager for temporarily replacing modules with components.
