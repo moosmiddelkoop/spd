@@ -205,7 +205,8 @@ class Config(BaseModel):
     )
     save_freq: PositiveInt | None = Field(
         default=None,
-        description="Interval (in steps) at which to save model checkpoints (None disables saving)",
+        description="Interval (in steps) at which to save model checkpoints (None disables saving "
+        "until the end of training).",
     )
     log_ce_losses: bool = Field(
         default=False,
