@@ -61,7 +61,9 @@ class GateMLP(nn.Module):
 class LinearComponent(nn.Module):
     """A linear transformation made from A and B matrices for SPD.
 
-    The weight matrix W is decomposed as W = A @ B, where A and B are learned parameters.
+    NOTE: In the paper, we use V and U for A and B, respectively.
+
+    The weight matrix W is decomposed as W = B^T @ A^T, where A and B are learned parameters.
     """
 
     def __init__(self, d_in: int, d_out: int, C: int, bias: Tensor | None):
@@ -79,7 +81,7 @@ class LinearComponent(nn.Module):
 
     @property
     def weight(self) -> Float[Tensor, "d_out d_in"]:
-        """A @ B"""
+        """B^T @ A^T"""
         return einops.einsum(self.A, self.B, "d_in C, C d_out -> d_out d_in")
 
     # @torch.compile

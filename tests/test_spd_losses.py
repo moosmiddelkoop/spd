@@ -10,7 +10,7 @@ class TestCalcParamMatchLoss:
         A = torch.ones(2, 3)
         B = torch.ones(3, 2)
         n_params = 2 * 3 * 2
-        spd_params = {"layer1": A @ B}
+        spd_params = {"layer1": B.T @ A.T}
         target_params = {"layer1": torch.tensor([[1.0, 1.0], [1.0, 1.0]])}
 
         result = _calc_tensors_mse(
@@ -21,23 +21,23 @@ class TestCalcParamMatchLoss:
         )
 
         # A: [2, 3], B: [3, 2], both filled with ones
-        # AB: [[3, 3], [3, 3]]
-        # (AB - pretrained_weights)^2: [[4, 4], [4, 4]]
+        # B^TA^T: [[3, 3], [3, 3]]
+        # (B^TA^T - pretrained_weights)^2: [[4, 4], [4, 4]]
         # Sum and divide by n_params: 16 / 12 = 4/3
         expected = torch.tensor(4.0 / 3.0)
         assert torch.allclose(result, expected), f"Expected {expected}, but got {result}"
 
     def test_calc_faithfulness_loss_single_instance_multiple_params(self):
-        As = [torch.ones(2, 3), torch.ones(3, 3)]
-        Bs = [torch.ones(3, 3), torch.ones(3, 2)]
+        As = [torch.ones(3, 3), torch.ones(2, 3)]
+        Bs = [torch.ones(3, 2), torch.ones(3, 3)]
         n_params = 2 * 3 * 3 + 3 * 3 * 2
         target_params = {
             "layer1": torch.tensor([[2.0, 2.0, 2.0], [2.0, 2.0, 2.0]]),
             "layer2": torch.tensor([[1.0, 1.0], [1.0, 1.0], [1.0, 1.0]]),
         }
         spd_params = {
-            "layer1": As[0] @ Bs[0],
-            "layer2": As[1] @ Bs[1],
+            "layer1": Bs[0].T @ As[0].T,
+            "layer2": Bs[1].T @ As[1].T,
         }
         result = _calc_tensors_mse(
             params1=target_params,
