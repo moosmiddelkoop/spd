@@ -12,7 +12,7 @@ make install  # To just install the package (runs `pip install -e .`)
 ```
 
 ## Usage
-Place your wandb information in a .env file. You can use the .env.example file as an example.
+Place your wandb information in a .env file. See .env.example for an example.
 
 The repository consists of several `experiments`, each of which containing scripts to run SPD,
 analyse results, and optionally a train a target model:
@@ -20,6 +20,10 @@ analyse results, and optionally a train a target model:
 - `spd/experiments/resid_mlp` - Toy model of compressed computation and toy model of distributed
   representations
 - `spd/experiments/lm` - Language model loaded from huggingface.
+
+Note that the `lm` experiment allows for running SPD on any model pulled from huggingface, provided
+you only need to decompose nn.Linear or nn.Embedding layers (other layer types would need to be
+added).
 
 ### Run SPD
 SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
