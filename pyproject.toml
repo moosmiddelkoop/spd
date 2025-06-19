@@ -35,6 +35,9 @@ dev = [
     "pre-commit",
 ]
 
+[project.scripts]
+spd-sweep = "spd.sweeps.sweep:cli"
+
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"

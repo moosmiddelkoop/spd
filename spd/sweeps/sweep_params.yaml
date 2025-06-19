@@ -1,0 +1,8 @@
+# These parameters will be injected into ./sweep.py
+method: grid
+metric:
+  name: total_loss
+  goal: minimize
+parameters:
+  seed:
+    values: [0, 1, 2, 3, 4] 
