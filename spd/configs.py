@@ -114,6 +114,10 @@ class Config(BaseModel):
         description="Number of hidden neurons in the MLP used to calculate the causal importance."
         "If 0, use a single-layer gate.",
     )
+    sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"] = Field(
+        default="leaky_hard",
+        description="Type of sigmoid to use for causal importance calculation",
+    )
     target_module_patterns: list[str] = Field(
         ...,
         description="List of fnmatch-style patterns that select modules to decompose",

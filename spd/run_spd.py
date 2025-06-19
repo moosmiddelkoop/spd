@@ -158,7 +158,11 @@ def optimize(
         As = {module_name: components[module_name].A for module_name in components}
 
         causal_importances, causal_importances_upper_leaky = calc_causal_importances(
-            pre_weight_acts=pre_weight_acts, As=As, gates=gates, detach_inputs=False
+            pre_weight_acts=pre_weight_acts,
+            As=As,
+            gates=gates,
+            detach_inputs=False,
+            sigmoid_type=config.sigmoid_type,
         )
 
         for layer_name, ci in causal_importances.items():
