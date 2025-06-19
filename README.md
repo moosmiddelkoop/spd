@@ -39,7 +39,7 @@ The registry is used by both the sweep system and can be imported for other anal
 #### Individual Experiments
 SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
 subdirectories. Each experiment has individual config files for different variants. All experiments
-are saved in a registry which is read for sweeps and evals (future).
+are saved in a registry which is used for sweeps and evals.
 
 **Available experiments** (defined in `spd/registry.py`):
 - `tms_5-2` - TMS with 5 features, 2 hidden dimensions
@@ -62,9 +62,21 @@ spd-sweep <experiment_name> <n_agents> [--cpu] [--job_suffix <suffix>]
 
 **Examples:**
 ```bash
-sweep tms_5-2 4 --job_suffix 5m             # Run TMS 5-2 sweep with 4 GPU agents
-sweep resid_mlp2 3 --cpu                    # Run ResidMLP2 sweep with 3 CPU agents
-sweep ss_emb 2 --job_suffix 1h              # Run with custom job suffix
+spd-sweep tms_5-2 4 --job_suffix 5m             # Run TMS 5-2 sweep with 4 GPU agents
+spd-sweep resid_mlp2 3 --cpu                    # Run ResidMLP2 sweep with 3 CPU agents
+spd-sweep ss_emb 2 --job_suffix 1h              # Run with custom job suffix
+```
+#### Evals
+To test your changes on all registered experiments, run:
+```bash
+spd-evals
+```
+This will deploy a slurm job for each experiment.
+
+Optionally, you can provide a comma-separated list of experiments to run with the --experiments
+flag:
+```bash
+spd-evals --experiments tms_5-2-id,resid_mlp2,resid_mlp3
 ```
 
 ## Development
