@@ -22,8 +22,8 @@ analyse results, and optionally a train a target model:
 - `spd/experiments/lm` - Language model loaded from huggingface.
 
 Note that the `lm` experiment allows for running SPD on any model pulled from huggingface, provided
-you only need to decompose nn.Linear or nn.Embedding layers (other layer types would need to be
-added).
+you only need to decompose `nn.Linear` or `nn.Embedding` layers (other layer types are not yet
+supported, though these should cover most parameters).
 
 ### Run SPD
 
@@ -73,7 +73,7 @@ spd-evals --experiments tms_5-2-id,resid_mlp2,resid_mlp3     # Run only the expe
 ```
 This will deploy a slurm job for each experiment.
 
-(Note, the `spd-sweep` command will call `spd/sweeps/sweep.py`).
+(Note, the `spd-evals` command will call `spd/evals/run_evals.py`).
 
 ## Development
 
