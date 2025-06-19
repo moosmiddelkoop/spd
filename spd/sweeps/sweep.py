@@ -15,8 +15,6 @@ Examples:
 Before running, update the spd/sweeps/sweep_params.yaml file with the desired parameters.
 """
 
-import subprocess
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +24,7 @@ import yaml
 
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
+from spd.slurm_utils import create_slurm_script, submit_slurm_jobs
 
 
 def get_sweep_configuration(decomp_script: Path, config_path: Path) -> dict[str, Any]:
@@ -103,49 +102,22 @@ def main(
 
     print(f"Deploying {n_agents} agents for experiment {experiment}...")
 
-    # Set up SLURM job configuration
-    gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
     job_name = f"spd-sweep-{job_suffix}" if job_suffix else "spd-sweep"
-
-    # Ensure SLURM logs directory exists
-    slurm_logs_dir = Path.home() / "slurm_logs"
-    slurm_logs_dir.mkdir(exist_ok=True)
-
     agent_id = f"{org_name}/{project_name}/{sweep_id}"
+    command = f"wandb agent {agent_id}"
 
     # Create the run_agent.sh script
     run_agent_script = Path.home() / "run_agent.sh"
-    script_content = textwrap.dedent(f"""
-        #!/bin/bash
-        #SBATCH --nodes=1
-        {gpu_config}
-        #SBATCH --time=24:00:00
-        #SBATCH --job-name={job_name}
-        #SBATCH --partition=all
-        #SBATCH --output={Path.home()}/slurm_logs/slurm-%j.out
-
-        # Change to the SPD repository directory
-        cd {REPO_ROOT}
-
-        # This is the actual command that runs in each SLURM job
-        wandb agent {agent_id}
-    """).strip()
-
-    with open(run_agent_script, "w") as f:
-        f.write(script_content)
-
-    # Make script executable
-    run_agent_script.chmod(0o755)
+    create_slurm_script(
+        script_path=run_agent_script,
+        job_name=job_name,
+        command=command,
+        cpu=cpu,
+    )
 
     # Submit the job n times to create n parallel agents
-    job_ids = []
-    for _ in range(n_agents):
-        result = subprocess.run(
-            ["sbatch", str(run_agent_script)], capture_output=True, text=True, check=True
-        )
-        # Extract job ID from sbatch output (format: "Submitted batch job 12345")
-        job_id = result.stdout.strip().split()[-1]
-        job_ids.append(job_id)
+    script_paths = [run_agent_script] * n_agents
+    job_ids = submit_slurm_jobs(script_paths)
 
     print(f"Job IDs: {', '.join(job_ids)}")
     print("View logs in: ~/slurm_logs/slurm-<job_id>.out")

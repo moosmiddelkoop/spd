@@ -37,6 +37,7 @@ dev = [
 
 [project.scripts]
 spd-sweep = "spd.sweeps.sweep:cli"
+spd-evals = "spd.evals.run_evals:cli"
 
 [build-system]
 requires = ["setuptools", "wheel"]
