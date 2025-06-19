@@ -25,21 +25,16 @@ Note that the `lm` experiment allows for running SPD on any model pulled from hu
 you only need to decompose nn.Linear or nn.Embedding layers (other layer types would need to be
 added).
 
-### Experiment Registry
-All experiments are centrally managed through the experiment registry at `spd/registry.py`. This registry contains:
-- Experiment names and their corresponding config files
-- WandB project mappings
-- Decomposition script paths
-- Type-safe configuration management
-
-The registry is used by both the sweep system and can be imported for other analysis tools.
-
 ### Run SPD
 
 #### Individual Experiments
 SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
-subdirectories. Each experiment has individual config files for different variants. All experiments
-are saved in a registry which is used for sweeps and evals.
+subdirectories, along with a corresponding config file. E.g.
+```bash
+python spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_5-2_config.yaml
+```
+
+Each experiment is also saved in a registry which is used for sweeps and evals.
 
 **Available experiments** (defined in `spd/registry.py`):
 - `tms_5-2` - TMS with 5 features, 2 hidden dimensions
@@ -58,7 +53,8 @@ For running sweeps on a SLURM cluster, set your desired sweep parameters in
 ```bash
 spd-sweep <experiment_name> <n_agents> [--cpu] [--job_suffix <suffix>]
 ```
-(Note, the `spd-sweep` command will call `spd/sweeps/sweep.py`).
+where <experiment_name> comes from a key in the registry (only experiments registered here
+can be run in sweeps).
 
 **Examples:**
 ```bash
@@ -66,18 +62,18 @@ spd-sweep tms_5-2 4 --job_suffix 5m             # Run TMS 5-2 sweep with 4 GPU a
 spd-sweep resid_mlp2 3 --cpu                    # Run ResidMLP2 sweep with 3 CPU agents
 spd-sweep ss_emb 2 --job_suffix 1h              # Run with custom job suffix
 ```
+
+(Note, the `spd-sweep` command will call `spd/sweeps/sweep.py`).
+
 #### Evals
-To test your changes on all registered experiments, run:
+To test your changes on all experiments in the registry, run:
 ```bash
-spd-evals
+spd-evals                                                    # Run all experiments
+spd-evals --experiments tms_5-2-id,resid_mlp2,resid_mlp3     # Run only the experiments listed
 ```
 This will deploy a slurm job for each experiment.
 
-Optionally, you can provide a comma-separated list of experiments to run with the --experiments
-flag:
-```bash
-spd-evals --experiments tms_5-2-id,resid_mlp2,resid_mlp3
-```
+(Note, the `spd-sweep` command will call `spd/sweeps/sweep.py`).
 
 ## Development
 
