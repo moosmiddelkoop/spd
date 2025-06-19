@@ -14,11 +14,11 @@
             }
         },
         {
-            "name": "tms",
+            "name": "tms_5-2",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/spd/experiments/tms/tms_decomposition.py",
-            "args": "${workspaceFolder}/spd/experiments/tms/tms_config.yaml",
+            "args": "${workspaceFolder}/spd/experiments/tms/tms_5-2_config.yaml",
             "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,
@@ -27,11 +27,50 @@
             }
         },
         {
-            "name": "resid_mlp",
+            "name": "tms_5-2-id",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/spd/experiments/tms/tms_decomposition.py",
+            "args": "${workspaceFolder}/spd/experiments/tms/tms_5-2-id_config.yaml",
+            "python": "${command:python.interpreterPath}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
+        },
+        {
+            "name": "tms_40-10",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/spd/experiments/tms/tms_decomposition.py",
+            "args": "${workspaceFolder}/spd/experiments/tms/tms_40-10_config.yaml",
+            "python": "${command:python.interpreterPath}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
+        },
+        {
+            "name": "tms_40-10-id",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/spd/experiments/tms/tms_decomposition.py",
+            "args": "${workspaceFolder}/spd/experiments/tms/tms_40-10-id_config.yaml",
+            "python": "${command:python.interpreterPath}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
+        },
+        {
+            "name": "resid_mlp1",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp_decomposition.py",
-            "args": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp_config.yaml",
+            "args": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp1_config.yaml",
             "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,
@@ -40,11 +79,11 @@
             }
         },
         {
-            "name": "ss",
+            "name": "resid_mlp2",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/spd/experiments/lm/lm_decomposition.py",
-            "args": "${workspaceFolder}/spd/experiments/lm/ss_config.yaml",
+            "program": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp_decomposition.py",
+            "args": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp2_config.yaml",
             "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,
@@ -53,11 +92,24 @@
             }
         },
         {
-            "name": "ts",
+            "name": "resid_mlp3",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp_decomposition.py",
+            "args": "${workspaceFolder}/spd/experiments/resid_mlp/resid_mlp3_config.yaml",
+            "python": "${command:python.interpreterPath}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
+        },
+        {
+            "name": "ss_emb",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/spd/experiments/lm/lm_decomposition.py",
-            "args": "${workspaceFolder}/spd/experiments/lm/ts_config.yaml",
+            "args": "${workspaceFolder}/spd/experiments/lm/ss_emb_config.yaml",
             "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "justMyCode": true,

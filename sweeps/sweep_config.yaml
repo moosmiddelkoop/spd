@@ -1,13 +1,14 @@
-program: spd/experiments/tms/tms_decomposition.py
+program: <path/to/_decomposition.py>
 method: grid
 metric:
-  name: final_closeness
+  name: total_loss
   goal: minimize
 parameters:
   seed:
     values: [0, 1, 2, 3, 4]
+
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- spd/experiments/tms/tms_config.yaml
+- <path/to/config.yaml>

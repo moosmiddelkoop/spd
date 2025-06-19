@@ -26,19 +26,61 @@ you only need to decompose nn.Linear or nn.Embedding layers (other layer types w
 added).
 
 ### Run SPD
-SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
-subdirectories. A config file is required for each experiment, which can be found in the same
-directory. For example:
-```bash
-python spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_config.yaml
-```
-will run SPD on TMS with the config file `tms_config.yaml` (which is the main config file used
-for the TMS experiments in the paper).
 
-Wandb sweep files are also provided in the experiment subdirectories, and can be run with e.g.:
+#### Individual Experiments
+SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
+subdirectories. Each experiment has individual config files for different variants:
+
+**TMS (Toy Model of Superposition):**
 ```bash
-wandb sweep spd/experiments/tms/tms_sweep_config.yaml
+python spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_5-2_config.yaml
+python spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_5-2-id_config.yaml
+python spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_40-10_config.yaml
+python spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_40-10-id_config.yaml
 ```
+
+**ResidMLP (Residual MLP):**
+```bash
+python spd/experiments/resid_mlp/resid_mlp_decomposition.py spd/experiments/resid_mlp/resid_mlp1_config.yaml
+python spd/experiments/resid_mlp/resid_mlp_decomposition.py spd/experiments/resid_mlp/resid_mlp2_config.yaml
+python spd/experiments/resid_mlp/resid_mlp_decomposition.py spd/experiments/resid_mlp/resid_mlp3_config.yaml
+```
+
+**Language Model:**
+```bash
+python spd/experiments/lm/lm_decomposition.py spd/experiments/lm/ss_emb_config.yaml
+```
+
+#### Parameter Sweeps
+For running parameter sweeps on a SLURM cluster, use the sweep script:
+
+```bash
+./sweeps/sweep.sh --experiment <experiment_name> --agents <n> [--cpu] [--job_suffix <suffix>]
+```
+
+**Available experiments:**
+- `tms_5-2` - TMS with 5 features, 2 hidden dimensions
+- `tms_5-2-id` - TMS with 5 features, 2 hidden dimensions (fixed identity in-between)
+- `tms_40-10` - TMS with 40 features, 10 hidden dimensions  
+- `tms_40-10-id` - TMS with 40 features, 10 hidden dimensions (fixed identity in-between)
+- `resid_mlp1` - ResidMLP with 1 layer
+- `resid_mlp2` - ResidMLP with 2 layers
+- `resid_mlp3` - ResidMLP with 3 layers
+- `ss_emb` - SimpleStories embedding decomposition
+
+**Examples:**
+```bash
+# Run TMS 5-2 sweep with 4 GPU agents
+./sweeps/sweep.sh --experiment tms_5-2 --agents 4
+
+# Run ResidMLP2 sweep with 3 CPU agents
+./sweeps/sweep.sh --experiment resid_mlp2 --agents 3 --cpu
+
+# Run with custom job suffix for identification
+./sweeps/sweep.sh --experiment ss_emb --agents 2 --job_suffix my-run-123
+```
+
+The sweep script will create a WandB sweep and submit SLURM jobs to run multiple agents in parallel. Output logs can be found in `~/slurm_logs/slurm-<job_id>.out`.
 
 All experiments call the `optimize` function in `spd/run_spd.py`, which contains the main SPD logic.
 
