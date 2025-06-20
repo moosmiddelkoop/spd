@@ -69,7 +69,6 @@ def create_git_snapshot(branch_name_prefix: str) -> str:
                     check=True,
                     capture_output=True,
                 )
-            print(f"Created git snapshot branch: {snapshot_branch}")
 
             subprocess.run(
                 ["git", "push", "-u", "origin", snapshot_branch],

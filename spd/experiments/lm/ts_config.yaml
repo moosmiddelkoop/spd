@@ -1,7 +1,7 @@
 # Config for tinystories
 
 # --- WandB ---
-wandb_project: spd-gf-lm
+wandb_project: spd
 # wandb_project: null
 wandb_run_name: null
 wandb_run_name_prefix: ""

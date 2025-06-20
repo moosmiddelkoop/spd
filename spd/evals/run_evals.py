@@ -8,14 +8,51 @@ Usage:
     spd-evals --experiments tms_5-2,resid_mlp3,ss_emb          # Run specific experiments
 """
 
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import fire
+import wandb_workspaces.reports.v2 as wr
 
 from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
 from spd.slurm_utils import create_slurm_script, print_job_summary, submit_slurm_jobs
+
+
+def generate_evals_id() -> str:
+    """Generate a unique evaluation ID based on timestamp."""
+    return f"eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+
+def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
+    """Create a W&B report for the evaluation batch."""
+    # Use the first experiment's project for the report
+
+    report = wr.Report(
+        project="spd",
+        title=f"SPD Evaluation Report - {evals_id}",
+        description=f"Evaluations on: {', '.join(experiments_list)}",
+    )
+
+    # Create a runset that filters by the evals_id tag
+    # The tag format is "evals_id:eval_YYYYMMDD_HHMMSS"
+    tag_to_find = f"evals_id:{evals_id}"
+
+    # Create a runset for each project
+    runset = wr.Runset(
+        name="Evaluation Runs",
+        filters=f'(Metric("tags") in ["{tag_to_find}"])',  # Filter by tag
+    )
+
+    # Add a panel grid with the runset
+    panel_grid = wr.PanelGrid(runsets=[runset])
+    report.blocks.append(panel_grid)
+
+    # Save the report and return URL
+    report.save()
+    return report.url
 
 
 def main(experiments: str | None = None) -> None:
@@ -41,52 +78,55 @@ def main(experiments: str | None = None) -> None:
             f"Invalid experiments: {invalid_experiments}. Available experiments: {available}"
         )
 
-    print(f"Deploying {len(experiments_list)} experiments as individual SLURM jobs...")
-
     # Create single git snapshot for all experiments
     snapshot_branch = create_git_snapshot(branch_name_prefix="eval")
-    print(f"Using git snapshot: {snapshot_branch}")
+    print(f"Made git snapshot on branch: {snapshot_branch}")
 
-    script_paths = []
-    job_info_list = []
+    # Generate unique evaluation ID
+    evals_id = generate_evals_id()
+    print(f"Evaluation ID: {evals_id}")
 
-    # Create SLURM scripts for all experiments
-    for experiment in experiments_list:
-        config = EXPERIMENT_REGISTRY[experiment]
-        decomp_script = REPO_ROOT / config.decomp_script
-        config_path = REPO_ROOT / config.config_path
+    report_url = create_wandb_report(evals_id, experiments_list)
 
-        # Use expected_runtime in the job name for easier tracking
-        job_name = f"spd-eval-{config.expected_runtime}"
-        command = f"python {decomp_script} {config_path}"
+    # Use a temporary directory for script files
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        script_paths = []
+        job_info_list = []
 
-        print(f"Preparing {experiment}:")
-        print(f"  Script: {decomp_script}")
-        print(f"  Config: {config_path}")
-        print(f"  Job name: {job_name}")
+        print(f"Deploying {len(experiments_list)} experiments as individual SLURM jobs...")
+        # Create SLURM scripts for all experiments
+        for experiment in experiments_list:
+            config = EXPERIMENT_REGISTRY[experiment]
+            decomp_script = REPO_ROOT / config.decomp_script
+            config_path = REPO_ROOT / config.config_path
 
-        # Create experiment-specific run script
-        run_script = Path.home() / f"run_eval_{experiment}.sh"
-        create_slurm_script(
-            script_path=run_script,
-            job_name=job_name,
-            command=command,
-            cpu=False,
-            snapshot_branch=snapshot_branch,
-        )
+            # Use expected_runtime in the job name for easier tracking
+            job_name = f"spd-eval-{config.expected_runtime}"
+            command = f"python {decomp_script} {config_path} --evals_id {evals_id}"
 
-        script_paths.append(run_script)
-        print()
+            # Create experiment-specific run script in temp directory
+            run_script = temp_path / f"run_eval_{experiment}_{evals_id}.sh"
+            create_slurm_script(
+                script_path=run_script,
+                job_name=job_name,
+                command=command,
+                cpu=False,
+                snapshot_branch=snapshot_branch,
+            )
 
-    # Submit all jobs
-    job_ids = submit_slurm_jobs(script_paths)
+            script_paths.append(run_script)
 
-    # Create job info list for summary
-    for experiment, job_id in zip(experiments_list, job_ids, strict=False):
-        job_info_list.append(f"{experiment}:{job_id}")
+        job_ids = submit_slurm_jobs(script_paths)
 
-    # Print summary
-    print_job_summary(job_info_list)
+        # Create job info list for summary
+        for experiment, job_id in zip(experiments_list, job_ids, strict=False):
+            job_info_list.append(f"{experiment}:{job_id}")
+
+        print_job_summary(job_info_list)
+
+        print(f"View the report at: {report_url}")
+        # Temporary directory and all script files are automatically cleaned up here
 
 
 def cli():

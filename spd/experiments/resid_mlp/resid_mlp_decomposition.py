@@ -38,8 +38,8 @@ def get_run_name(
         run_suffix = config.wandb_run_name
     else:
         run_suffix = get_common_run_name_suffix(config)
-        run_suffix += f"ft{n_features}_lay{n_layers}_resid{d_resid}_mlp{d_mlp}"
-    return config.wandb_run_name_prefix + run_suffix
+        run_suffix += f"ft{n_features}_resid{d_resid}_mlp{d_mlp}"
+    return config.wandb_run_name_prefix + f"resid_mlp{n_layers}" + run_suffix
 
 
 def save_target_model_info(
@@ -63,11 +63,12 @@ def save_target_model_info(
         wandb.save(str(out_dir / "label_coeffs.json"), base_path=out_dir, policy="now")
 
 
-def main(config_path_or_obj: Path | str | Config) -> None:
+def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -> None:
     config = load_config(config_path_or_obj, config_model=Config)
 
     if config.wandb_project:
-        config = init_wandb(config, config.wandb_project)
+        tags = [f"evals_id:{evals_id}"] if evals_id else None
+        config = init_wandb(config, config.wandb_project, tags=tags)
 
     set_seed(config.seed)
     logger.info(config)

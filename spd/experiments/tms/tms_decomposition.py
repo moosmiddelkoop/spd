@@ -34,7 +34,11 @@ def get_run_name(config: Config, tms_model_config: TMSModelConfig) -> str:
         run_suffix += f"ft{tms_model_config.n_features}_"
         run_suffix += f"hid{tms_model_config.n_hidden}"
         run_suffix += f"hid-layers{tms_model_config.n_hidden_layers}"
-    return config.wandb_run_name_prefix + run_suffix
+    exp_name = f"tms{tms_model_config.n_features}-{tms_model_config.n_hidden}"
+    # TODO: Consolidate tms experiment names (previously we used tms_5-2-id)
+    if tms_model_config.n_hidden_layers > 0:
+        exp_name += f"-{tms_model_config.n_hidden_layers}"
+    return config.wandb_run_name_prefix + exp_name + run_suffix
 
 
 def save_target_model_info(
@@ -53,14 +57,15 @@ def save_target_model_info(
         wandb.save(str(out_dir / "tms_train_config.yaml"), base_path=out_dir, policy="now")
 
 
-def main(config_path_or_obj: Path | str | Config) -> None:
+def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -> None:
     device = get_device()
     logger.info(f"Using device: {device}")
 
     config = load_config(config_path_or_obj, config_model=Config)
 
     if config.wandb_project:
-        config = init_wandb(config, config.wandb_project)
+        tags = [f"evals_id:{evals_id}"] if evals_id else None
+        config = init_wandb(config, config.wandb_project, tags=tags)
 
     task_config = config.task_config
     assert isinstance(task_config, TMSTaskConfig)

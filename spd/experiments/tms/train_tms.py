@@ -382,7 +382,7 @@ if __name__ == "__main__":
     # NOTE: Training TMS is very finnicky, you may need to adjust hyperparams to get it working
     # # TMS 5-2
     # config = TMSTrainConfig(
-    #     wandb_project="spd-train-tms",
+    #     wandb_project="spd",
     #     tms_model_config=TMSModelConfig(
     #         n_features=5,
     #         n_hidden=2,
@@ -403,7 +403,7 @@ if __name__ == "__main__":
     # )
     # # TMS 5-2 w/ identity
     # config = TMSTrainConfig(
-    #     wandb_project="spd-train-tms",
+    #     wandb_project="spd",
     #     tms_model_config=TMSModelConfig(
     #         n_features=5,
     #         n_hidden=2,
@@ -424,7 +424,7 @@ if __name__ == "__main__":
     # )
     # # TMS 40-10
     # config = TMSTrainConfig(
-    #     wandb_project="spd-train-tms",
+    #     wandb_project="spd",
     #     tms_model_config=TMSModelConfig(
     #         n_features=40,
     #         n_hidden=10,
@@ -447,7 +447,7 @@ if __name__ == "__main__":
     # )
     # TMS 40-10
     config = TMSTrainConfig(
-        wandb_project="spd-train-tms",
+        wandb_project="spd",
         tms_model_config=TMSModelConfig(
             n_features=40,
             n_hidden=10,

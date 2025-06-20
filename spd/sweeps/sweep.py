@@ -15,6 +15,7 @@ Examples:
 Before running, update the spd/sweeps/sweep_params.yaml file with the desired parameters.
 """
 
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +86,6 @@ def main(
     print(f"Using sweep config for {experiment}:")
     print(f"  Decomposition script: {decomp_script}")
     print(f"  Config file: {config_path}")
-    print(f"  Project: {config.wandb_project}")
 
     # Create sweep configuration dictionary
     sweep_config_dict = get_sweep_configuration(
@@ -93,7 +93,7 @@ def main(
     )
 
     # Create the sweep using wandb API
-    sweep_id = wandb.sweep(sweep=sweep_config_dict, project=config.wandb_project)
+    sweep_id = wandb.sweep(sweep=sweep_config_dict, project="spd")
 
     api = wandb.Api()
     org_name = api.settings["entity"]
@@ -112,23 +112,27 @@ def main(
     agent_id = f"{org_name}/{project_name}/{sweep_id}"
     command = f"wandb agent {agent_id}"
 
-    # Create the run_agent.sh script
-    run_agent_script = Path.home() / "run_agent.sh"
-    create_slurm_script(
-        script_path=run_agent_script,
-        job_name=job_name,
-        command=command,
-        cpu=cpu,
-        snapshot_branch=snapshot_branch,
-    )
+    # Use a temporary directory for the agent script
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        run_agent_script = temp_path / "run_agent.sh"
 
-    # Submit the job n times to create n parallel agents
-    script_paths = [run_agent_script] * n_agents
-    job_ids = submit_slurm_jobs(script_paths)
+        create_slurm_script(
+            script_path=run_agent_script,
+            job_name=job_name,
+            command=command,
+            cpu=cpu,
+            snapshot_branch=snapshot_branch,
+        )
 
-    print(f"Job IDs: {', '.join(job_ids)}")
-    print("View logs in: ~/slurm_logs/slurm-<job_id>.out")
-    print(f"\nSweep URL: {wandb_url}")
+        # Submit the job n times to create n parallel agents
+        script_paths = [run_agent_script] * n_agents
+        job_ids = submit_slurm_jobs(script_paths)
+
+        print(f"Job IDs: {', '.join(job_ids)}")
+        print("\nView logs in: ~/slurm_logs/slurm-<job_id>.out")
+        print(f"Sweep URL: {wandb_url}")
+        # Temporary directory and script file are automatically cleaned up here
 
 
 def cli():

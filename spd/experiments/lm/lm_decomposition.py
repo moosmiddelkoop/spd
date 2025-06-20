@@ -35,7 +35,7 @@ def get_run_name(
         if pretrained_model_name:
             run_suffix += f"_pretrained{pretrained_model_name}"
         run_suffix += f"_seq{max_seq_len}"
-    return config.wandb_run_name_prefix + run_suffix
+    return config.wandb_run_name_prefix + "lm" + run_suffix
 
 
 def plot_lm_results(
@@ -48,11 +48,12 @@ def plot_lm_results(
     )
 
 
-def main(config_path_or_obj: Path | str | Config) -> None:
+def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -> None:
     config = load_config(config_path_or_obj, config_model=Config)
 
     if config.wandb_project:
-        config = init_wandb(config, config.wandb_project)
+        tags = [f"evals_id:{evals_id}"] if evals_id else None
+        config = init_wandb(config, config.wandb_project, tags=tags)
 
     set_seed(config.seed)
     logger.info(config)

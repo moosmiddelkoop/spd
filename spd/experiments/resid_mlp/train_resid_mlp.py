@@ -259,7 +259,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # 1 layer
     config = ResidMLPTrainConfig(
-        wandb_project="spd-train-resid-mlp",
+        wandb_project="spd",
         seed=0,
         resid_mlp_config=ResidualMLPConfig(
             n_features=100,  # 1 layer
@@ -289,7 +289,7 @@ if __name__ == "__main__":
     )
     # # 2 layers
     # config = ResidMLPTrainConfig(
-    #     wandb_project="spd-train-resid-mlp",
+    #     wandb_project="spd",
     #     seed=0,
     #     resid_mlp_config=ResidualMLPConfig(
     #         n_features=100, # 2 layers
@@ -319,7 +319,7 @@ if __name__ == "__main__":
     # )
     # # 3 layers
     # config = ResidMLPTrainConfig(
-    #     wandb_project="spd-train-resid-mlp",
+    #     wandb_project="spd",
     #     seed=0,
     #     resid_mlp_config=ResidualMLPConfig(
     #         n_features=102,  # 3 layers

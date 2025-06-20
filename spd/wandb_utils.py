@@ -80,20 +80,28 @@ def download_wandb_file(run: Run, wandb_run_dir: Path, file_name: str) -> Path:
     return path
 
 
-def init_wandb(config: T, project: str, name: str | None = None) -> T:
+def init_wandb(
+    config: T, project: str, name: str | None = None, tags: list[str] | None = None
+) -> T:
     """Initialize Weights & Biases and return a config updated with sweep hyperparameters.
 
     Args:
         config: The base config.
         project: The name of the wandb project.
         name: The name of the wandb run.
+        tags: Optional list of tags to add to the run.
 
     Returns:
         Config updated with sweep hyperparameters (if any).
     """
     load_dotenv(override=True)
 
-    wandb.init(project=project, entity=os.getenv("WANDB_ENTITY"), name=name)
+    wandb.init(
+        project=project,
+        entity=os.getenv("WANDB_ENTITY"),
+        name=name,
+        tags=tags,
+    )
     assert wandb.run is not None
     wandb.run.log_code(str(REPO_ROOT))
 
