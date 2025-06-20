@@ -22,6 +22,7 @@ import fire
 import wandb
 import yaml
 
+from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
 from spd.slurm_utils import create_slurm_script, submit_slurm_jobs
@@ -79,6 +80,7 @@ def main(
     config = EXPERIMENT_REGISTRY[experiment]
     decomp_script = REPO_ROOT / config.decomp_script
     config_path = REPO_ROOT / config.config_path
+    job_suffix = job_suffix or config.expected_runtime
 
     print(f"Using sweep config for {experiment}:")
     print(f"  Decomposition script: {decomp_script}")
@@ -102,6 +104,10 @@ def main(
 
     print(f"Deploying {n_agents} agents for experiment {experiment}...")
 
+    # Create single git snapshot for all agents
+    snapshot_branch = create_git_snapshot(branch_name_prefix="sweep")
+    print(f"Using git snapshot: {snapshot_branch}")
+
     job_name = f"spd-sweep-{job_suffix}" if job_suffix else "spd-sweep"
     agent_id = f"{org_name}/{project_name}/{sweep_id}"
     command = f"wandb agent {agent_id}"
@@ -113,6 +119,7 @@ def main(
         job_name=job_name,
         command=command,
         cpu=cpu,
+        snapshot_branch=snapshot_branch,
     )
 
     # Submit the job n times to create n parallel agents

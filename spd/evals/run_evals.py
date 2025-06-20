@@ -12,6 +12,7 @@ from pathlib import Path
 
 import fire
 
+from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
 from spd.slurm_utils import create_slurm_script, print_job_summary, submit_slurm_jobs
@@ -42,6 +43,10 @@ def main(experiments: str | None = None) -> None:
 
     print(f"Deploying {len(experiments_list)} experiments as individual SLURM jobs...")
 
+    # Create single git snapshot for all experiments
+    snapshot_branch = create_git_snapshot(branch_name_prefix="eval")
+    print(f"Using git snapshot: {snapshot_branch}")
+
     script_paths = []
     job_info_list = []
 
@@ -67,6 +72,7 @@ def main(experiments: str | None = None) -> None:
             job_name=job_name,
             command=command,
             cpu=False,
+            snapshot_branch=snapshot_branch,
         )
 
         script_paths.append(run_script)

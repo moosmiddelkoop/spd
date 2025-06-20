@@ -4,30 +4,8 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+from spd.git_utils import create_git_snapshot
 from spd.settings import REPO_ROOT
-
-
-def setup_slurm_logs_directory() -> Path:
-    """Ensure SLURM logs directory exists and return its path.
-
-    Returns:
-        Path to the slurm_logs directory
-    """
-    slurm_logs_dir = Path.home() / "slurm_logs"
-    slurm_logs_dir.mkdir(exist_ok=True)
-    return slurm_logs_dir
-
-
-def get_gpu_config(cpu: bool) -> str:
-    """Get SLURM GPU configuration string.
-
-    Args:
-        cpu: If True, use CPU only (gpu:0), otherwise use GPU (gpu:1)
-
-    Returns:
-        SLURM configuration string for GPU/CPU allocation
-    """
-    return "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
 
 
 def create_slurm_script(
@@ -36,8 +14,9 @@ def create_slurm_script(
     command: str,
     cpu: bool = False,
     time_limit: str = "24:00:00",
+    snapshot_branch: str | None = None,
 ) -> None:
-    """Create a SLURM batch script.
+    """Create a SLURM batch script with git snapshot for consistent code.
 
     Args:
         script_path: Path where the script should be written
@@ -45,9 +24,15 @@ def create_slurm_script(
         command: Command to execute in the job
         cpu: If True, use CPU only, otherwise use GPU
         time_limit: Time limit for the job (default: 24:00:00)
+        snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
     """
-    gpu_config = get_gpu_config(cpu)
-    slurm_logs_dir = setup_slurm_logs_directory()
+    # Create git snapshot if not provided
+    if snapshot_branch is None:
+        snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
+
+    gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
+    slurm_logs_dir = Path.home() / "slurm_logs"
+    slurm_logs_dir.mkdir(exist_ok=True)
 
     script_content = textwrap.dedent(f"""
         #!/bin/bash
@@ -60,6 +45,9 @@ def create_slurm_script(
 
         # Change to the SPD repository directory
         cd {REPO_ROOT}
+
+        # Checkout the snapshot branch to ensure consistent code
+        git checkout {snapshot_branch}
 
         # Execute the command
         {command}

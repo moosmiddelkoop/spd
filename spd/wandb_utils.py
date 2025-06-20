@@ -93,7 +93,7 @@ def init_wandb(config: T, project: str, name: str | None = None) -> T:
     """
     load_dotenv(override=True)
 
-    wandb.init(project=project, entity=os.getenv("WANDB_ENTITY"), save_code=True, name=name)
+    wandb.init(project=project, entity=os.getenv("WANDB_ENTITY"), name=name)
     assert wandb.run is not None
     wandb.run.log_code(str(REPO_ROOT))
 
