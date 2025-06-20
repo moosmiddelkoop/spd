@@ -71,15 +71,12 @@ def create_git_snapshot(branch_name_prefix: str) -> str:
                 )
             print(f"Created git snapshot branch: {snapshot_branch}")
 
-            # Push branch to origin so other users can access it
-            print("Pushing snapshot branch to origin...")
             subprocess.run(
                 ["git", "push", "-u", "origin", snapshot_branch],
                 cwd=worktree_path,
                 check=True,
                 capture_output=True,
             )
-            print(f"✅ Pushed {snapshot_branch} to origin")
 
         finally:
             # Clean up worktree (branch remains in main repo)

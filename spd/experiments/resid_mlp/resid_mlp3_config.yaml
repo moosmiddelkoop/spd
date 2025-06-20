@@ -1,6 +1,6 @@
 # ResidMLP 3 layers
 # --- WandB ---
-wandb_project: spd-resid-mlp
+wandb_project: spd-gf-resid-mlp
 wandb_run_name: null
 wandb_run_name_prefix: ""
 

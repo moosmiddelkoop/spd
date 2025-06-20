@@ -63,5 +63,5 @@ def main(path: ModelPath) -> None:
 
 
 if __name__ == "__main__":
-    path = "wandb:spd-lm/runs/151bsctx"
+    path = "wandb:spd-gf-lm/runs/151bsctx"
     main(path)

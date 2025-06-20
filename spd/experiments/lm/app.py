@@ -2,7 +2,7 @@
 To run this app, run the following command:
 
 ```bash
-    streamlit run spd/experiments/lm/app.py -- --model_path "wandb:spd-lm/runs/151bsctx"
+    streamlit run spd/experiments/lm/app.py -- --model_path "wandb:spd-gf-lm/runs/151bsctx"
 ```
 """
 
@@ -27,7 +27,7 @@ from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.spd_types import ModelPath
 
-DEFAULT_MODEL_PATH: ModelPath = "wandb:spd-lm/runs/151bsctx"
+DEFAULT_MODEL_PATH: ModelPath = "wandb:spd-gf-lm/runs/151bsctx"
 
 
 # -----------------------------------------------------------
