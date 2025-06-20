@@ -35,7 +35,7 @@ def get_run_name(
         if pretrained_model_name:
             run_suffix += f"_pretrained{pretrained_model_name}"
         run_suffix += f"_seq{max_seq_len}"
-    return config.wandb_run_name_prefix + "lm" + run_suffix
+    return config.wandb_run_name_prefix + "lm_" + run_suffix
 
 
 def plot_lm_results(

@@ -39,7 +39,7 @@ def get_run_name(
     else:
         run_suffix = get_common_run_name_suffix(config)
         run_suffix += f"ft{n_features}_resid{d_resid}_mlp{d_mlp}"
-    return config.wandb_run_name_prefix + f"resid_mlp{n_layers}" + run_suffix
+    return config.wandb_run_name_prefix + f"resid_mlp{n_layers}_" + run_suffix
 
 
 def save_target_model_info(

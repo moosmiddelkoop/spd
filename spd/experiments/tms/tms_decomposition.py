@@ -38,6 +38,7 @@ def get_run_name(config: Config, tms_model_config: TMSModelConfig) -> str:
     # TODO: Consolidate tms experiment names (previously we used tms_5-2-id)
     if tms_model_config.n_hidden_layers > 0:
         exp_name += f"-{tms_model_config.n_hidden_layers}"
+    exp_name += "_"
     return config.wandb_run_name_prefix + exp_name + run_suffix
 
 
