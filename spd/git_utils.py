@@ -5,21 +5,22 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from spd.log import logger
 from spd.settings import REPO_ROOT
 
 
 def create_git_snapshot(branch_name_prefix: str) -> str:
-    """Create a git snapshot branch with current changes and push to origin.
+    """Create a git snapshot branch with current changes.
 
-    Creates a timestamped branch containing all current changes (staged and unstaged).
-    Uses a temporary worktree to avoid affecting the current working directory.
-    Pushes the snapshot branch to origin so other users can access it.
+    Creates a timestamped branch containing all current changes (staged and unstaged). Uses a
+    temporary worktree to avoid affecting the current working directory. Will push the snapshot
+    branch to origin if possible, but will continue without error if push permissions are lacking.
 
     Returns:
         Branch name of the created snapshot
 
     Raises:
-        subprocess.CalledProcessError: If git commands fail
+        subprocess.CalledProcessError: If git commands fail (except for push)
     """
     # Generate timestamped branch name
     timestamp_utc = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d-%H%M%S")
@@ -70,12 +71,20 @@ def create_git_snapshot(branch_name_prefix: str) -> str:
                     capture_output=True,
                 )
 
-            subprocess.run(
-                ["git", "push", "-u", "origin", snapshot_branch],
-                cwd=worktree_path,
-                check=True,
-                capture_output=True,
-            )
+            try:
+                subprocess.run(
+                    ["git", "push", "-u", "origin", snapshot_branch],
+                    cwd=worktree_path,
+                    check=True,
+                    capture_output=True,
+                )
+                logger.info(f"Successfully pushed snapshot branch '{snapshot_branch}' to origin")
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"Could not push snapshot branch '{snapshot_branch}' to origin. "
+                    f"The branch was created locally but won't be accessible to other users. "
+                    f"Error: {e.stderr.decode().strip() if e.stderr else 'Unknown error'}"
+                )
 
         finally:
             # Clean up worktree (branch remains in main repo)
