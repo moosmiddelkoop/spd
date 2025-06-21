@@ -28,27 +28,70 @@ def generate_evals_id() -> str:
 
 def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
     """Create a W&B report for the evaluation batch."""
-    # Use the first experiment's project for the report
-
     report = wr.Report(
         project="spd",
         title=f"SPD Evaluation Report - {evals_id}",
         description=f"Evaluations on: {', '.join(experiments_list)}",
     )
 
-    # Create a runset that filters by the evals_id tag
-    # The tag format is "evals_id:eval_YYYYMMDD_HHMMSS"
-    tag_to_find = f"evals_id:{evals_id}"
-
-    # Create a runset for each project
-    runset = wr.Runset(
-        name="Evaluation Runs",
-        filters=f'(Metric("tags") in ["{tag_to_find}"])',  # Filter by tag
+    unique_experiment_types = set(
+        EXPERIMENT_REGISTRY[exp_name].experiment_type for exp_name in experiments_list
     )
 
-    # Add a panel grid with the runset
-    panel_grid = wr.PanelGrid(runsets=[runset])
-    report.blocks.append(panel_grid)
+    # Create separate panel grids for each experiment type
+    for exp_type in unique_experiment_types:
+        # Use experiment type tag for filtering
+        combined_filter = (
+            f'(Metric("tags") in ["evals_id:{evals_id}"]) and (Metric("tags") in ["{exp_type}"])'
+        )
+
+        # Create runset for this experiment type
+        runset = wr.Runset(
+            name=f"{exp_type} Runs",
+            filters=combined_filter,
+        )
+
+        # Create panel grid with causal importance media and loss plots
+        panel_grid = wr.PanelGrid(
+            runsets=[runset],
+            panels=[
+                wr.MediaBrowser(
+                    media_keys=["causal_importances_upper_leaky"],
+                    layout=wr.Layout(x=-6, y=0, w=24, h=12),  # Full width at top
+                ),
+                wr.LinePlot(
+                    x="Step",
+                    y=["loss/stochastic_recon_layerwise", "loss/stochastic_recon"],
+                    log_y=True,
+                    layout=wr.Layout(x=-6, y=12, w=10, h=6),  # First row, first plot
+                ),
+                wr.LinePlot(
+                    x="Step",
+                    y=["loss/faithfulness"],
+                    log_y=True,
+                    layout=wr.Layout(x=4, y=12, w=10, h=6),  # First row, second plot
+                ),
+                wr.LinePlot(
+                    x="Step",
+                    y=["loss/importance_minimality"],
+                    layout=wr.Layout(x=14, y=12, w=10, h=6),  # First row, third plot
+                ),
+                wr.LinePlot(
+                    x="Step",
+                    y=["misc/masked_kl_loss_vs_target"],
+                    layout=wr.Layout(x=-6, y=18, w=10, h=6),  # Second row, first plot
+                ),
+                wr.LinePlot(
+                    x="Step",
+                    y=["misc/unmasked_kl_loss_vs_target"],
+                    layout=wr.Layout(x=4, y=18, w=10, h=6),  # Second row, second plot
+                ),
+            ],
+        )
+
+        # Add title block and panel grid
+        report.blocks.append(wr.H2(text=exp_type))
+        report.blocks.append(panel_grid)
 
     # Save the report and return URL
     report.save()

@@ -44,7 +44,6 @@ Each experiment is also saved in a registry which is used for sweeps and evals.
 - `resid_mlp1` - ResidMLP with 1 layer
 - `resid_mlp2` - ResidMLP with 2 layers
 - `resid_mlp3` - ResidMLP with 3 layers
-- `ss_emb` - SimpleStories embedding decomposition
 
 #### Sweeps
 For running sweeps on a SLURM cluster, set your desired sweep parameters in
