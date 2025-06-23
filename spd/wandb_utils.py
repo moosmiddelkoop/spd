@@ -103,7 +103,9 @@ def init_wandb(
         tags=tags,
     )
     assert wandb.run is not None
-    wandb.run.log_code(str(REPO_ROOT))
+    wandb.run.log_code(
+        root=str(REPO_ROOT / "spd"), exclude_fn=lambda path: "out" in Path(path).parts
+    )
 
     # Update the config with the hyperparameters for this sweep (if any)
     config = replace_pydantic_model(config, wandb.config)  # pyright: ignore[reportArgumentType]
