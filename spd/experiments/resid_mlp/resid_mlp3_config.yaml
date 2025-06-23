@@ -41,7 +41,7 @@ save_freq: null
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.resid_mlp.models.ResidualMLP"
-pretrained_model_path: wandb:spd-train-resid-mlp/runs/4xdrdpkf # 3 layers
+pretrained_model_path: "wandb:spd/runs/jfrf36m2"
 
 # --- Task Specific ---
 task_config:

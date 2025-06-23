@@ -376,27 +376,27 @@ def run_train(config: TMSTrainConfig, device: str) -> None:
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # NOTE: Training TMS is very finnicky, you may need to adjust hyperparams to get it working
-    # # TMS 5-2
-    # config = TMSTrainConfig(
-    #     wandb_project="spd",
-    #     tms_model_config=TMSModelConfig(
-    #         n_features=5,
-    #         n_hidden=2,
-    #         n_hidden_layers=0,
-    #         tied_weights=True,
-    #         device=device,
-    #         init_bias_to_zero=False,
-    #     ),
-    #     feature_probability=0.05,
-    #     batch_size=1024,
-    #     steps=10000,
-    #     seed=0,
-    #     lr=5e-3,
-    #     lr_schedule="constant",
-    #     data_generation_type="at_least_zero_active",
-    #     fixed_identity_hidden_layers=False,
-    #     fixed_random_hidden_layers=False,
-    # )
+    # TMS 5-2
+    config = TMSTrainConfig(
+        wandb_project="spd",
+        tms_model_config=TMSModelConfig(
+            n_features=5,
+            n_hidden=2,
+            n_hidden_layers=0,
+            tied_weights=True,
+            device=device,
+            init_bias_to_zero=False,
+        ),
+        feature_probability=0.05,
+        batch_size=1024,
+        steps=10000,
+        seed=0,
+        lr=5e-3,
+        lr_schedule="constant",
+        data_generation_type="at_least_zero_active",
+        fixed_identity_hidden_layers=False,
+        fixed_random_hidden_layers=False,
+    )
     # # TMS 5-2 w/ identity
     # config = TMSTrainConfig(
     #     wandb_project="spd",
@@ -441,29 +441,29 @@ if __name__ == "__main__":
     #     fixed_random_hidden_layers=False,
     #     # synced_inputs=[[5, 6], [0, 2, 3]],
     # )
-    # TMS 40-10
-    config = TMSTrainConfig(
-        wandb_project="spd",
-        tms_model_config=TMSModelConfig(
-            n_features=40,
-            n_hidden=10,
-            n_hidden_layers=1,
-            tied_weights=True,
-            device=device,
-            init_bias_to_zero=True,
-        ),
-        feature_probability=0.05,
-        # feature_probability=0.02, # synced inputs
-        batch_size=8192,
-        steps=10000,
-        seed=0,
-        lr=5e-3,
-        lr_schedule="constant",
-        data_generation_type="at_least_zero_active",
-        fixed_identity_hidden_layers=True,
-        fixed_random_hidden_layers=False,
-        # synced_inputs=[[5, 6], [0, 2, 3]],
-    )
+    # # TMS 40-10
+    # config = TMSTrainConfig(
+    #     wandb_project="spd",
+    #     tms_model_config=TMSModelConfig(
+    #         n_features=40,
+    #         n_hidden=10,
+    #         n_hidden_layers=1,
+    #         tied_weights=True,
+    #         device=device,
+    #         init_bias_to_zero=True,
+    #     ),
+    #     feature_probability=0.05,
+    #     # feature_probability=0.02, # synced inputs
+    #     batch_size=8192,
+    #     steps=10000,
+    #     seed=0,
+    #     lr=5e-3,
+    #     lr_schedule="constant",
+    #     data_generation_type="at_least_zero_active",
+    #     fixed_identity_hidden_layers=True,
+    #     fixed_random_hidden_layers=False,
+    #     # synced_inputs=[[5, 6], [0, 2, 3]],
+    # )
 
     set_seed(config.seed)
 

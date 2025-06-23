@@ -41,7 +41,7 @@ save_freq: null
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.resid_mlp.models.ResidualMLP"
-pretrained_model_path: "wandb:spd-train-resid-mlp/runs/4p05k7vn"
+pretrained_model_path: "wandb:spd/runs/5mk5h1lk"
 
 # --- Task Specific ---
 task_config:

@@ -37,7 +37,7 @@ save_freq: null
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.tms.models.TMSModel"
-pretrained_model_path: "wandb:spd-train-tms/runs/5b5jinc7" # 1 hidden w/fixed identity
+pretrained_model_path: "wandb:spd/runs/eggs3wp8" # 1 hidden w/fixed identity
 
 # --- Task Specific ---
 task_config:

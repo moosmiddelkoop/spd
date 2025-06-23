@@ -204,8 +204,7 @@ def load_pretrained(
     Args:
         path_to_class: The path to the class, e.g. "transformers.LlamaForCausalLM" or
             "spd.experiments.resid_mlp.models.ResidMLP"
-        model_path: The path to the model, e.g. "wandb:spd-train-resid-mlp/runs/zas5yjdl" or
-            "/path/to/model/checkpoint"
+        model_path: The path to the model, e.g. "wandb:spd/runs/zas5yjdl" or /path/to/checkpoint"
         model_name_hf: The name of the model in the Hugging Face model hub,
             e.g. "SimpleStories/SimpleStories-1.25M"
     """
