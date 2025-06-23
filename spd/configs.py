@@ -237,10 +237,6 @@ class Config(BaseModel):
         default=None,
         description="Name of the attribute on the forward output that contains logits or activations",
     )
-    tokenizer_name: str | None = Field(
-        default=None,
-        description="Name or path of the tokenizer to use when loading an LM",
-    )
 
     # --- Task Specific ---
     task_config: TMSTaskConfig | ResidualMLPTaskConfig | LMTaskConfig = Field(

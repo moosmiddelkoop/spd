@@ -68,7 +68,6 @@ def test_resid_mlp_decomposition_happy_path() -> None:
         pretrained_model_path=None,
         pretrained_model_name_hf=None,
         pretrained_model_output_attr=None,
-        tokenizer_name=None,
         # Task Specific
         task_config=ResidualMLPTaskConfig(
             task_name="residual_mlp",
