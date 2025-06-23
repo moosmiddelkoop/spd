@@ -21,8 +21,6 @@ from spd.experiments.tms.models import TMSModel, TMSModelConfig
 from spd.log import logger
 from spd.utils import set_seed
 
-wandb.require("core")
-
 
 class TMSTrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)

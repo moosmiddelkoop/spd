@@ -18,8 +18,6 @@ from spd.run_spd import get_common_run_name_suffix, optimize
 from spd.utils import get_device, load_config, load_pretrained, set_seed
 from spd.wandb_utils import init_wandb
 
-wandb.require("core")
-
 
 def get_run_name(
     config: Config,

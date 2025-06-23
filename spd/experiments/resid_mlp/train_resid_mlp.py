@@ -23,8 +23,6 @@ from spd.log import logger
 from spd.utils import compute_feature_importances, get_lr_schedule_fn, set_seed
 from spd.wandb_utils import init_wandb
 
-wandb.require("core")
-
 
 class ResidMLPTrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
