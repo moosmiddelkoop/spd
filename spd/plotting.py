@@ -169,10 +169,10 @@ def plot_causal_importance_vals(
     pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
         batch, module_names=list(components.keys())
     )[1]
-    As = {module_name: v.A for module_name, v in components.items()}
+    Vs = {module_name: v.V for module_name, v in components.items()}
 
     ci_raw, ci_upper_leaky_raw = calc_causal_importances(
-        pre_weight_acts=pre_weight_acts, As=As, gates=gates, detach_inputs=False
+        pre_weight_acts=pre_weight_acts, Vs=Vs, gates=gates, detach_inputs=False
     )
 
     ci = {}
@@ -283,17 +283,17 @@ def plot_matrix(
         ax.set_yticklabels([f"{L:.0f}" for L in range(1, n_functions + 1)])
 
 
-def plot_AB_matrices(
+def plot_UV_matrices(
     components: dict[str, LinearComponent | EmbeddingComponent],
     all_perm_indices: dict[str, Float[Tensor, " C"]] | None = None,
 ) -> plt.Figure:
-    """Plot A and B matrices for each instance, grouped by layer."""
-    As = {k: v.A for k, v in components.items()}
-    Bs = {k: v.B for k, v in components.items()}
+    """Plot V and U matrices for each instance, grouped by layer."""
+    Vs = {k: v.V for k, v in components.items()}
+    Us = {k: v.U for k, v in components.items()}
 
-    n_layers = len(As)
+    n_layers = len(Vs)
 
-    # Create figure for plotting - 2 rows per layer (A and B)
+    # Create figure for plotting - 2 rows per layer (V and U)
     fig, axs = plt.subplots(
         2 * n_layers,
         1,
@@ -305,32 +305,32 @@ def plot_AB_matrices(
 
     images = []
 
-    # Plot A and B matrices for each layer
-    for j, name in enumerate(sorted(As.keys())):
-        # Plot A matrix
-        A_data = As[name]
+    # Plot V and U matrices for each layer
+    for j, name in enumerate(sorted(Vs.keys())):
+        # Plot V matrix
+        V_data = Vs[name]
         if all_perm_indices is not None:
-            A_data = A_data[:, all_perm_indices[name]]
-        A_data = A_data.detach().cpu().numpy()
-        im = axs[2 * j, 0].matshow(A_data, aspect="auto", cmap="coolwarm")
+            V_data = V_data[:, all_perm_indices[name]]
+        V_data = V_data.detach().cpu().numpy()
+        im = axs[2 * j, 0].matshow(V_data, aspect="auto", cmap="coolwarm")
         axs[2 * j, 0].set_ylabel("d_in index")
         axs[2 * j, 0].set_xlabel("Component index")
-        axs[2 * j, 0].set_title(f"{name} (A matrix)")
+        axs[2 * j, 0].set_title(f"{name} (V matrix)")
         images.append(im)
 
-        # Plot B matrix
-        B_data = Bs[name]
+        # Plot U matrix
+        U_data = Us[name]
         if all_perm_indices is not None:
-            B_data = B_data[all_perm_indices[name], :]
-        B_data = B_data.detach().cpu().numpy()
-        im = axs[2 * j + 1, 0].matshow(B_data, aspect="auto", cmap="coolwarm")
+            U_data = U_data[all_perm_indices[name], :]
+        U_data = U_data.detach().cpu().numpy()
+        im = axs[2 * j + 1, 0].matshow(U_data, aspect="auto", cmap="coolwarm")
         axs[2 * j + 1, 0].set_ylabel("Component index")
         axs[2 * j + 1, 0].set_xlabel("d_out index")
-        axs[2 * j + 1, 0].set_title(f"{name} (B matrix)")
+        axs[2 * j + 1, 0].set_title(f"{name} (U matrix)")
         images.append(im)
 
     # Add unified colorbar
-    all_matrices = list(As.values()) + list(Bs.values())
+    all_matrices = list(Vs.values()) + list(Us.values())
     norm = plt.Normalize(
         vmin=min(M.min().item() for M in all_matrices),
         vmax=max(M.max().item() for M in all_matrices),
@@ -449,7 +449,7 @@ def create_toy_model_plot_results(
     """Create standard plotting results for decomposition experiments.
 
     This function is used by both resid_mlp and tms experiments to generate
-    mask value plots and AB matrix plots.
+    mask value plots and UV matrix plots.
 
     Args:
         model: The ComponentModel
@@ -476,7 +476,7 @@ def create_toy_model_plot_results(
     # Merge the figures dict into fig_dict
     fig_dict.update(figures)
 
-    fig_dict["AB_matrices"] = plot_AB_matrices(
+    fig_dict["UV_matrices"] = plot_UV_matrices(
         components=components, all_perm_indices=all_perm_indices
     )
     return fig_dict

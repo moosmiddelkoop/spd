@@ -377,12 +377,12 @@ def compute_spd_weight_neuron_contributions(
 
     W_E: Float[Tensor, "n_features d_embed"] = target_model.W_E  # type: ignore
 
-    # Build the *virtual* input weight matrices (A @ B) for every layer
+    # Build the *virtual* input weight matrices (V @ U) for every layer
     W_in_spd: Float[Tensor, "n_layers d_embed C d_mlp"] = torch.stack(
         [
             einops.einsum(
-                components[f"layers.{i}.mlp_in"].A,
-                components[f"layers.{i}.mlp_in"].B,
+                components[f"layers.{i}.mlp_in"].V,
+                components[f"layers.{i}.mlp_in"].U,
                 "d_embed C, C d_mlp -> d_embed C d_mlp",
             )
             for i in range(n_layers)

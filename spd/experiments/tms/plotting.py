@@ -67,11 +67,11 @@ class TMSAnalyzer:
         linear1_component = self.comp_model.components["linear1"]
 
         assert isinstance(linear1_component, LinearComponent)
-        As = linear1_component.A.detach().cpu()  # (n_features, C)
-        Bs = linear1_component.B.detach().cpu()  # (C, n_hidden)
+        Vs = linear1_component.V.detach().cpu()  # (n_features, C)
+        Us = linear1_component.U.detach().cpu()  # (C, n_hidden)
 
         # Calculate subnets: (n_features, C) x (C, n_hidden) -> (C, n_features, n_hidden)
-        subnets = torch.einsum("f C, C h -> C f h", As, Bs)
+        subnets = torch.einsum("f C, C h -> C f h", Vs, Us)
         return subnets
 
     def compute_cosine_similarities(
@@ -406,9 +406,9 @@ class FullNetworkDiagramPlotter:
         # Get subnet decompositions for linear1
         linear1_component = comp_model.components["linear1"]
         assert isinstance(linear1_component, LinearComponent)
-        As = linear1_component.A.detach().cpu()
-        Bs = linear1_component.B.detach().cpu()
-        linear1_subnets = torch.einsum("f C, C h -> C f h", As, Bs)
+        Vs = linear1_component.V.detach().cpu()
+        Us = linear1_component.U.detach().cpu()
+        linear1_subnets = torch.einsum("f C, C h -> C f h", Vs, Us)
 
         # Get hidden layer decompositions if they exist
         hidden_layer_components = None
@@ -418,9 +418,9 @@ class FullNetworkDiagramPlotter:
                 hidden_comp_name = f"hidden_layers-{i}"
                 hidden_comp = comp_model.components[hidden_comp_name]
                 assert isinstance(hidden_comp, LinearComponent)
-                hidden_A = hidden_comp.A.detach().cpu()
-                hidden_B = hidden_comp.B.detach().cpu()
-                hidden_weights = torch.einsum("h C, C j -> C h j", hidden_A, hidden_B)
+                hidden_V = hidden_comp.V.detach().cpu()
+                hidden_U = hidden_comp.U.detach().cpu()
+                hidden_weights = torch.einsum("h C, C j -> C h j", hidden_V, hidden_U)
                 hidden_layer_components.append(hidden_weights)
 
         # Determine which components are significant in linear1 vs hidden layers
@@ -762,9 +762,9 @@ class HiddenLayerPlotter:
         hidden_component = comp_model.components[hidden_comp_name]
         assert isinstance(hidden_component, LinearComponent)
 
-        hidden_A = hidden_component.A.detach().cpu()
-        hidden_B = hidden_component.B.detach().cpu()
-        hidden_weights = torch.einsum("f C, C h -> C f h", hidden_A, hidden_B)
+        hidden_V = hidden_component.V.detach().cpu()
+        hidden_U = hidden_component.U.detach().cpu()
+        hidden_weights = torch.einsum("f C, C h -> C f h", hidden_V, hidden_U)
 
         # Sort by norm
         weights_norm = hidden_weights.norm(dim=(-1, -2))

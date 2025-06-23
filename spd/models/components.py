@@ -59,34 +59,32 @@ class GateMLP(nn.Module):
 
 
 class LinearComponent(nn.Module):
-    """A linear transformation made from A and B matrices for SPD.
+    """A linear transformation made from V and U matrices for SPD.
 
-    NOTE: In the paper, we use V and U for A and B, respectively.
-
-    The weight matrix W is decomposed as W = B^T @ A^T, where A and B are learned parameters.
+    The weight matrix W is decomposed as W = U^T @ V^T, where V and U are learned parameters.
     """
 
     def __init__(self, d_in: int, d_out: int, C: int, bias: Tensor | None):
         super().__init__()
         self.C = C
 
-        self.A = nn.Parameter(torch.empty(d_in, C))
-        self.B = nn.Parameter(torch.empty(C, d_out))
+        self.V = nn.Parameter(torch.empty(d_in, C))
+        self.U = nn.Parameter(torch.empty(C, d_out))
         self.bias = bias
 
-        init_param_(self.A, fan_val=d_out, nonlinearity="linear")
-        init_param_(self.B, fan_val=C, nonlinearity="linear")
+        init_param_(self.V, fan_val=d_out, nonlinearity="linear")
+        init_param_(self.U, fan_val=C, nonlinearity="linear")
 
         self.mask: Float[Tensor, "... C"] | None = None  # Gets set on sparse forward passes
 
     @property
     def weight(self) -> Float[Tensor, "d_out d_in"]:
-        """B^T @ A^T"""
-        return einops.einsum(self.A, self.B, "d_in C, C d_out -> d_out d_in")
+        """U^T @ V^T"""
+        return einops.einsum(self.V, self.U, "d_in C, C d_out -> d_out d_in")
 
     # @torch.compile
     def forward(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
-        """Forward pass through A and B matrices.
+        """Forward pass through V and U matrices.
 
         Args:
             x: Input tensor
@@ -94,12 +92,12 @@ class LinearComponent(nn.Module):
         Returns:
             output: The summed output across all components
         """
-        component_acts = einops.einsum(x, self.A, "... d_in, d_in C -> ... C")
+        component_acts = einops.einsum(x, self.V, "... d_in, d_in C -> ... C")
 
         if self.mask is not None:
             component_acts *= self.mask
 
-        out = einops.einsum(component_acts, self.B, "... C, C d_out -> ... d_out")
+        out = einops.einsum(component_acts, self.U, "... C, C d_out -> ... d_out")
 
         if self.bias is not None:
             out += self.bias
@@ -119,20 +117,20 @@ class EmbeddingComponent(nn.Module):
         super().__init__()
         self.C = C
 
-        self.A = nn.Parameter(torch.empty(vocab_size, C))
-        self.B = nn.Parameter(torch.empty(C, embedding_dim))
+        self.V = nn.Parameter(torch.empty(vocab_size, C))
+        self.U = nn.Parameter(torch.empty(C, embedding_dim))
 
-        init_param_(self.A, fan_val=embedding_dim, nonlinearity="linear")
-        init_param_(self.B, fan_val=C, nonlinearity="linear")
+        init_param_(self.V, fan_val=embedding_dim, nonlinearity="linear")
+        init_param_(self.U, fan_val=C, nonlinearity="linear")
 
         # For masked forward passes
         self.mask: Float[Tensor, "batch pos C"] | None = None
 
     @property
     def weight(self) -> Float[Tensor, "vocab_size embedding_dim"]:
-        """A @ B"""
+        """V @ U"""
         return einops.einsum(
-            self.A, self.B, "vocab_size C, ... C embedding_dim -> vocab_size embedding_dim"
+            self.V, self.U, "vocab_size C, ... C embedding_dim -> vocab_size embedding_dim"
         )
 
     # @torch.compile
@@ -148,12 +146,12 @@ class EmbeddingComponent(nn.Module):
             x: Input tensor of token indices
         """
         # From https://github.com/pytorch/pytorch/blob/main/torch/_decomp/decompositions.py#L1211
-        component_acts = self.A[x]  # (batch pos C)
+        component_acts = self.V[x]  # (batch pos C)
 
         if self.mask is not None:
             component_acts *= self.mask
 
         out = einops.einsum(
-            component_acts, self.B, "batch pos C, ... C embedding_dim -> batch pos embedding_dim"
+            component_acts, self.U, "batch pos C, ... C embedding_dim -> batch pos embedding_dim"
         )
         return out

@@ -220,10 +220,10 @@ def load_next_prompt() -> None:
         _, pre_weight_acts = app_data.model.forward_with_pre_forward_cache_hooks(
             input_ids, module_names=list(app_data.components.keys())
         )
-        As = {module_name: v.A for module_name, v in app_data.components.items()}
+        Vs = {module_name: v.V for module_name, v in app_data.components.items()}
         masks, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
-            As=As,
+            Vs=Vs,
             gates=app_data.gates,
             detach_inputs=True,  # No gradients needed
         )

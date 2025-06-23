@@ -47,11 +47,11 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
             token_tensor, module_names=[component_name]
         )
 
-        As = {module_name: v.A for module_name, v in components.items()}
+        Vs = {module_name: v.V for module_name, v in components.items()}
 
         masks, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
-            As=As,
+            Vs=Vs,
             gates=gates,
             detach_inputs=True,
         )

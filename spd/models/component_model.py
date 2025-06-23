@@ -269,30 +269,30 @@ class ComponentModel(nn.Module):
         return comp_model, config, out_dir
 
 
-def init_As_and_Bs_(
+def init_Vs_and_Us_(
     model: ComponentModel, components: dict[str, LinearComponent | EmbeddingComponent]
 ) -> None:
-    """Initialize the A and B matrices.
+    """Initialize the V and U matrices.
     1. Normalize every component to 1.
     2. Take inner product with original model
     3. This gives you roughly how much overlap there is with the target model.
-    4. Scale the Bs by this value (we can choose either matrix)
+    4. Scale the Us by this value (we can choose either matrix)
     """
     # NOTE: This may increase memory usage if done on GPU.
     for param_name, component in components.items():
-        A = component.A
-        B = component.B
+        V = component.V
+        U = component.U
         target_weight = model.model.get_parameter(param_name + ".weight")
         if isinstance(component, EmbeddingComponent):
             target_weight = target_weight.T  # (d_out d_in)
 
-        # Make A and B have unit norm in the d_in and d_out dimensions
-        A.data[:] = torch.randn_like(A.data)
-        B.data[:] = torch.randn_like(B.data)
-        A.data[:] = A.data / A.data.norm(dim=-2, keepdim=True)
-        B.data[:] = B.data / B.data.norm(dim=-1, keepdim=True)
+        # Make V and U have unit norm in the d_in and d_out dimensions
+        V.data[:] = torch.randn_like(V.data)
+        U.data[:] = torch.randn_like(U.data)
+        V.data[:] = V.data / V.data.norm(dim=-2, keepdim=True)
+        U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
 
         # Calculate inner products
-        C_norms = einops.einsum(A, B, target_weight, "d_in C, C d_out, d_out d_in -> C")
-        # Scale B by the inner product.
-        B.data[:] = B.data * C_norms.unsqueeze(-1)
+        C_norms = einops.einsum(V, U, target_weight, "d_in C, C d_out, d_out d_in -> C")
+        # Scale U by the inner product.
+        U.data[:] = U.data * C_norms.unsqueeze(-1)

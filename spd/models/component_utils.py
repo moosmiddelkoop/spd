@@ -77,11 +77,11 @@ def component_activation_statistics(
         _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
             batch, module_names=list(components.keys())
         )
-        As = {module_name: v.A for module_name, v in components.items()}
+        Vs = {module_name: v.V for module_name, v in components.items()}
 
         causal_importances, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
-            As=As,
+            Vs=Vs,
             gates=gates,
             detach_inputs=False,
         )
@@ -111,7 +111,7 @@ def component_activation_statistics(
 
 def calc_causal_importances(
     pre_weight_acts: dict[str, Float[Tensor, "... d_in"] | Int[Tensor, "... pos"]],
-    As: Mapping[str, Float[Tensor, "d_in C"]],
+    Vs: Mapping[str, Float[Tensor, "d_in C"]],
     gates: Mapping[str, Gate | GateMLP],
     detach_inputs: bool = False,
     sigmoid_type: SigmoidTypes = "leaky_hard",
@@ -120,7 +120,7 @@ def calc_causal_importances(
 
     Args:
         pre_weight_acts: The activations before each layer in the target model.
-        As: The A matrix at each layer.
+        Vs: The V matrix at each layer.
         gates: The gates to use for the mask.
         detach_inputs: Whether to detach the inputs to the gates.
         sigmoid_type: Type of sigmoid to use.
@@ -136,10 +136,10 @@ def calc_causal_importances(
 
         if not acts.dtype.is_floating_point:
             # Embedding layer
-            component_act = As[param_name][acts]
+            component_act = Vs[param_name][acts]
         else:
             # Linear layer
-            component_act = einops.einsum(acts, As[param_name], "... d_in, d_in C -> ... C")
+            component_act = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
 
         gate_input = component_act.detach() if detach_inputs else component_act
         gate_output = gates[param_name](gate_input)

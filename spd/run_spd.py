@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import matplotlib.pyplot as plt
 import torch
@@ -15,11 +16,8 @@ from tqdm import tqdm
 
 from spd.configs import Config
 from spd.log import logger
-from spd.losses import (
-    calc_ce_losses,
-    calculate_losses,
-)
-from spd.models.component_model import ComponentModel, init_As_and_Bs_
+from spd.losses import calc_ce_losses, calculate_losses
+from spd.models.component_model import ComponentModel, init_Vs_and_Us_
 from spd.models.component_utils import (
     calc_causal_importances,
     calc_ci_l_zero,
@@ -89,21 +87,25 @@ def optimize(
 
     # We used "-" instead of "." as module names can't have "." in them
     gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
-    }  # type: ignore
+        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+        for k, v in model.gates.items()
+    }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
-        k.removeprefix("components.").replace("-", "."): v for k, v in model.components.items()
-    }  # type: ignore
+        k.removeprefix("components.").replace("-", "."): cast(
+            LinearComponent | EmbeddingComponent, v
+        )
+        for k, v in model.components.items()
+    }
 
     model.to(device)
-    init_As_and_Bs_(model=model, components=components)
+    init_Vs_and_Us_(model=model, components=components)
 
     if tied_weights is not None:
         # Tie component weights. Assume that the first element is a transpose of the second element
         # NOTE: Tying weights will make your training nondeterministic
         for src_name, tgt_name in tied_weights:
-            components[tgt_name].B.data = components[src_name].A.data.T
-            components[tgt_name].A.data = components[src_name].B.data.T
+            components[tgt_name].U.data = components[src_name].V.data.T
+            components[tgt_name].V.data = components[src_name].U.data.T
 
     component_params: list[torch.nn.Parameter] = []
     gate_params: list[torch.nn.Parameter] = []
@@ -155,11 +157,11 @@ def optimize(
         target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
             batch, module_names=list(components.keys())
         )
-        As = {module_name: components[module_name].A for module_name in components}
+        Vs = {module_name: components[module_name].V for module_name in components}
 
         causal_importances, causal_importances_upper_leaky = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
-            As=As,
+            Vs=Vs,
             gates=gates,
             detach_inputs=False,
             sigmoid_type=config.sigmoid_type,

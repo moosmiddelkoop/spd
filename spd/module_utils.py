@@ -18,7 +18,7 @@ def get_nested_module_attr(module: nn.Module, access_string: str) -> Any:
     Args:
         module: The module to search through.
         access_string: The full name of the nested attribute to access, with each object separated
-            by periods (e.g. "linear1.A").
+            by periods (e.g. "linear1.V").
     """
     names = access_string.split(".")
     try:
@@ -30,16 +30,16 @@ def get_nested_module_attr(module: nn.Module, access_string: str) -> Any:
 
 @torch.inference_mode()
 def remove_grad_parallel_to_subnetwork_vecs(
-    A: Float[Tensor, "d_in C"], A_grad: Float[Tensor, "d_in C"]
+    V: Float[Tensor, "d_in C"], V_grad: Float[Tensor, "d_in C"]
 ) -> None:
     """Modify the gradient by subtracting it's component parallel to the activation.
 
-    This is used to prevent any gradient updates from changing the norm of A. This prevents
+    This is used to prevent any gradient updates from changing the norm of V. This prevents
     Adam from changing the norm due to Adam's (v/(sqrt(v) + eps)) term not preserving the norm
     of vectors.
     """
-    parallel_component = einops.einsum(A_grad, A, "d_in C, d_in C -> C")
-    A_grad -= einops.einsum(parallel_component, A, "C, d_in C -> d_in C")
+    parallel_component = einops.einsum(V_grad, V, "d_in C, d_in C -> C")
+    V_grad -= einops.einsum(parallel_component, V, "C, d_in C -> d_in C")
 
 
 def init_param_(

@@ -41,7 +41,7 @@ def calc_embedding_recon_loss(
     target_out: Float[Tensor, "... d_emb"] = orig_module(batch)
 
     # --- masked embedding output ----------------------------------------------------------- #
-    loss = torch.tensor(0.0, device=component.A.device)
+    loss = torch.tensor(0.0, device=component.V.device)
     for mask_info in masks:
         component.mask = mask_info[embed_module_name]
 
@@ -70,12 +70,12 @@ def calc_schatten_loss(
     """Calculate the Schatten loss on the active components.
 
     The Schatten loss is calculated as:
-        L = Σ_{components} mean(ci_upper_leaky^pnorm · (||A||_2^2 + ||B||_2^2))
+        L = Σ_{components} mean(ci_upper_leaky^pnorm · (||V||_2^2 + ||U||_2^2))
 
     where:
         - ci_upper_leaky are the upper leaky relu causal importances for each component
         - pnorm is the power to raise the mask to
-        - A and B are the component matrices
+        - V and U are the component matrices
         - ||·||_2 is the L2 norm
 
     Args:
@@ -90,9 +90,9 @@ def calc_schatten_loss(
 
     total_loss = torch.tensor(0.0, device=device)
     for component_name, component in components.items():
-        A_norms = component.A.square().sum(dim=-2)
-        B_norms = component.B.square().sum(dim=-1)
-        schatten_norms = A_norms + B_norms
+        V_norms = component.V.square().sum(dim=-2)
+        U_norms = component.U.square().sum(dim=-1)
+        schatten_norms = V_norms + U_norms
         loss = einops.einsum(
             ci_upper_leaky[component_name] ** pnorm, schatten_norms, "... C, C -> ..."
         )
@@ -199,7 +199,7 @@ def calc_faithfulness_loss(
     n_params: int,
     device: str,
 ) -> Float[Tensor, ""]:
-    """Calculate the MSE loss between component parameters (A@B + bias) and target parameters."""
+    """Calculate the MSE loss between component parameters (V@U + bias) and target parameters."""
     target_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
     component_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
 
