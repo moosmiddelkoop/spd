@@ -50,8 +50,8 @@ jobs:
       - name: Print dependencies
         run: pip freeze
 
-      - name: Run pyright
-        run: pyright --pythonpath ./venv/bin/python
+      - name: Run basedpyright
+        run: basedpyright --pythonpath ./venv/bin/python
 
       - name: Run ruff lint
         run: ruff check --fix-only .
