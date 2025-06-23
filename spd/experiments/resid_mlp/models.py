@@ -1,7 +1,7 @@
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal, override
 
 import einops
 import torch
@@ -28,7 +28,7 @@ class ResidualMLPPaths(BaseModel):
 
 
 class ResidualMLPConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     n_features: PositiveInt
     d_embed: PositiveInt
     d_mlp: PositiveInt
@@ -58,6 +58,7 @@ class MLP(nn.Module):
         self.mlp_in = nn.Linear(d_model, d_mlp, bias=in_bias)
         self.mlp_out = nn.Linear(d_mlp, d_model, bias=out_bias)
 
+    @override
     def forward(self, x: Float[Tensor, "... d_model"]) -> Float[Tensor, "... d_model"]:
         mid_pre_act_fn = self.mlp_in(x)
         mid = self.act_fn(mid_pre_act_fn)
@@ -89,6 +90,7 @@ class ResidualMLP(nn.Module):
             ]
         )
 
+    @override
     def forward(
         self,
         x: Float[Tensor, "... n_features"],

@@ -75,7 +75,7 @@ class TMSAnalyzer:
         return subnets
 
     def compute_cosine_similarities(
-        self, eps=1e-12
+        self, eps: float = 1e-12
     ) -> tuple[
         Float[Tensor, "n_subnets n_features"],
         Float[Tensor, " n_features"],
@@ -138,7 +138,7 @@ class VectorPlotter:
         subnets_indices: npt.NDArray[np.int32],
     ) -> None:
         """Create 2D polygon plots of subnetworks."""
-        n_subnets, n_features, n_hidden = subnets.shape
+        n_subnets, n_features, _ = subnets.shape
 
         # Use different colors for each feature
         color_vals = np.linspace(0, 1, n_features)
@@ -450,7 +450,6 @@ class FullNetworkDiagramPlotter:
 
         significant_mask = total_norms > self.config.subnet_norm_threshold
         significant_indices = torch.where(significant_mask)[0]
-        n_significant = len(significant_indices)
 
         # Prepare data for plotting
         plot_configs = []
@@ -531,7 +530,7 @@ class FullNetworkDiagramPlotter:
         axs_array = [axs] if n_plots == 1 else np.array(axs).flatten()
 
         # Plot each configuration
-        for plot_idx, (ax, config) in enumerate(zip_longest(axs_array, plot_configs)):
+        for _, (ax, config) in enumerate(zip_longest(axs_array, plot_configs)):
             if ax is None or config is None:
                 break
             assert isinstance(ax, Axes)
@@ -791,7 +790,7 @@ class HiddenLayerPlotter:
 
         for idx in range(n_subnets):
             ax = axs[idx]
-            im = ax.imshow(weights[idx].cpu().detach().numpy(), cmap=cmap, vmin=vmin, vmax=vmax)
+            ax.imshow(weights[idx].cpu().detach().numpy(), cmap=cmap, vmin=vmin, vmax=vmax)
 
             # Set title
             if idx == 0:
@@ -800,7 +799,7 @@ class HiddenLayerPlotter:
                 title = "Sum of components"
             else:
                 title = f"Subcomponent {subnets_order[idx - 2].item()}"
-            ax.set_title(title, pad=10, fontsize="large")  # type: ignore
+            ax.set_title(title, pad=10, fontsize="large")
 
             # Style axis
             ax.set_xticks([])
@@ -814,10 +813,8 @@ class HiddenLayerPlotter:
         from matplotlib.cm import ScalarMappable
         from matplotlib.colors import Normalize
 
-        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # type: ignore
-        cbar = fig.colorbar(
-            ScalarMappable(cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax)), cax=cbar_ax
-        )
+        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # pyright: ignore[reportCallIssue,reportArgumentType]
+        fig.colorbar(ScalarMappable(cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax)), cax=cbar_ax)
         cbar_ax.set_ylabel("Weight magnitude", fontsize="large")
         cbar_ax.tick_params(labelsize="large")
 
@@ -941,9 +938,7 @@ class TMSPlotter:
 
     def print_analysis_summary(self) -> None:
         """Print analysis summary statistics."""
-        cosine_sims, max_cosine_sim, subnet_weights_at_max = (
-            self.analyzer.compute_cosine_similarities()
-        )
+        _, max_cosine_sim, subnet_weights_at_max = self.analyzer.compute_cosine_similarities()
 
         print(f"Max cosine similarity:\n{max_cosine_sim}")
         print(f"Mean max cosine similarity: {max_cosine_sim.mean():.4f}")
@@ -985,7 +980,7 @@ def main():
         out_dir.mkdir(parents=True, exist_ok=True)
 
         # Load models
-        model, config, _ = ComponentModel.from_pretrained(run_id)
+        model = ComponentModel.from_pretrained(run_id)[0]
         target_model = model.model
         assert isinstance(target_model, TMSModel)
 

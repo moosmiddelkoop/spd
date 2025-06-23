@@ -1,3 +1,5 @@
+from typing import override
+
 import einops
 import torch
 from jaxtyping import Float
@@ -17,6 +19,7 @@ class Gate(nn.Module):
         fan_val = 1  # Since each weight gets applied independently
         init_param_(self.weight, fan_val=fan_val, nonlinearity="linear")
 
+    @override
     def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
         return x * self.weight + self.bias
 
@@ -36,6 +39,7 @@ class GateMLP(nn.Module):
         init_param_(self.mlp_in, fan_val=1, nonlinearity="relu")
         init_param_(self.mlp_out, fan_val=n_ci_mlp_neurons, nonlinearity="linear")
 
+    @override
     def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
         hidden = (
             einops.einsum(
@@ -82,7 +86,7 @@ class LinearComponent(nn.Module):
         """U^T @ V^T"""
         return einops.einsum(self.V, self.U, "d_in C, C d_out -> d_out d_in")
 
-    # @torch.compile
+    @override
     def forward(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
         """Forward pass through V and U matrices.
 
@@ -115,10 +119,10 @@ class EmbeddingComponent(nn.Module):
         C: int,
     ):
         super().__init__()
-        self.C = C
+        self.C: int = C
 
-        self.V = nn.Parameter(torch.empty(vocab_size, C))
-        self.U = nn.Parameter(torch.empty(C, embedding_dim))
+        self.V: nn.Parameter = nn.Parameter(torch.empty(vocab_size, C))
+        self.U: nn.Parameter = nn.Parameter(torch.empty(C, embedding_dim))
 
         init_param_(self.V, fan_val=embedding_dim, nonlinearity="linear")
         init_param_(self.U, fan_val=C, nonlinearity="linear")
@@ -133,7 +137,7 @@ class EmbeddingComponent(nn.Module):
             self.V, self.U, "vocab_size C, ... C embedding_dim -> vocab_size embedding_dim"
         )
 
-    # @torch.compile
+    @override
     def forward(self, x: Float[Tensor, "batch pos"]) -> Float[Tensor, "batch pos embedding_dim"]:
         """Forward through the embedding component using nn.Embedding for efficient lookup
 

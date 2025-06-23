@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import torch
@@ -16,7 +16,7 @@ licensed under MIT, (c) 2024 ApolloResearch.
 
 
 class DatasetConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     name: str = "lennart-finke/SimpleStories"
     is_tokenized: bool = True
     hf_tokenizer_path: str | None = None
@@ -35,7 +35,7 @@ def _keep_single_column(dataset: Dataset, col_name: str) -> Dataset:
     Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful
     when we want to tokenize and mix together different strings.
     """
-    for key in dataset.features:  # pyright: ignore[reportAttributeAccessIssue]
+    for key in dataset.features:
         if key != col_name:
             dataset = dataset.remove_columns(key)
     return dataset
@@ -95,8 +95,8 @@ def tokenize_and_concatenate(
     ]:
         text = examples[column_name]
         # Concatenate all the text into a single string, separated by EOS tokens
-        assert hasattr(tokenizer, "eos_token")
-        full_text = tokenizer.eos_token.join(text)  # type: ignore
+        assert hasattr(tokenizer, "eos_token") and isinstance(tokenizer.eos_token, str)
+        full_text = tokenizer.eos_token.join(text)
 
         # Split the text into chunks for parallel tokenization
         num_chunks = 20
@@ -106,8 +106,7 @@ def tokenize_and_concatenate(
         # Tokenize the chunks using the Tokenizer library
         if to_lower:
             chunks = [
-                chunk.replace(tokenizer.eos_token.lower(), tokenizer.eos_token)  # type: ignore
-                for chunk in chunks
+                chunk.replace(tokenizer.eos_token.lower(), tokenizer.eos_token) for chunk in chunks
             ]
         tokens = [tokenizer.encode(chunk) for chunk in chunks]  # Get token IDs for each chunk
         tokens = np.concatenate(tokens)  # Flatten the list of token IDs
@@ -176,17 +175,18 @@ def create_data_loader(
         assert isinstance(dataset, IterableDataset)
         dataset = dataset.shuffle(seed=seed, buffer_size=buffer_size)
     else:
+        assert isinstance(dataset, Dataset)
         dataset = dataset.shuffle(seed=seed)
-    dataset = split_dataset_by_node(dataset, ddp_rank, ddp_world_size)  # type: ignore
+    dataset = split_dataset_by_node(dataset, ddp_rank, ddp_world_size)  # pyright: ignore[reportArgumentType]
 
     tokenizer = AutoTokenizer.from_pretrained(dataset_config.hf_tokenizer_path)
 
-    torch_dataset: Dataset
+    torch_dataset: Dataset | IterableDataset
     if dataset_config.is_tokenized:
-        torch_dataset = dataset.with_format("torch")  # type: ignore
+        torch_dataset = dataset.with_format("torch")
         # Get a sample from the dataset and check if it's tokenized and what the n_ctx is
         # Note that the dataset may be streamed, so we can't just index into it
-        sample = next(iter(torch_dataset))[dataset_config.column_name]  # type: ignore
+        sample = next(iter(torch_dataset))[dataset_config.column_name]
         assert isinstance(sample, torch.Tensor) and sample.ndim == 1, (
             "Expected the dataset to be tokenized."
         )
@@ -195,7 +195,7 @@ def create_data_loader(
     else:
         to_lower = "SimpleStories" in dataset_config.name
         torch_dataset = tokenize_and_concatenate(
-            dataset,  # type: ignore
+            dataset,
             tokenizer,
             max_length=dataset_config.n_ctx,
             column_name=dataset_config.column_name,
@@ -203,8 +203,8 @@ def create_data_loader(
             to_lower=to_lower,
         )
 
-    loader = DataLoader[Any](
-        torch_dataset,  # type: ignore
+    loader = DataLoader[Dataset | IterableDataset](
+        torch_dataset,  # pyright: ignore[reportArgumentType]
         batch_size=batch_size,
         shuffle=False,
         drop_last=True,

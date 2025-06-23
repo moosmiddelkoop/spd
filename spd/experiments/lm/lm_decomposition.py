@@ -107,7 +107,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         column_name=config.task_config.column_name,
     )
 
-    train_loader, tokenizer = create_data_loader(
+    train_loader, _tokenizer = create_data_loader(
         dataset_config=train_data_config,
         batch_size=config.batch_size,
         buffer_size=config.task_config.buffer_size,

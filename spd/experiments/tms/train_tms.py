@@ -77,14 +77,12 @@ def train(
 ) -> None:
     hooks = []
 
-    if lr_schedule == "linear":
-        lr_schedule_fn = linear_lr
-    elif lr_schedule == "cosine":
-        lr_schedule_fn = cosine_decay_lr
-    elif lr_schedule == "constant":
-        lr_schedule_fn = constant_lr
-    else:
-        raise ValueError(f"Invalid lr_schedule: {lr_schedule}")
+    assert lr_schedule in ["linear", "cosine", "constant"], f"Invalid lr_schedule: {lr_schedule}"
+    lr_schedule_fn = {
+        "linear": linear_lr,
+        "cosine": cosine_decay_lr,
+        "constant": constant_lr,
+    }[lr_schedule]
 
     opt = torch.optim.AdamW(list(model.parameters()), lr=lr)
 
@@ -125,15 +123,15 @@ def plot_intro_diagram(model: TMSModel, filepath: Path) -> None:
     https://colab.research.google.com/github/anthropics/toy-models-of-superposition/blob/main/toy_models.ipynb.
     """
     WA = model.linear1.weight.T.detach()
-    color = plt.cm.viridis(np.array([0.0]))  # type: ignore
+    color = plt.cm.viridis(np.array([0.0]))  # pyright: ignore[reportAttributeAccessIssue]
     plt.rcParams["figure.dpi"] = 200
-    fig, ax = plt.subplots(1, 1, figsize=(2, 2))
+    _, ax = plt.subplots(1, 1, figsize=(2, 2))
 
     W = WA.cpu().detach().numpy()
     ax.scatter(W[:, 0], W[:, 1], c=color)
     ax.set_aspect("equal")
     ax.add_collection(
-        mc.LineCollection(np.stack((np.zeros_like(W), W), axis=1), colors=[color])  # type: ignore
+        mc.LineCollection(np.stack((np.zeros_like(W), W), axis=1), colors=[color])  # pyright: ignore[reportArgumentType]
     )
 
     z = 1.5
@@ -165,7 +163,7 @@ def plot_cosine_similarity_distribution(
     mask = ~torch.eye(rows.shape[0], device=rows.device, dtype=torch.bool)
     masked_sims = cosine_sims[mask]
 
-    fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+    _, ax = plt.subplots(1, 1, figsize=(4, 4))
 
     sims = masked_sims.cpu().numpy()
     ax.scatter(sims, np.zeros_like(sims), alpha=0.5)

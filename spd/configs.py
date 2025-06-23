@@ -18,7 +18,7 @@ from spd.spd_types import ModelPath, Probability
 
 
 class TMSTaskConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     task_name: Literal["tms"] = Field(
         default="tms",
         description="Task identifier for TMS",
@@ -34,7 +34,7 @@ class TMSTaskConfig(BaseModel):
 
 
 class ResidualMLPTaskConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     task_name: Literal["residual_mlp"] = Field(
         default="residual_mlp",
         description="Identifier for the residual-MLP decomposition task",
@@ -52,7 +52,7 @@ class ResidualMLPTaskConfig(BaseModel):
 
 
 class LMTaskConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     task_name: Literal["lm"] = Field(
         default="lm",
         description="Identifier for the language-model decomposition task",
@@ -84,7 +84,7 @@ class LMTaskConfig(BaseModel):
 
 
 class Config(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     # --- WandB
     wandb_project: str | None = Field(
         default=None,

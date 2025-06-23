@@ -122,7 +122,7 @@ def optimize(
 
     n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
-    log_data = {}
+    log_data: dict[str, float | wandb.Table] = {}
     data_iter = iter(train_loader)
 
     alive_components: dict[str, Bool[Tensor, " C"]] = {
@@ -300,7 +300,7 @@ def optimize(
                 grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
                 for param in model.parameters():
                     if param.grad is not None:
-                        grad_norm += param.grad.data.flatten().pow(2).sum()  # type: ignore
+                        grad_norm += param.grad.data.flatten().pow(2).sum()
                 grad_norm_val = grad_norm.sqrt().item()
                 wandb.log({"grad_norm": grad_norm_val}, step=step)
 

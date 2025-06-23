@@ -45,7 +45,7 @@ def calc_embedding_recon_loss(
     for mask_info in masks:
         component.mask = mask_info[embed_module_name]
 
-        masked_out: Float[Tensor, "... d_emb"] = component(batch)  # type: ignore[arg-type]
+        masked_out: Float[Tensor, "... d_emb"] = component(batch)
         component.mask = None
 
         if unembed:
@@ -132,6 +132,7 @@ def calc_masked_recon_layerwise_loss(
     loss_type: Literal["mse", "kl"] = "kl",
 ) -> Float[Tensor, ""]:
     """Calculate the recon loss when augmenting the model one (masked) component at a time."""
+    assert loss_type in ["mse", "kl"], f"Invalid loss type: {loss_type}"
     total_loss = torch.tensor(0.0, device=device)
     for mask_info in masks:
         for component_name, component in components.items():
@@ -142,10 +143,8 @@ def calc_masked_recon_layerwise_loss(
             )
             if loss_type == "mse":
                 loss = ((modified_out - target_out) ** 2).mean()
-            elif loss_type == "kl":
-                loss = calc_kl_divergence_lm(pred=modified_out, target=target_out)
             else:
-                raise ValueError(f"Invalid loss type: {loss_type}")
+                loss = calc_kl_divergence_lm(pred=modified_out, target=target_out)
             total_loss += loss
     n_modified_components = len(masks[0])
     return total_loss / (n_modified_components * len(masks))
@@ -162,12 +161,12 @@ def calc_masked_recon_loss(
     """Calculate the MSE over all masks."""
     # Do a forward pass with all components
     out = model.forward_with_components(batch, components=components, masks=masks)
+    assert loss_type in ["mse", "kl"], f"Invalid loss type: {loss_type}"
     if loss_type == "mse":
         loss = ((out - target_out) ** 2).mean()
-    elif loss_type == "kl":
-        loss = calc_kl_divergence_lm(pred=out, target=target_out)
     else:
-        raise ValueError(f"Invalid loss type: {loss_type}")
+        loss = calc_kl_divergence_lm(pred=out, target=target_out)
+
     return loss
 
 
@@ -242,7 +241,7 @@ def calc_ce_losses(
     Returns:
         Dictionary containing CE losses for different scenarios
     """
-    ce_losses = {}
+    ce_losses: dict[str, float] = {}
 
     # Flatten logits and batch for CE calculation
     flat_all_component_logits = einops.rearrange(
@@ -308,7 +307,7 @@ def calculate_losses(
         Tuple of (total_loss, loss_terms_dict)
     """
     total_loss = torch.tensor(0.0, device=device)
-    loss_terms = {}
+    loss_terms: dict[str, float] = {}
 
     # Faithfulness loss
     faithfulness_loss = calc_faithfulness_loss(

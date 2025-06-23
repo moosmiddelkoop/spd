@@ -9,7 +9,7 @@ install-dev:
 
 .PHONY: type
 type:
-	SKIP=no-commit-to-branch pre-commit run -a pyright
+	SKIP=no-commit-to-branch pre-commit run -a basedpyright
 
 .PHONY: format
 format:

@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import einops
 import torch
@@ -92,6 +92,7 @@ class ComponentModel(nn.Module):
             )
         return nn.ModuleDict(components)
 
+    @override
     def to(self, *args: Any, **kwargs: Any) -> "ComponentModel":
         """Move the model and components to a device."""
         self.model.to(*args, **kwargs)
@@ -101,6 +102,7 @@ class ComponentModel(nn.Module):
             gate.to(*args, **kwargs)
         return self
 
+    @override
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Regular forward pass of the (target) model.
 
@@ -182,7 +184,7 @@ class ComponentModel(nn.Module):
         cache = {}
         handles: list[torch.utils.hooks.RemovableHandle] = []
 
-        def cache_hook(module: nn.Module, input: tuple[Tensor, ...], param_name: str) -> None:
+        def cache_hook(_: nn.Module, input: tuple[Tensor, ...], param_name: str) -> None:
             cache[param_name] = input[0]
 
         # Register hooks

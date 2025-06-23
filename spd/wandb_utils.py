@@ -106,7 +106,7 @@ def init_wandb(
     wandb.run.log_code(str(REPO_ROOT))
 
     # Update the config with the hyperparameters for this sweep (if any)
-    config = replace_pydantic_model(config, wandb.config)  # type: ignore
+    config = replace_pydantic_model(config, wandb.config)  # pyright: ignore[reportArgumentType]
 
     # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))

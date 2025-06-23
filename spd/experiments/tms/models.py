@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, override
 
 import torch
 import wandb
@@ -54,6 +54,7 @@ class TMSModel(nn.Module):
     def tie_weights_(self) -> None:
         self.linear2.weight.data = self.linear1.weight.data.T
 
+    @override
     def to(self, *args: Any, **kwargs: Any) -> Self:
         self = super().to(*args, **kwargs)
         # Weights will become untied if moving device
@@ -61,6 +62,7 @@ class TMSModel(nn.Module):
             self.tie_weights_()
         return self
 
+    @override
     def forward(
         self, x: Float[Tensor, "... n_features"], **_: Any
     ) -> Float[Tensor, "... n_features"]:

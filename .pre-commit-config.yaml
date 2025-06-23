@@ -9,9 +9,9 @@ repos:
   #         - commit
   - repo: local
     hooks:
-      - id: pyright
-        name: Pyright
-        entry: pyright
+      - id: basedpyright
+        name: BasedPyright
+        entry: basedpyright
         language: system
         types: [python]
         stages:

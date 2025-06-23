@@ -10,7 +10,7 @@ import argparse
 import html
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import streamlit as st
 import torch
@@ -129,11 +129,15 @@ def initialize(model_path: ModelPath) -> AppData:
 
     # Extract components and gates
     gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): v for k, v in ss_model.gates.items()
-    }  # type: ignore[reportAssignmentType]
+        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+        for k, v in ss_model.gates.items()
+    }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
-        k.removeprefix("components.").replace("-", "."): v for k, v in ss_model.components.items()
-    }  # type: ignore[reportAssignmentType]
+        k.removeprefix("components.").replace("-", "."): cast(
+            LinearComponent | EmbeddingComponent, v
+        )
+        for k, v in ss_model.components.items()
+    }
     target_layer_names = sorted(list(components.keys()))
 
     logger.info(f"Initialization complete for {model_path}.")
@@ -234,7 +238,7 @@ def load_next_prompt() -> None:
     tokenizer = app_data.tokenizer
     for i, token_id in enumerate(input_ids[0]):
         # Decode individual token - might differ slightly from full decode for spaces etc.
-        decoded_token_str = tokenizer.decode([token_id])  # type: ignore[reportAttributeAccessIssue]
+        decoded_token_str = tokenizer.decode([token_id])  # pyright: ignore[reportAttributeAccessIssue]
         token_data.append(
             {
                 "id": token_id.item(),

@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from typing import cast
 
 import einops
 import torch
@@ -56,11 +57,15 @@ def component_activation_statistics(
     """Get the number and strength of the masks over the full dataset."""
     # We used "-" instead of "." as module names can't have "." in them
     gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
-    }  # type: ignore
+        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+        for k, v in model.gates.items()
+    }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
-        k.removeprefix("components.").replace("-", "."): v for k, v in model.components.items()
-    }  # type: ignore
+        k.removeprefix("components.").replace("-", "."): cast(
+            LinearComponent | EmbeddingComponent, v
+        )
+        for k, v in model.components.items()
+    }
 
     n_tokens = {module_name.replace("-", "."): 0 for module_name in components}
     total_n_active_components = {module_name.replace("-", "."): 0 for module_name in components}

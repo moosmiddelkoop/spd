@@ -1,6 +1,7 @@
 """Visualize embedding component masks."""
 
 from pathlib import Path
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -26,11 +27,13 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
     """
     # We used "-" instead ofGateMLP module names can't have "." in them
     gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
-    }  # type: ignore
+        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+        for k, v in model.gates.items()
+    }
     components: dict[str, EmbeddingComponent] = {
-        k.removeprefix("components.").replace("-", "."): v for k, v in model.components.items()
-    }  # type: ignore
+        k.removeprefix("components.").replace("-", "."): cast(EmbeddingComponent, v)
+        for k, v in model.components.items()
+    }
 
     assert len(components) == 1, "Expected exactly one embedding component"
     component_name = next(iter(components.keys()))
@@ -122,7 +125,7 @@ def plot_embedding_mask_heatmap(masks: Float[Tensor, "vocab C"], out_dir: Path) 
     threshold = 0.05
     indices = [0, 99, 199, 299]
     fig, axs = plt.subplots(4, 1, figsize=(10, 10))
-    axs = axs.flatten()  # type: ignore
+    axs = axs.flatten()  # pyright: ignore[reportAttributeAccessIssue]
     for token_id, ax in zip(indices, axs, strict=False):
         vals = masks[token_id].detach().cpu().numpy()
         vals = vals[vals > threshold]
@@ -151,13 +154,13 @@ def main(model_path: str | Path) -> None:
         model_path: Path to the model checkpoint
     """
     # Load model
-    model, config, out_dir = ComponentModel.from_pretrained(model_path)
+    model, _config, out_dir = ComponentModel.from_pretrained(model_path)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
     # Collect masks
     masks = collect_embedding_masks(model, device)
-    permuted_masks, perm_indices = permute_to_identity(masks)
+    permuted_masks, _perm_indices = permute_to_identity(masks)
     plot_embedding_mask_heatmap(permuted_masks, out_dir)
 
 

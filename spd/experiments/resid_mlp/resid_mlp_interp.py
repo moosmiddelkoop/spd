@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 import einops
 import fire
@@ -39,11 +39,15 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
     # Get components and gates from model
     # We used "-" instead of "." as module names can't have "." in them
     gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
-    }  # type: ignore
+        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+        for k, v in model.gates.items()
+    }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
-        k.removeprefix("components.").replace("-", "."): v for k, v in model.components.items()
-    }  # type: ignore
+        k.removeprefix("components.").replace("-", "."): cast(
+            LinearComponent | EmbeddingComponent, v
+        )
+        for k, v in model.components.items()
+    }
 
     # Assume no position dimension
     batch_shape = (1, n_features)
@@ -102,7 +106,7 @@ def plot_increasing_importance_minimality_coeff_ci_vals(
 
         # Get mask data from the figure axes
         mask_data = {}
-        for i, ax in enumerate(ci_vals_fig.axes[:-1]):  # Skip colorbar axis
+        for ax in ci_vals_fig.axes[:-1]:  # Skip colorbar axis
             # Get the image data from the axis
             images = ax.get_images()
             if images:
@@ -329,7 +333,7 @@ def compute_target_weight_neuron_contributions(
 
     n_features = target_model.config.n_features if n_features is None else n_features
 
-    W_E: Float[Tensor, "n_features d_embed"] = target_model.W_E  # type: ignore
+    W_E: Float[Tensor, "n_features d_embed"] = target_model.W_E
     assert torch.equal(W_E, target_model.W_U.T)
 
     # Stack mlp_in / mlp_out weights across layers so that einsums can broadcast
@@ -375,7 +379,7 @@ def compute_spd_weight_neuron_contributions(
     n_layers: int = target_model.config.n_layers
     n_features = target_model.config.n_features if n_features is None else n_features
 
-    W_E: Float[Tensor, "n_features d_embed"] = target_model.W_E  # type: ignore
+    W_E: Float[Tensor, "n_features d_embed"] = target_model.W_E
 
     # Build the *virtual* input weight matrices (V @ U) for every layer
     W_in_spd: Float[Tensor, "n_layers d_embed C d_mlp"] = torch.stack(
@@ -461,7 +465,7 @@ def plot_spd_feature_contributions_truncated(
 
     n_rows = 2
     fig1, axes1 = plt.subplots(n_rows, 1, figsize=(10, 7), constrained_layout=True)
-    axes1 = np.atleast_1d(axes1)  # type: ignore
+    axes1 = np.atleast_1d(axes1)  # pyright: ignore[reportCallIssue,reportArgumentType]
 
     labelled_neurons = feature_contribution_plot(
         ax=axes1[0],
@@ -515,7 +519,6 @@ def plot_neuron_contribution_pairs(
     """
     n_layers = target_model.config.n_layers
     n_features = target_model.config.n_features if n_features is None else n_features
-    d_mlp = target_model.config.d_mlp
 
     # Assert that there are no biases
     assert not target_model.config.in_bias and not target_model.config.out_bias, (
@@ -648,7 +651,7 @@ def main():
             k.removeprefix("components.").replace("-", "."): v
             for k, v in model.components.items()
             if isinstance(v, LinearComponent)
-        }  # type: ignore
+        }
 
         fig = plot_spd_feature_contributions_truncated(
             components=components,
@@ -673,9 +676,8 @@ def main():
             bbox_inches="tight",
             dpi=500,
         )
-        print(
-            f"Saved figure to {out_dir / f'neuron_contribution_pairs_{n_layers}layers_{wandb_id}.png'}"
-        )
+        fig_name = f"neuron_contribution_pairs_{n_layers}layers_{wandb_id}.png"
+        print(f"Saved figure to {out_dir / fig_name}")
 
         # Define a title formatter for ResidualMLP component names
         def format_resid_mlp_title(mask_name: str) -> str:
@@ -692,8 +694,9 @@ def main():
 
         # Generate and save causal importance plots
         gates: dict[str, Gate | GateMLP] = {
-            k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
-        }  # type: ignore
+            k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+            for k, v in model.gates.items()
+        }
         batch_shape = (1, target_model.config.n_features)
         figs_causal = plot_causal_importance_vals(
             model=model,
@@ -711,9 +714,8 @@ def main():
             bbox_inches="tight",
             dpi=500,
         )
-        print(
-            f"Saved figure to {out_dir / f'causal_importance_upper_leaky_{n_layers}layers_{wandb_id}.png'}"
-        )
+        fig_name = f"causal_importance_upper_leaky_{n_layers}layers_{wandb_id}.png"
+        print(f"Saved figure to {out_dir / fig_name}")
 
         ##### Resid_mlp 1-layer varying sparsity ####
         run_ids = [
@@ -734,9 +736,8 @@ def main():
             bbox_inches="tight",
             dpi=400,
         )
-        print(
-            f"Saved figure to {out_dir / 'resid_mlp_varying_importance_minimality_coeff_ci_vals.png'}"
-        )
+        fig_name = "resid_mlp_varying_importance_minimality_coeff_ci_vals.png"
+        print(f"Saved figure to {out_dir / fig_name}")
 
 
 if __name__ == "__main__":

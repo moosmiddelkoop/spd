@@ -31,7 +31,7 @@ def main(path: ModelPath) -> None:
         column_name=config.task_config.column_name,
     )
 
-    dataloader, tokenizer = create_data_loader(
+    dataloader, _tokenizer = create_data_loader(
         dataset_config=dataset_config,
         batch_size=config.batch_size,
         buffer_size=config.task_config.buffer_size,

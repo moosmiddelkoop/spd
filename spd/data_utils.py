@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Generic, Literal, TypeVar
+from typing import Generic, Literal, TypeVar, override
 
 import torch
 from jaxtyping import Float
@@ -23,11 +23,12 @@ class DatasetGeneratedDataLoader(DataLoader[Q], Generic[Q]):
         assert hasattr(dataset, "generate_batch")
         super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
-    def __iter__(  # type: ignore
+    @override
+    def __iter__(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
     ) -> Iterator[Q]:
         for _ in range(len(self)):
-            yield self.dataset.generate_batch(self.batch_size)  # type: ignore
+            yield self.dataset.generate_batch(self.batch_size)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 class BatchedDataLoader(DataLoader[Q], Generic[Q]):
@@ -43,7 +44,8 @@ class BatchedDataLoader(DataLoader[Q], Generic[Q]):
     ):
         super().__init__(dataset, num_workers=num_workers)
 
-    def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+    @override
+    def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:  # pyright: ignore[reportIncompatibleMethodOverride]
         for batch, label in super().__iter__():
             yield batch[0], label[0]
 
@@ -75,12 +77,12 @@ class SparseFeatureDataset(
         value_range: tuple[float, float] = (0.0, 1.0),
         synced_inputs: list[list[int]] | None = None,
     ):
-        self.n_features = n_features
-        self.feature_probability = feature_probability
-        self.device = device
-        self.data_generation_type = data_generation_type
-        self.value_range = value_range
-        self.synced_inputs = synced_inputs
+        self.n_features: int = n_features
+        self.feature_probability: float = feature_probability
+        self.device: str = device
+        self.data_generation_type: DataGenerationType = data_generation_type
+        self.value_range: tuple[float, float] = value_range
+        self.synced_inputs: list[list[int]] | None = synced_inputs
 
     def __len__(self) -> int:
         return 2**31

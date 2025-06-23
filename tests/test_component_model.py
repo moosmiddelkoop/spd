@@ -1,4 +1,4 @@
-from typing import cast
+from typing import cast, override
 
 import pytest
 import torch
@@ -19,6 +19,7 @@ class SimpleTestModel(nn.Module):
         self.embedding = nn.Embedding(100, 8)
         self.other_layer = nn.ReLU()  # Non-target layer
 
+    @override
     def forward(self, x: Float[Tensor, "..."]):
         return self.linear2(self.linear1(x))
 
@@ -42,11 +43,9 @@ def test_component_replacement_context_manager():
     orig_linear2 = base_model.linear2
     orig_embedding = base_model.embedding
 
-    comp_linear1: LinearComponent = cast(LinearComponent, comp_model.components["linear1"])
-    comp_linear2: LinearComponent = cast(LinearComponent, comp_model.components["linear2"])
-    comp_embedding: EmbeddingComponent = cast(
-        EmbeddingComponent, comp_model.components["embedding"]
-    )
+    comp_linear1 = cast(LinearComponent, comp_model.components["linear1"])
+    comp_linear2 = cast(LinearComponent, comp_model.components["linear2"])
+    comp_embedding = cast(EmbeddingComponent, comp_model.components["embedding"])
     components_dict: dict[str, LinearComponent | EmbeddingComponent] = {
         "linear1": comp_linear1,
         "linear2": comp_linear2,

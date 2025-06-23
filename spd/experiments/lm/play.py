@@ -1,6 +1,8 @@
 # %%
 # Example / sandbox script for running ComponentModel on a pretrained model.
 
+from typing import cast
+
 import torch
 from transformers import AutoTokenizer, LlamaForCausalLM
 
@@ -43,8 +45,9 @@ comp_model = ComponentModel(
 #     model, rank=C, target_module_patterns=["model.transformer.h.*.mlp.gate_proj"]
 # )
 gate_proj_components: dict[str, LinearComponent | EmbeddingComponent] = {
-    k.removeprefix("components.").replace("-", "."): v for k, v in comp_model.components.items()
-}  # type: ignore
+    k.removeprefix("components.").replace("-", "."): cast(LinearComponent | EmbeddingComponent, v)
+    for k, v in comp_model.components.items()
+}
 # %%
 # Load tokenizer
 tokenizer = AutoTokenizer.from_pretrained(model_path, legacy=False)

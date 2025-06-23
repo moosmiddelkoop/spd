@@ -134,8 +134,8 @@ def main(experiments: str | None = None) -> None:
     # Use a temporary directory for script files
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        script_paths = []
-        job_info_list = []
+        script_paths: list[Path] = []
+        job_info_list: list[str] = []
 
         print(f"Deploying {len(experiments_list)} experiments as individual SLURM jobs...")
         # Create SLURM scripts for all experiments

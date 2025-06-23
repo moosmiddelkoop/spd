@@ -127,20 +127,25 @@ def get_lr_schedule_fn(
     lr_schedule: Literal["linear", "constant", "cosine", "exponential"],
     lr_exponential_halflife: PositiveFloat | None = None,
 ) -> Callable[[int, int], float]:
+    """Get a function that returns the learning rate at a given step.
+
+    Args:
+        lr_schedule: The learning rate schedule to use
+        lr_exponential_halflife: The halflife of the exponential learning rate schedule
+    """
     if lr_schedule == "linear":
         return lambda step, steps: 1 - (step / steps)
     elif lr_schedule == "constant":
         return lambda *_: 1.0
     elif lr_schedule == "cosine":
         return lambda step, steps: 1.0 if steps == 1 else np.cos(0.5 * np.pi * step / (steps - 1))
-    elif lr_schedule == "exponential":
+    else:
+        # Exponential
         assert lr_exponential_halflife is not None  # Should have been caught by model validator
         halflife = lr_exponential_halflife
         gamma = 0.5 ** (1 / halflife)
         logger.info(f"Using exponential LR schedule with halflife {halflife} steps (gamma {gamma})")
         return lambda step, steps: gamma**step
-    else:
-        raise ValueError(f"Unknown lr_schedule: {lr_schedule}")
 
 
 def get_lr_with_warmup(
@@ -210,7 +215,7 @@ def load_pretrained(
     model_cls = resolve_class(path_to_class)
     if not hasattr(model_cls, "from_pretrained"):
         raise TypeError(f"{model_cls} lacks a `from_pretrained` method.")
-    return model_cls.from_pretrained(model_path or model_name_hf, **kwargs)  # type: ignore
+    return model_cls.from_pretrained(model_path or model_name_hf, **kwargs)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def extract_batch_data(
@@ -231,6 +236,9 @@ def extract_batch_data(
     Returns:
         The input tensor extracted from the batch
     """
+    assert isinstance(batch_item, dict | tuple | torch.Tensor), (
+        f"Unsupported batch format: {type(batch_item)}. Must be a dictionary, tuple, or tensor."
+    )
     if isinstance(batch_item, dict):
         # Dictionary format: extract the specified key
         if input_key not in batch_item:
@@ -242,11 +250,9 @@ def extract_batch_data(
     elif isinstance(batch_item, tuple):
         # Assume input is the first element
         tensor = batch_item[0]
-    elif isinstance(batch_item, torch.Tensor):
+    else:
         # Direct tensor format
         tensor = batch_item
-    else:
-        raise TypeError(f"Unsupported batch format: {type(batch_item)}. ")
 
     return tensor
 

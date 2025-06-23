@@ -13,7 +13,7 @@ def test_dataset_at_least_zero_active():
     n_features = 5
     feature_probability = 0.5
     device = "cpu"
-    batch_size = 100
+    batch_size = 200
 
     dataset = SparseFeatureDataset(
         n_features=n_features,
