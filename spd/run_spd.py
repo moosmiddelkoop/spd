@@ -1,15 +1,14 @@
 """Run SPD on a model."""
 
-from functools import partial
 from pathlib import Path
 from typing import Protocol, cast
 
-from einops import reduce
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+from einops import reduce
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 from torch.utils.data import DataLoader
@@ -178,7 +177,7 @@ def optimize(
         )
         Vs = {module_name: components[module_name].V for module_name in components}
 
-        ci_lower_leaky, ci_upper_leaky_BxM = calc_causal_importances(
+        ci_lower_leaky_BxM, ci_upper_leaky_BxM = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,
@@ -196,7 +195,7 @@ def optimize(
             batch=batch,
             config=config,
             components=components,
-            ci_lower_leaky=ci_lower_leaky,
+            ci_lower_leaky=ci_lower_leaky_BxM,
             ci_upper_leaky=ci_upper_leaky_BxM,
             target_out=target_out,
             device=device,
@@ -227,7 +226,7 @@ def optimize(
 
                 # Calculate component logits and KL losses
                 masked_component_logits = model.forward_with_components(
-                    batch, components=components, masks=ci_lower_leaky
+                    batch, components=components, masks=ci_lower_leaky_BxM
                 )
                 unmasked_component_logits = model.forward_with_components(
                     batch, components=components, masks=None
@@ -247,19 +246,19 @@ def optimize(
                         model=model,
                         batch=batch,
                         components=components,
-                        masks=ci_lower_leaky,
+                        masks=ci_lower_leaky_BxM,
                         unmasked_component_logits=unmasked_component_logits,
                         masked_component_logits=masked_component_logits,
                         target_logits=target_logits,
                     )
                     log_data.update(ce_losses)
 
-                embed_ci_table = create_embed_ci_sample_table(ci_lower_leaky)
+                embed_ci_table = create_embed_ci_sample_table(ci_lower_leaky_BxM)
                 if embed_ci_table is not None:
                     log_data["misc/embed_ci_sample"] = embed_ci_table
 
                 if config.wandb_project:
-                    ci_l_zero = calc_ci_l_zero(causal_importances=ci_lower_leaky)
+                    ci_l_zero = calc_ci_l_zero(causal_importances=ci_lower_leaky_BxM)
                     for layer_name, layer_ci_l_zero in ci_l_zero.items():
                         log_data[f"metric/ci_l0_{layer_name}"] = layer_ci_l_zero
                     wandb.log(log_data, step=step)
@@ -282,7 +281,7 @@ def optimize(
                         sigmoid_type=config.sigmoid_type,
                     )
 
-                ci_histogram_figs = plot_ci_histograms(causal_importances=ci_lower_leaky)
+                ci_histogram_figs = plot_ci_histograms(causal_importances=ci_lower_leaky_BxM)
                 fig_dict.update(ci_histogram_figs)
 
                 mean_component_activation_counts = component_activation_statistics(
