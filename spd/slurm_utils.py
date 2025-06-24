@@ -9,13 +9,14 @@ from spd.settings import REPO_ROOT
 
 
 def create_slurm_script(
-    script_path: Path,
+    # script_path: Path,
     job_name: str,
     command: str,
-    snapshot_branch: str,
+    output_dir: Path,
+    # snapshot_branch: str,
     cpu: bool = False,
     time_limit: str = "24:00:00",
-) -> None:
+) -> str:
     """Create a SLURM batch script with git snapshot for consistent code.
 
     Args:
@@ -26,33 +27,27 @@ def create_slurm_script(
         time_limit: Time limit for the job (default: 24:00:00)
     """
     gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
-    slurm_logs_dir = REPO_ROOT / "slurm_logs"
-    slurm_logs_dir.mkdir(exist_ok=True)
 
-    script_content = textwrap.dedent(f"""
+    return textwrap.dedent(f"""
         #!/bin/bash
         #SBATCH --nodes=1
         {gpu_config}
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
         #SBATCH --partition=all
-        #SBATCH --output={slurm_logs_dir}/slurm-%j.out
+        #SBATCH --output={output_dir}/slurm-%j.out
 
         # Change to the SPD repository directory
         cd {REPO_ROOT}
 
         # Checkout the snapshot branch to ensure consistent code
-        git checkout {snapshot_branch}
+
+        . .venv/bin/activate
 
         # Execute the command
         {command}
     """).strip()
-
-    with open(script_path, "w") as f:
-        f.write(script_content)
-
-    # Make script executable
-    script_path.chmod(0o755)
+        # git checkout {snapshot_branch}
 
 
 def submit_slurm_jobs(script_paths: list[Path]) -> list[str]:

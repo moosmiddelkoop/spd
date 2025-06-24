@@ -51,7 +51,7 @@ pretrained_model_output_attr: logits
 # --- Task Specific ---
 task_config:
   task_name: lm
-  max_seq_len: 2048
+  max_seq_len: 1024
   buffer_size: 1000
   dataset_name: cerebras/SlimPajama-627B
   column_name: "text"

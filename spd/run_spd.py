@@ -126,7 +126,8 @@ def optimize(
 
     assert len(component_params) > 0, "No parameters found in components to optimize"
 
-    optimizer = optim.AdamW(component_params + gate_params, lr=config.lr, weight_decay=0)
+    parameters = component_params + gate_params
+    optimizer = optim.AdamW(parameters, lr=config.lr, weight_decay=0)
 
     lr_schedule_fn = get_lr_schedule_fn(config.lr_schedule, config.lr_exponential_halflife)
     logger.info(f"Base LR scheduler created: {config.lr_schedule}")
@@ -170,7 +171,7 @@ def optimize(
         )
         Vs = {module_name: components[module_name].V for module_name in components}
 
-        ci_upper_leaky, ci_lower_leaky = calc_causal_importances(
+        ci_lower_leaky, ci_upper_leaky = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,
@@ -314,12 +315,16 @@ def optimize(
             total_loss.backward(retain_graph=True)
 
             if step % config.print_freq == 0 and config.wandb_project:
-                grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
-                for param in model.parameters():
-                    if param.grad is not None:
-                        grad_norm += param.grad.data.flatten().pow(2).sum()
-                grad_norm_val = grad_norm.sqrt().item()
-                wandb.log({"grad_norm": grad_norm_val}, step=step)
+                with torch.no_grad():
+                    grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            grad_norm += param.grad.data.flatten().pow(2).sum()
+                    grad_norm_val = grad_norm.sqrt().item()
+                    wandb.log({"grad_norm": grad_norm_val}, step=step)
+
+            norm_torch = torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
+            wandb.log({"grad_norm_torch": norm_torch}, step=step)
 
             optimizer.step()
 

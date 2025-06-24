@@ -154,4 +154,4 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
 
 if __name__ == "__main__":
-    main("spd/experiments/lm/gemma_config.yaml")
+    fire.Fire(main)
