@@ -94,7 +94,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         wandb.save(str(out_dir / "final_config.yaml"), base_path=out_dir, policy="now")
 
     # --- Load Data --- #
-    logger.info("Loading dataset...")
+    logger.info("Loading train dataset...")
     train_data_config = DatasetConfig(
         name=config.task_config.dataset_name,
         hf_tokenizer_path=config.pretrained_model_name_hf,
@@ -114,25 +114,25 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         ddp_world_size=1,
     )
 
-    eval_data_config = DatasetConfig(
-        name=config.task_config.dataset_name,
-        hf_tokenizer_path=config.pretrained_model_name_hf,
-        split=config.task_config.eval_data_split,
-        n_ctx=config.task_config.max_seq_len,
-        is_tokenized=False,
-        streaming=False,
-        column_name=config.task_config.column_name,
-    )
-    eval_loader, _ = create_data_loader(
-        dataset_config=eval_data_config,
-        batch_size=config.batch_size,
-        buffer_size=config.task_config.buffer_size,
-        global_seed=config.seed,
-        ddp_rank=0,
-        ddp_world_size=1,
-    )
-
-    logger.info("Dataset and tokenizer loaded.")
+    logger.info("Loading eval dataset...")
+    # eval_data_config = DatasetConfig(
+    #     name=config.task_config.dataset_name,
+    #     hf_tokenizer_path=config.pretrained_model_name_hf,
+    #     split=config.task_config.eval_data_split,
+    #     n_ctx=config.task_config.max_seq_len,
+    #     is_tokenized=False,
+    #     streaming=True,
+    #     column_name=config.task_config.column_name,
+    # )
+    # eval_loader, _ = create_data_loader(
+    #     dataset_config=eval_data_config,
+    #     batch_size=config.batch_size,
+    #     buffer_size=config.task_config.buffer_size,
+    #     global_seed=config.seed,
+    #     ddp_rank=0,
+    #     ddp_world_size=1,
+    # )
+    # logger.info("Dataset and tokenizer loaded.")
 
     # TODO: Below not needed when TMS supports config.n_eval_steps
     assert config.n_eval_steps is not None, "n_eval_steps must be set"
@@ -142,7 +142,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         config=config,
         device=device,
         train_loader=train_loader,
-        eval_loader=eval_loader,
+        # eval_loader=eval_loader,
         n_eval_steps=config.n_eval_steps,
         out_dir=out_dir,
     )
@@ -154,4 +154,4 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    main("spd/experiments/lm/gemma_config.yaml")

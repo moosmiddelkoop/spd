@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
+from spd.log import logger
+
 """
 The bulk of this file is copied from https://github.com/ApolloResearch/e2e_sae
 licensed under MIT, (c) 2024 ApolloResearch.
@@ -30,26 +32,26 @@ class DatasetConfig(BaseModel):
     for datasets tokenized in TransformerLens (e.g. NeelNanda/pile-10k)."""
 
 
-def _keep_single_column(dataset: Dataset, col_name: str) -> Dataset:
+def _keep_single_column(dataset: Dataset | IterableDataset, col_name: str) -> Dataset | IterableDataset:
     """
     Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful
     when we want to tokenize and mix together different strings.
-    """
-    for key in dataset.features:
+    """ # features = 
+    for key in dataset.features or list(next(iter(dataset)).keys()): # Object of type "None" cannot be used as iterable valuebasedpyrightreportOptionalIterable
         if key != col_name:
             dataset = dataset.remove_columns(key)
     return dataset
 
 
 def tokenize_and_concatenate(
-    dataset: Dataset,
+    dataset: Dataset | IterableDataset,
     tokenizer: PreTrainedTokenizer,
     column_name: str,
     max_length: int = 1024,
     add_bos_token: bool = False,
     num_proc: int = 10,
     to_lower: bool = False,
-) -> Dataset:
+) -> Dataset | IterableDataset:
     """Helper function to tokenizer and concatenate a dataset of text. This converts the text to
     tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of
     shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if
@@ -164,6 +166,7 @@ def create_data_loader(
     Returns:
         A tuple of the DataLoader and the tokenizer.
     """
+    logger.info(f"Loading dataset {dataset_config.name}...")
     dataset = load_dataset(
         dataset_config.name,
         streaming=dataset_config.streaming,
@@ -171,18 +174,22 @@ def create_data_loader(
         trust_remote_code=False,
     )
     seed = dataset_config.seed if dataset_config.seed is not None else global_seed
+    logger.info("shuffling")
     if dataset_config.streaming:
         assert isinstance(dataset, IterableDataset)
         dataset = dataset.shuffle(seed=seed, buffer_size=buffer_size)
     else:
         assert isinstance(dataset, Dataset)
         dataset = dataset.shuffle(seed=seed)
+    logger.info("splitting")
     dataset = split_dataset_by_node(dataset, ddp_rank, ddp_world_size)  # pyright: ignore[reportArgumentType]
 
+    logger.info("loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(dataset_config.hf_tokenizer_path)
 
     torch_dataset: Dataset | IterableDataset
     if dataset_config.is_tokenized:
+        logger.info("dataset is tokenized...")
         torch_dataset = dataset.with_format("torch")
         # Get a sample from the dataset and check if it's tokenized and what the n_ctx is
         # Note that the dataset may be streamed, so we can't just index into it
@@ -193,6 +200,7 @@ def create_data_loader(
         assert len(sample) == dataset_config.n_ctx, "n_ctx does not match the tokenized length."
 
     else:
+        logger.info("dataset is not tokenized, tokenizing...")
         to_lower = "SimpleStories" in dataset_config.name
         torch_dataset = tokenize_and_concatenate(
             dataset,
@@ -203,6 +211,7 @@ def create_data_loader(
             to_lower=to_lower,
         )
 
+    logger.info("creating dataloader...")
     loader = DataLoader[Dataset | IterableDataset](
         torch_dataset,  # pyright: ignore[reportArgumentType]
         batch_size=batch_size,

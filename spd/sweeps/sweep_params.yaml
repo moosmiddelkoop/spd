@@ -1,8 +1,26 @@
 # These parameters will be injected into ./sweep.py
-method: grid
+method: random
 metric:
   name: total_loss
   goal: minimize
 parameters:
-  seed:
-    values: [0, 1, 2, 3, 4] 
+  lr:
+    distribution: log_uniform_values
+    min: 1.0e-5
+    max: 1.0e-3
+  stochastic_recon_coeff:
+    distribution: log_uniform_values
+    min: 0.01
+    max: 1.0
+  recon_coeff:
+    distribution: log_uniform_values
+    min: 0.01
+    max: 1.0
+  importance_minimality_coeff:
+    distribution: log_uniform_values
+    min: 1.0e-7
+    max: 1.0e-5
+  pnorm:
+    distribution: uniform
+    min: 0.5
+    max: 2.0

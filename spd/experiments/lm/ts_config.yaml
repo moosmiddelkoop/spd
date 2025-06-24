@@ -1,4 +1,4 @@
-recon_layerwise_coeff# Config for tinystories
+# Config for tinystories
 
 # --- WandB ---
 wandb_project: spd
