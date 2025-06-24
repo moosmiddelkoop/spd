@@ -101,11 +101,11 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         split=config.task_config.train_data_split,
         n_ctx=config.task_config.max_seq_len,
         is_tokenized=False,
-        streaming=False,
+        streaming=True,
         column_name=config.task_config.column_name,
     )
 
-    train_loader, _tokenizer = create_data_loader(
+    train_loader, _ = create_data_loader(
         dataset_config=train_data_config,
         batch_size=config.batch_size,
         buffer_size=config.task_config.buffer_size,
@@ -114,23 +114,23 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         ddp_world_size=1,
     )
 
-    eval_data_config = DatasetConfig(
-        name=config.task_config.dataset_name,
-        hf_tokenizer_path=config.pretrained_model_name_hf,
-        split=config.task_config.eval_data_split,
-        n_ctx=config.task_config.max_seq_len,
-        is_tokenized=False,
-        streaming=False,
-        column_name=config.task_config.column_name,
-    )
-    eval_loader, _ = create_data_loader(
-        dataset_config=eval_data_config,
-        batch_size=config.batch_size,
-        buffer_size=config.task_config.buffer_size,
-        global_seed=config.seed,
-        ddp_rank=0,
-        ddp_world_size=1,
-    )
+    # eval_data_config = DatasetConfig(
+    #     name=config.task_config.dataset_name,
+    #     hf_tokenizer_path=config.pretrained_model_name_hf,
+    #     split=config.task_config.eval_data_split,
+    #     n_ctx=config.task_config.max_seq_len,
+    #     is_tokenized=False,
+    #     streaming=False,
+    #     column_name=config.task_config.column_name,
+    # )
+    # eval_loader, _ = create_data_loader(
+    #     dataset_config=eval_data_config,
+    #     batch_size=config.batch_size,
+    #     buffer_size=config.task_config.buffer_size,
+    #     global_seed=config.seed,
+    #     ddp_rank=0,
+    #     ddp_world_size=1,
+    # )
 
     logger.info("Dataset and tokenizer loaded.")
 
@@ -141,8 +141,8 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         target_model=target_model,
         config=config,
         device=device,
-        train_loader=train_loader,
-        eval_loader=eval_loader,
+        dl=train_loader,
+        # eval_loader=train_loader,
         n_eval_steps=config.n_eval_steps,
         out_dir=out_dir,
     )
@@ -154,4 +154,5 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    main("spd/experiments/lm/gemma_config.yaml")
+    # fire.Fire(main)
