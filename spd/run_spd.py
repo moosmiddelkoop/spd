@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 import matplotlib.pyplot as plt
 import torch
@@ -24,6 +24,7 @@ from spd.models.component_utils import (
     component_activation_statistics,
 )
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.sigmoids import SigmoidTypes
 from spd.plotting import (
     create_embed_ci_sample_table,
     plot_ci_histograms,
@@ -57,6 +58,17 @@ def get_common_run_name_suffix(config: Config) -> str:
     run_suffix += f"bs{config.batch_size}_"
     return run_suffix
 
+class PlotResultsFn(Protocol):
+    def __call__(
+        self,
+        model: ComponentModel,
+        components: dict[str, LinearComponent | EmbeddingComponent],
+        gates: dict[str, Gate | GateMLP],
+        batch_shape: tuple[int, ...],
+        device: str | torch.device,
+        sigmoid_type: SigmoidTypes,
+    ) -> dict[str, plt.Figure]:
+        ...
 
 def optimize(
     target_model: nn.Module,
@@ -68,7 +80,7 @@ def optimize(
     # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_eval_steps: int,
     out_dir: Path | None,
-    plot_results_fn: Callable[..., dict[str, plt.Figure]] | None = None,
+    plot_results_fn: PlotResultsFn | None = None,
     tied_weights: list[tuple[str, str]] | None = None,
 ) -> None:
     """Run the optimization loop for LM decomposition."""
@@ -253,13 +265,18 @@ def optimize(
                         gates=gates,
                         batch_shape=batch.shape,
                         device=device,
+                        sigmoid_type=config.sigmoid_type,
                     )
 
                 ci_histogram_figs = plot_ci_histograms(causal_importances=causal_importances)
                 fig_dict.update(ci_histogram_figs)
 
                 mean_component_activation_counts = component_activation_statistics(
-                    model=model, data_iter=data_iter, n_steps=n_eval_steps, device=device
+                    model=model,
+                    data_iter=data_iter,
+                    n_steps=n_eval_steps,
+                    device=device,
+                    sigmoid_type=config.sigmoid_type,
                 )[1]
                 assert mean_component_activation_counts is not None
                 fig_dict["mean_component_activation_counts"] = (

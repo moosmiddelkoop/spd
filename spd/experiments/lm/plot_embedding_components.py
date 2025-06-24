@@ -13,9 +13,12 @@ from tqdm import tqdm
 from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP
+from spd.models.sigmoids import SigmoidTypes
 
 
-def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor, "vocab C"]:
+def collect_embedding_masks(
+    model: ComponentModel, device: str, sigmoid_type: SigmoidTypes
+) -> Float[Tensor, "vocab C"]:
     """Collect masks for each vocab token.
 
     Args:
@@ -57,6 +60,7 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
             Vs=Vs,
             gates=gates,
             detach_inputs=True,
+            sigmoid_type=sigmoid_type,
         )
 
         all_masks[token_id] = masks[component_name].squeeze()
@@ -154,12 +158,12 @@ def main(model_path: str | Path) -> None:
         model_path: Path to the model checkpoint
     """
     # Load model
-    model, _config, out_dir = ComponentModel.from_pretrained(model_path)
+    model, config, out_dir = ComponentModel.from_pretrained(model_path)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
     # Collect masks
-    masks = collect_embedding_masks(model, device)
+    masks = collect_embedding_masks(model, device, config.sigmoid_type)
     permuted_masks, _perm_indices = permute_to_identity(masks)
     plot_embedding_mask_heatmap(permuted_masks, out_dir)
 

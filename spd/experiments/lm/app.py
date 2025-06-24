@@ -230,6 +230,7 @@ def load_next_prompt() -> None:
             Vs=Vs,
             gates=app_data.gates,
             detach_inputs=True,  # No gradients needed
+            sigmoid_type=app_data.config.sigmoid_type,
         )
     st.session_state.current_masks = masks  # Dict[str, Float[Tensor, "1 seq_len C"]]
 
