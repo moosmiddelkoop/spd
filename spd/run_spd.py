@@ -1,8 +1,10 @@
 """Run SPD on a model."""
 
+from functools import partial
 from pathlib import Path
 from typing import Protocol, cast
 
+from einops import reduce
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -36,6 +38,8 @@ from spd.utils import (
     get_lr_with_warmup,
 )
 
+CAUSAL_IMPORTANCE_ALIVE_THRESHOLD = 0.1
+
 
 def get_common_run_name_suffix(config: Config) -> str:
     """Generate a run suffix based on Config that is common to all experiments."""
@@ -57,6 +61,7 @@ def get_common_run_name_suffix(config: Config) -> str:
     run_suffix += f"bs{config.batch_size}_"
     return run_suffix
 
+
 class PlotResultsFn(Protocol):
     def __call__(
         self,
@@ -66,8 +71,8 @@ class PlotResultsFn(Protocol):
         batch_shape: tuple[int, ...],
         device: str | torch.device,
         sigmoid_type: SigmoidTypes,
-    ) -> dict[str, plt.Figure]:
-        ...
+    ) -> dict[str, plt.Figure]: ...
+
 
 def optimize(
     target_model: nn.Module,
@@ -134,25 +139,27 @@ def optimize(
 
     n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
-    log_data: dict[str, float | wandb.Table] = {}
     data_iter = iter(train_loader)
 
-    alive_components: dict[str, Bool[Tensor, " C"]] = {
+    alive_components_M: dict[str, Bool[Tensor, " C"]] = {
         layer_name: torch.zeros(config.C, device=device).bool() for layer_name in components
     }
 
-    # Iterate one extra step for final logging/plotting/saving
-    for step in tqdm(range(config.steps + 1), ncols=0):
-        step_lr = get_lr_with_warmup(
+    def get_lr(step: int) -> float:
+        return get_lr_with_warmup(
             step=step,
             steps=config.steps,
             lr=config.lr,
             lr_schedule_fn=lr_schedule_fn,
             lr_warmup_pct=config.lr_warmup_pct,
         )
+
+    # Iterate one extra step for final logging/plotting/saving
+    for step in tqdm(range(config.steps + 1), ncols=0):
+        step_lr = get_lr(step)
+
         for group in optimizer.param_groups:
             group["lr"] = step_lr
-        log_data["lr"] = step_lr
 
         optimizer.zero_grad()
 
@@ -171,7 +178,7 @@ def optimize(
         )
         Vs = {module_name: components[module_name].V for module_name in components}
 
-        ci_lower_leaky, ci_upper_leaky = calc_causal_importances(
+        ci_lower_leaky, ci_upper_leaky_BxM = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,
@@ -179,8 +186,10 @@ def optimize(
             detach_inputs=False,
         )
 
-        for layer_name, ci in ci_upper_leaky.items():
-            alive_components[layer_name] = alive_components[layer_name] | (ci > 0.1).any(dim=(0, 1))
+        for layer_name, ci_BxM in ci_upper_leaky_BxM.items():
+            alive_this_step_BxM = ci_BxM > CAUSAL_IMPORTANCE_ALIVE_THRESHOLD
+            alive_this_step_M = reduce(alive_this_step_BxM, "... m -> m", torch.any)
+            alive_components_M[layer_name] = alive_components_M[layer_name] | alive_this_step_M
 
         total_loss, loss_terms = calculate_losses(
             model=model,
@@ -188,28 +197,33 @@ def optimize(
             config=config,
             components=components,
             ci_lower_leaky=ci_lower_leaky,
-            ci_upper_leaky=ci_upper_leaky,
+            ci_upper_leaky=ci_upper_leaky_BxM,
             target_out=target_out,
             device=device,
             n_params=n_params,
         )
 
-        log_data["loss/total"] = total_loss.item()
-        log_data.update(loss_terms)
-
         with torch.inference_mode():
             # --- Logging --- #
             if step % config.print_freq == 0:
+                log_data: dict[str, float | wandb.Table] = {
+                    "loss/total": total_loss.item(),
+                    **loss_terms,
+                    "lr": step_lr,
+                }
+
                 tqdm.write(f"--- Step {step} ---")
                 tqdm.write(f"LR: {step_lr:.6f}")
-                tqdm.write(f"Total Loss: {log_data['loss/total']:.7f}")
+                tqdm.write(f"Total Loss: {total_loss.item():.7f}")
                 for name, value in loss_terms.items():
                     tqdm.write(f"{name}: {value:.7f}")
 
                 if step > 0:
-                    for layer_name, layer_alive_components in alive_components.items():
-                        log_data[f"{layer_name}/n_alive_01"] = layer_alive_components.sum().item()
-                        alive_components[layer_name] = torch.zeros(config.C, device=device).bool()
+                    for layer_name, layer_alive_components_M in alive_components_M.items():
+                        log_data[f"metric/n_alive_01/{layer_name}"] = (
+                            layer_alive_components_M.sum().item()
+                        )
+                        alive_components_M[layer_name] = torch.zeros(config.C, device=device).bool()
 
                 # Calculate component logits and KL losses
                 masked_component_logits = model.forward_with_components(
@@ -247,7 +261,7 @@ def optimize(
                 if config.wandb_project:
                     ci_l_zero = calc_ci_l_zero(causal_importances=ci_lower_leaky)
                     for layer_name, layer_ci_l_zero in ci_l_zero.items():
-                        log_data[f"{layer_name}/ci_l0"] = layer_ci_l_zero
+                        log_data[f"metric/ci_l0_{layer_name}"] = layer_ci_l_zero
                     wandb.log(log_data, step=step)
 
             # --- Plotting --- #

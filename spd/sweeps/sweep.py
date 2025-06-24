@@ -1,8 +1,6 @@
 import subprocess
 from datetime import datetime
 from pathlib import Path
-import textwrap
-from time import sleep
 from typing import Any
 
 import wandb
@@ -123,18 +121,6 @@ def main(
 if __name__ == "__main__":
     main(
         experiment="gemma_mlp_up_14",
-        n_agents=8,
+        n_agents=2,
         job_suffix="test",
     )
-
-    # THIS DOES WORK WHEN RUN SEPARATELY
-    # for _ in range(2):
-    #     result = subprocess.run(
-    #         ["sbatch", "out/2025-06-24_20-59-51_gemma_mlp_up_14/run_agent.sh"],
-    #         capture_output=True,
-    #         text=True,
-    #         check=True,
-    #     )
-    #     # format: "Submitted batch job 12345"
-    #     job_id = result.stdout.strip().split()[-1]
-    #     print(f"Submitted job {job_id}")

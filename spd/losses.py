@@ -278,16 +278,16 @@ def calc_ce_losses(
 
     ce_losses = {
         # bounds:
-        "misc/target_ce_loss_vs_labels": target_ce.item(),
-        "misc/zero_masked_ce_loss_vs_labels": zero_masked_ce.item(),
+        "ce_loss/target_ce_loss_vs_labels": target_ce.item(),
+        "ce_loss/zero_masked_ce_loss_vs_labels": zero_masked_ce.item(),
         # raw CE
-        "misc/unmasked_ce_loss_vs_labels": unmasked_ce.item(),
-        "misc/masked_ce_loss_vs_labels": masked_ce.item(),
-        "misc/rand_masked_ce_loss_vs_labels": rand_masked_ce.item(),
+        "ce_loss/unmasked_ce_loss_vs_labels": unmasked_ce.item(),
+        "ce_loss/masked_ce_loss_vs_labels": masked_ce.item(),
+        "ce_loss/rand_masked_ce_loss_vs_labels": rand_masked_ce.item(),
         # CE unrecovered (between target and zero-masked)
-        "misc/ce_unrecovered_unmasked": ce_unrecovered_unmasked.item(),
-        "misc/ce_unrecovered_masked": ce_unrecovered_masked.item(),
-        "misc/ce_unrecovered_rand_masked": ce_unrecovered_rand_masked.item(),
+        "ce_unrecovered/unmasked": ce_unrecovered_unmasked.item(),
+        "ce_unrecovered/masked": ce_unrecovered_masked.item(),
+        "ce_unrecovered/rand_masked": ce_unrecovered_rand_masked.item(),
     }
 
     return ce_losses
