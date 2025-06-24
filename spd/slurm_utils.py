@@ -43,8 +43,14 @@ def create_slurm_script(
         #SBATCH --partition=all
         #SBATCH --output={slurm_logs_dir}/slurm-%j.out
 
-        # Change to the SPD repository directory
-        cd {REPO_ROOT}
+        # Create job-specific working directory
+        WORK_DIR="/tmp/spd-gf-copy-${{SLURM_JOB_ID}}"
+
+        # Clone the repository to the job-specific directory
+        git clone {REPO_ROOT} $WORK_DIR
+
+        # Change to the cloned repository directory
+        cd $WORK_DIR
 
         # Checkout the snapshot branch to ensure consistent code
         git checkout {snapshot_branch}
