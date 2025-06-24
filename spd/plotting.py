@@ -15,6 +15,7 @@ from torch import Tensor
 from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.sigmoids import SigmoidTypes
 
 
 def permute_to_identity(
@@ -136,6 +137,7 @@ def plot_causal_importance_vals(
     batch_shape: tuple[int, ...],
     device: str | torch.device,
     input_magnitude: float,
+    sigmoid_type: SigmoidTypes,
     plot_raw_cis: bool = True,
     orientation: Literal["vertical", "horizontal"] = "vertical",
     title_formatter: Callable[[str], str] | None = None,
@@ -172,7 +174,11 @@ def plot_causal_importance_vals(
     Vs = {module_name: v.V for module_name, v in components.items()}
 
     ci_raw, ci_upper_leaky_raw = calc_causal_importances(
-        pre_weight_acts=pre_weight_acts, Vs=Vs, gates=gates, detach_inputs=False
+        pre_weight_acts=pre_weight_acts,
+        Vs=Vs,
+        gates=gates,
+        sigmoid_type=sigmoid_type,
+        detach_inputs=False,
     )
 
     ci = {}
@@ -444,7 +450,7 @@ def create_toy_model_plot_results(
     gates: dict[str, Gate | GateMLP],
     batch_shape: tuple[int, ...],
     device: str | torch.device,
-    **_,
+    sigmoid_type: SigmoidTypes,
 ) -> dict[str, plt.Figure]:
     """Create standard plotting results for decomposition experiments.
 
@@ -470,6 +476,7 @@ def create_toy_model_plot_results(
         gates=gates,
         batch_shape=batch_shape,
         device=device,
+        sigmoid_type=sigmoid_type,
         input_magnitude=0.75,
     )
 

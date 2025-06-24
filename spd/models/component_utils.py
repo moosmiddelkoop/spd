@@ -52,6 +52,7 @@ def component_activation_statistics(
     | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_steps: int,
     device: str,
+    sigmoid_type: SigmoidTypes,
     threshold: float = 0.1,
 ) -> tuple[dict[str, float], dict[str, Float[Tensor, " C"]]]:
     """Get the number and strength of the masks over the full dataset."""
@@ -88,6 +89,7 @@ def component_activation_statistics(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,
+            sigmoid_type=sigmoid_type,
             detach_inputs=False,
         )
         for module_name, ci in causal_importances.items():
@@ -118,8 +120,8 @@ def calc_causal_importances(
     pre_weight_acts: dict[str, Float[Tensor, "... d_in"] | Int[Tensor, "... pos"]],
     Vs: Mapping[str, Float[Tensor, "d_in C"]],
     gates: Mapping[str, Gate | GateMLP],
+    sigmoid_type: SigmoidTypes,
     detach_inputs: bool = False,
-    sigmoid_type: SigmoidTypes = "leaky_hard",
 ) -> tuple[dict[str, Float[Tensor, "... C"]], dict[str, Float[Tensor, "... C"]]]:
     """Calculate component activations and causal importances in one pass to save memory.
 
