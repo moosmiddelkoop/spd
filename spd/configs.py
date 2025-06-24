@@ -237,6 +237,7 @@ class Config(BaseModel):
         default=None,
         description="Name of the attribute on the forward output that contains logits or activations",
     )
+
     # --- Task Specific ---
     task_config: TMSTaskConfig | ResidualMLPTaskConfig | LMTaskConfig = Field(
         ...,
