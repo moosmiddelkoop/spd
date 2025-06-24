@@ -223,7 +223,10 @@ def run_train(config: TMSTrainConfig, device: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if config.wandb_project:
-        wandb.init(project=config.wandb_project, name=run_name)
+        tag = f"tms_{model_cfg.n_features}-{model_cfg.n_hidden}"
+        if model_cfg.n_hidden_layers > 0:
+            tag += "-id"
+        wandb.init(project=config.wandb_project, name=run_name, tags=[tag])
 
     # Save config
     config_path = out_dir / "tms_train_config.yaml"
