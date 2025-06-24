@@ -3,8 +3,8 @@
 import subprocess
 import textwrap
 from pathlib import Path
+from time import sleep
 
-from spd.git_utils import create_git_snapshot
 from spd.settings import REPO_ROOT
 
 
@@ -12,9 +12,9 @@ def create_slurm_script(
     script_path: Path,
     job_name: str,
     command: str,
+    snapshot_branch: str,
     cpu: bool = False,
     time_limit: str = "24:00:00",
-    snapshot_branch: str | None = None,
 ) -> None:
     """Create a SLURM batch script with git snapshot for consistent code.
 
@@ -24,14 +24,9 @@ def create_slurm_script(
         command: Command to execute in the job
         cpu: If True, use CPU only, otherwise use GPU
         time_limit: Time limit for the job (default: 24:00:00)
-        snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
     """
-    # Create git snapshot if not provided
-    if snapshot_branch is None:
-        snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
-
     gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
-    slurm_logs_dir = Path.home() / "slurm_logs"
+    slurm_logs_dir = REPO_ROOT / "slurm_logs"
     slurm_logs_dir.mkdir(exist_ok=True)
 
     script_content = textwrap.dedent(f"""
@@ -72,6 +67,7 @@ def submit_slurm_jobs(script_paths: list[Path]) -> list[str]:
     job_ids = []
 
     for script_path in script_paths:
+        sleep(1)
         result = subprocess.run(
             ["sbatch", str(script_path)], capture_output=True, text=True, check=True
         )

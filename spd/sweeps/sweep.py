@@ -17,6 +17,7 @@ Before running, update the spd/sweeps/sweep_params.yaml file with the desired pa
 
 import tempfile
 from pathlib import Path
+from time import sleep
 from typing import Any
 
 import fire
@@ -132,6 +133,8 @@ def main(
         print(f"Job IDs: {', '.join(job_ids)}")
         print("\nView logs in: ~/slurm_logs/slurm-<job_id>.out")
         print(f"Sweep URL: {wandb_url}")
+
+        sleep(1)  # race condition
         # Temporary directory and script file are automatically cleaned up here
 
 
