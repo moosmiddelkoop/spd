@@ -44,12 +44,14 @@ class ComponentModel(nn.Module):
             target_module_patterns=target_module_patterns, C=C
         )
 
-        gate_class = GateMLP if n_ci_mlp_neurons > 0 else Gate
-        gate_kwargs = {"C": C}
         if n_ci_mlp_neurons > 0:
-            gate_kwargs["n_ci_mlp_neurons"] = n_ci_mlp_neurons
+            gates = {
+                name: GateMLP(C=C, n_ci_mlp_neurons=n_ci_mlp_neurons) for name in self.components
+            }
+        else:
+            gates = {name: Gate(C=C) for name in self.components}
 
-        self.gates = nn.ModuleDict({name: gate_class(**gate_kwargs) for name in self.components})
+        self.gates = nn.ModuleDict(gates)
 
     def create_target_components(self, target_module_patterns: list[str], C: int) -> nn.ModuleDict:
         """Create target components for the model."""

@@ -62,10 +62,10 @@ def optimize(
     target_model: nn.Module,
     config: Config,
     device: str,
-    train_loader: DataLoader[Int[Tensor, "..."]]
+    dl: DataLoader[Int[Tensor, "..."]]
     | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
-    eval_loader: DataLoader[Int[Tensor, "..."]]
-    | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
+    # eval_loader: DataLoader[Int[Tensor, "..."]]
+    # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_eval_steps: int,
     out_dir: Path | None,
     plot_results_fn: Callable[..., dict[str, plt.Figure]] | None = None,
@@ -123,7 +123,7 @@ def optimize(
     n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
     log_data: dict[str, float | wandb.Table] = {}
-    data_iter = iter(train_loader)
+    data_iter = iter(dl)
 
     alive_components: dict[str, Bool[Tensor, " C"]] = {
         layer_name: torch.zeros(config.C, device=device).bool() for layer_name in components
@@ -149,7 +149,7 @@ def optimize(
             batch = extract_batch_data(batch_item)
         except StopIteration:
             logger.warning("Dataloader exhausted, resetting iterator.")
-            data_iter = iter(train_loader)
+            data_iter = iter(dl)
             batch_item = next(data_iter)
             batch = extract_batch_data(batch_item)
         batch = batch.to(device)
@@ -259,7 +259,7 @@ def optimize(
                 fig_dict.update(ci_histogram_figs)
 
                 mean_component_activation_counts = component_activation_statistics(
-                    model=model, dataloader=eval_loader, n_steps=n_eval_steps, device=device
+                    model=model, data_iter=data_iter, n_steps=n_eval_steps, device=device
                 )[1]
                 assert mean_component_activation_counts is not None
                 fig_dict["mean_component_activation_counts"] = (

@@ -1,5 +1,5 @@
-from collections.abc import Mapping
-from typing import cast
+from collections.abc import Iterator, Mapping
+from typing import Any, cast
 
 import einops
 import torch
@@ -48,8 +48,9 @@ def calc_ci_l_zero(
 
 def component_activation_statistics(
     model: ComponentModel,
-    dataloader: DataLoader[Int[Tensor, "..."]]
-    | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
+    # dataloader: DataLoader[Int[Tensor, "..."]]
+    # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
+    data_iter: Iterator[Any],
     n_steps: int,
     device: str,
     threshold: float = 0.1,
@@ -73,7 +74,6 @@ def component_activation_statistics(
         module_name.replace("-", "."): torch.zeros(model.C, device=device)
         for module_name in components
     }
-    data_iter = iter(dataloader)
     for _ in range(n_steps):
         # --- Get Batch --- #
         batch = extract_batch_data(next(data_iter))
