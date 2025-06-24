@@ -106,7 +106,8 @@ def train(
     run_name: str,
 ) -> Float[Tensor, ""]:
     if config.wandb_project:
-        config = init_wandb(config, config.wandb_project, name=run_name)
+        tag = f"resid_mlp{config.resid_mlp_config.n_layers}-train"
+        config = init_wandb(config, config.wandb_project, name=run_name, tags=[tag])
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
