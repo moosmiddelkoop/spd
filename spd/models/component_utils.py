@@ -48,9 +48,8 @@ def calc_ci_l_zero(
 
 def component_activation_statistics(
     model: ComponentModel,
-    # dataloader: DataLoader[Int[Tensor, "..."]]
-    # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
-    data_iter: Iterator[Any],
+    dataloader: DataLoader[Int[Tensor, "..."]]
+    | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_steps: int,
     device: str,
     sigmoid_type: SigmoidTypes,
@@ -75,6 +74,7 @@ def component_activation_statistics(
         module_name.replace("-", "."): torch.zeros(model.C, device=device)
         for module_name in components
     }
+    data_iter = iter(dataloader)
     for _ in range(n_steps):
         # --- Get Batch --- #
         batch = extract_batch_data(next(data_iter))

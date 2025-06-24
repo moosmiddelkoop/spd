@@ -297,6 +297,8 @@ def init_Vs_and_Us_(
         U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
 
         # Calculate inner products
-        C_norms = einops.einsum(V, U, target_weight, "d_in C, C d_out, d_out d_in -> C")
+        inner = einops.einsum(U, target_weight, "C d_out, d_out d_in -> C d_in")
+        C_norms = einops.einsum(inner, V, "C d_in, d_in C -> C")
+
         # Scale U by the inner product.
         U.data[:] = U.data * C_norms.unsqueeze(-1)

@@ -241,40 +241,54 @@ def calc_ce_losses(
     Returns:
         Dictionary containing CE losses for different scenarios
     """
-    ce_losses: dict[str, float] = {}
-
     # Flatten logits and batch for CE calculation
-    flat_all_component_logits = einops.rearrange(
-        unmasked_component_logits, "... vocab -> (...) vocab"
-    )
-    flat_masked_component_logits = einops.rearrange(
-        masked_component_logits, "... vocab -> (...) vocab"
-    )
-    flat_batch = batch.flatten()
+    assert batch.ndim == 2, "expected 2 dimensions (batch, seq_len)"
 
-    # CE vs true labels
-    unmasked_ce_loss = F.cross_entropy(input=flat_all_component_logits[:-1], target=flat_batch[1:])
-    masked_ce_loss = F.cross_entropy(input=flat_masked_component_logits[:-1], target=flat_batch[1:])
+    masked_batch = batch.clone()
+    masked_batch[:, -1] = -100
+    masked_batch = masked_batch.flatten()
 
-    flat_target_logits = einops.rearrange(target_logits, "... vocab -> (...) vocab")
-    target_ce_loss = F.cross_entropy(input=flat_target_logits[:-1], target=flat_batch[1:])
+    def ce_vs_labels(logits: Float[Tensor, "batch seq_len vocab"]) -> Float[Tensor, ""]:
+        flat_logits = einops.rearrange(logits, "batch seq_len vocab -> (batch seq_len) vocab")
+        return F.cross_entropy(flat_logits[:-1], masked_batch[1:])
 
     # CE when every component is fully masked (all-zero masks)
     zero_masks = {k: torch.zeros_like(v) for k, v in masks.items()}
     zero_masked_component_logits = model.forward_with_components(
         batch, components=components, masks=zero_masks
     )
-    flat_zero_masked_component_logits = einops.rearrange(
-        zero_masked_component_logits, "... vocab -> (...) vocab"
-    )
-    zero_masked_ce_loss = F.cross_entropy(
-        input=flat_zero_masked_component_logits[:-1], target=flat_batch[1:]
+
+    # CE when every component is completely randomly masked
+    rand_masks = {k: torch.rand_like(v) for k, v in masks.items()}
+    rand_masked_component_logits = model.forward_with_components(
+        batch, components=components, masks=rand_masks
     )
 
-    ce_losses["misc/unmasked_ce_loss_vs_labels"] = unmasked_ce_loss.item()
-    ce_losses["misc/masked_ce_loss_vs_labels"] = masked_ce_loss.item()
-    ce_losses["misc/target_ce_loss_vs_labels"] = target_ce_loss.item()
-    ce_losses["misc/zero_masked_ce_loss_vs_labels"] = zero_masked_ce_loss.item()
+    # CE vs true labels
+    unmasked_ce = ce_vs_labels(unmasked_component_logits)
+    masked_ce = ce_vs_labels(masked_component_logits)
+    target_ce = ce_vs_labels(target_logits)
+    zero_masked_ce = ce_vs_labels(zero_masked_component_logits)
+    rand_masked_ce = ce_vs_labels(rand_masked_component_logits)
+
+    # CE unrecovered vs zero-masked
+    ce_unrecovered_masked = (masked_ce - target_ce) / (zero_masked_ce - target_ce)
+    ce_unrecovered_unmasked = (unmasked_ce - target_ce) / (zero_masked_ce - target_ce)
+    ce_unrecovered_rand_masked = (rand_masked_ce - target_ce) / (zero_masked_ce - target_ce)
+
+    ce_losses = {
+        # bounds:
+        "misc/target_ce_loss_vs_labels": target_ce.item(),
+        "misc/zero_masked_ce_loss_vs_labels": zero_masked_ce.item(),
+        # raw CE
+        "misc/unmasked_ce_loss_vs_labels": unmasked_ce.item(),
+        "misc/masked_ce_loss_vs_labels": masked_ce.item(),
+        "misc/rand_masked_ce_loss_vs_labels": rand_masked_ce.item(),
+        # CE unrecovered (between target and zero-masked)
+        "misc/ce_unrecovered_unmasked": ce_unrecovered_unmasked.item(),
+        "misc/ce_unrecovered_masked": ce_unrecovered_masked.item(),
+        "misc/ce_unrecovered_rand_masked": ce_unrecovered_rand_masked.item(),
+    }
 
     return ce_losses
 
@@ -284,8 +298,8 @@ def calculate_losses(
     batch: Int[Tensor, "..."],
     config: Config,
     components: dict[str, LinearComponent | EmbeddingComponent],
-    causal_importances: dict[str, Float[Tensor, "batch C"]],
-    causal_importances_upper_leaky: dict[str, Float[Tensor, "batch C"]],
+    ci_lower_leaky: dict[str, Float[Tensor, "... C"]],
+    ci_upper_leaky: dict[str, Float[Tensor, "... C"]],
     target_out: Tensor,
     device: str,
     n_params: int,
@@ -322,7 +336,7 @@ def calculate_losses(
             model=model,
             batch=batch,
             components=components,
-            masks=causal_importances,
+            masks=ci_lower_leaky,
             target_out=target_out,
             loss_type=config.output_loss_type,
         )
@@ -332,7 +346,7 @@ def calculate_losses(
     # Stochastic reconstruction loss
     if config.stochastic_recon_coeff is not None:
         stochastic_masks = calc_stochastic_masks(
-            causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
         )
         stochastic_recon_loss = torch.tensor(0.0, device=target_out.device)
         for i in range(len(stochastic_masks)):
@@ -355,7 +369,7 @@ def calculate_losses(
             batch=batch,
             device=device,
             components=components,
-            masks=[causal_importances],
+            masks=[ci_lower_leaky],
             target_out=target_out,
             loss_type=config.output_loss_type,
         )
@@ -365,7 +379,7 @@ def calculate_losses(
     # Stochastic reconstruction layerwise loss
     if config.stochastic_recon_layerwise_coeff is not None:
         layerwise_stochastic_masks = calc_stochastic_masks(
-            causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
         )
         stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
             model=model,
@@ -381,7 +395,7 @@ def calculate_losses(
 
     # Importance minimality loss
     importance_minimality_loss = calc_importance_minimality_loss(
-        ci_upper_leaky=causal_importances_upper_leaky, pnorm=config.pnorm
+        ci_upper_leaky=ci_upper_leaky, pnorm=config.pnorm
     )
     total_loss += config.importance_minimality_coeff * importance_minimality_loss
     loss_terms["loss/importance_minimality"] = importance_minimality_loss.item()
@@ -389,7 +403,7 @@ def calculate_losses(
     # Schatten loss
     if config.schatten_coeff is not None:
         schatten_loss = calc_schatten_loss(
-            ci_upper_leaky=causal_importances_upper_leaky,
+            ci_upper_leaky=ci_upper_leaky,
             pnorm=config.pnorm,
             components=components,
             device=device,
@@ -399,7 +413,7 @@ def calculate_losses(
 
     # Output reconstruction loss
     if config.out_recon_coeff is not None:
-        masks_all_ones = {k: torch.ones_like(v) for k, v in causal_importances.items()}
+        masks_all_ones = {k: torch.ones_like(v) for k, v in ci_lower_leaky.items()}
         out_recon_loss = calc_masked_recon_loss(
             model=model,
             batch=batch,
@@ -414,7 +428,7 @@ def calculate_losses(
     # Embedding reconstruction loss
     if config.embedding_recon_coeff is not None:
         stochastic_masks = calc_stochastic_masks(
-            causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
         )
         assert len(components) == 1, "Only one embedding component is supported"
         component = list(components.values())[0]

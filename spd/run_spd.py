@@ -1,6 +1,5 @@
 """Run SPD on a model."""
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -74,10 +73,10 @@ def optimize(
     target_model: nn.Module,
     config: Config,
     device: str,
-    dl: DataLoader[Int[Tensor, "..."]]
+    train_loader: DataLoader[Int[Tensor, "..."]]
     | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
-    # eval_loader: DataLoader[Int[Tensor, "..."]]
-    # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
+    eval_loader: DataLoader[Int[Tensor, "..."]]
+    | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_eval_steps: int,
     out_dir: Path | None,
     plot_results_fn: PlotResultsFn | None = None,
@@ -135,7 +134,7 @@ def optimize(
     n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
     log_data: dict[str, float | wandb.Table] = {}
-    data_iter = iter(dl)
+    data_iter = iter(train_loader)
 
     alive_components: dict[str, Bool[Tensor, " C"]] = {
         layer_name: torch.zeros(config.C, device=device).bool() for layer_name in components
@@ -161,7 +160,7 @@ def optimize(
             batch = extract_batch_data(batch_item)
         except StopIteration:
             logger.warning("Dataloader exhausted, resetting iterator.")
-            data_iter = iter(dl)
+            data_iter = iter(train_loader)
             batch_item = next(data_iter)
             batch = extract_batch_data(batch_item)
         batch = batch.to(device)
@@ -171,7 +170,7 @@ def optimize(
         )
         Vs = {module_name: components[module_name].V for module_name in components}
 
-        causal_importances, causal_importances_upper_leaky = calc_causal_importances(
+        ci_upper_leaky, ci_lower_leaky = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,
@@ -179,7 +178,7 @@ def optimize(
             sigmoid_type=config.sigmoid_type,
         )
 
-        for layer_name, ci in causal_importances.items():
+        for layer_name, ci in ci_upper_leaky.items():
             alive_components[layer_name] = alive_components[layer_name] | (ci > 0.1).any(dim=(0, 1))
 
         total_loss, loss_terms = calculate_losses(
@@ -187,8 +186,8 @@ def optimize(
             batch=batch,
             config=config,
             components=components,
-            causal_importances=causal_importances,
-            causal_importances_upper_leaky=causal_importances_upper_leaky,
+            ci_lower_leaky=ci_lower_leaky,
+            ci_upper_leaky=ci_upper_leaky,
             target_out=target_out,
             device=device,
             n_params=n_params,
@@ -213,7 +212,7 @@ def optimize(
 
                 # Calculate component logits and KL losses
                 masked_component_logits = model.forward_with_components(
-                    batch, components=components, masks=causal_importances
+                    batch, components=components, masks=ci_lower_leaky
                 )
                 unmasked_component_logits = model.forward_with_components(
                     batch, components=components, masks=None
@@ -233,19 +232,19 @@ def optimize(
                         model=model,
                         batch=batch,
                         components=components,
-                        masks=causal_importances,
+                        masks=ci_lower_leaky,
                         unmasked_component_logits=unmasked_component_logits,
                         masked_component_logits=masked_component_logits,
                         target_logits=target_logits,
                     )
                     log_data.update(ce_losses)
 
-                embed_ci_table = create_embed_ci_sample_table(causal_importances)
+                embed_ci_table = create_embed_ci_sample_table(ci_lower_leaky)
                 if embed_ci_table is not None:
                     log_data["misc/embed_ci_sample"] = embed_ci_table
 
                 if config.wandb_project:
-                    ci_l_zero = calc_ci_l_zero(causal_importances=causal_importances)
+                    ci_l_zero = calc_ci_l_zero(causal_importances=ci_lower_leaky)
                     for layer_name, layer_ci_l_zero in ci_l_zero.items():
                         log_data[f"{layer_name}/ci_l0"] = layer_ci_l_zero
                     wandb.log(log_data, step=step)
@@ -268,12 +267,12 @@ def optimize(
                         sigmoid_type=config.sigmoid_type,
                     )
 
-                ci_histogram_figs = plot_ci_histograms(causal_importances=causal_importances)
+                ci_histogram_figs = plot_ci_histograms(causal_importances=ci_lower_leaky)
                 fig_dict.update(ci_histogram_figs)
 
                 mean_component_activation_counts = component_activation_statistics(
                     model=model,
-                    data_iter=data_iter,
+                    dataloader=eval_loader,
                     n_steps=n_eval_steps,
                     device=device,
                     sigmoid_type=config.sigmoid_type,

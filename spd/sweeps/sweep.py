@@ -67,7 +67,7 @@ def main(
     Args:
         experiment: Experiment name. See spd/registry.py for available experiments.
             Currently: tms_5-2, tms_5-2-id, tms_40-10, tms_40-10-id, resid_mlp1, resid_mlp2,
-            resid_mlp3, ss_emb
+            resid_mlp3, gemma_mlp_up_14
         n_agents: Number of SLURM agents to deploy for the sweep (must be positive)
         job_suffix: Optional suffix to add to SLURM job names for identification
         cpu: Use CPU instead of GPU (default: False, uses GPU)
