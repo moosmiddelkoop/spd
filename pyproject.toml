@@ -13,7 +13,6 @@ dependencies = [
     "wandb",
     "fire",
     "tqdm",
-    "pytest",
     "ipykernel",
     "transformers",
     "jaxtyping",
@@ -29,8 +28,9 @@ dependencies = [
     "datasets",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
+    "pytest",
     "ruff",
     "basedpyright",
     "pre-commit",

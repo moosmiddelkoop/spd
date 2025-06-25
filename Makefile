@@ -1,10 +1,10 @@
 .PHONY: install
 install:
-	pip install -e .
+	uv sync --no-dev
 
 .PHONY: install-dev
 install-dev:
-	pip install -e .[dev]
+	uv sync
 	pre-commit install
 
 .PHONY: type
@@ -23,8 +23,8 @@ check:
 
 .PHONY: test
 test:
-	python -m pytest tests/
+	uv run pytest tests/
 
 .PHONY: test-all
 test-all:
-	python -m pytest tests/ --runslow
+	uv run pytest tests/ --runslow
