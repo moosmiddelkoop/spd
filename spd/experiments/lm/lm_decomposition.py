@@ -5,6 +5,7 @@ from pathlib import Path
 
 import fire
 import matplotlib.pyplot as plt
+import torch
 import wandb
 import yaml
 from jaxtyping import Float
@@ -71,6 +72,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         path_to_class=config.pretrained_model_class,
         model_path=None,
         model_name_hf=config.pretrained_model_name_hf,
+        torch_dtype=torch.bfloat16 if config.autocast_bfloat16 else torch.float32
     )
 
     # --- Setup Run Name and Output Dir --- #
@@ -114,26 +116,6 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         ddp_world_size=1,
     )
 
-    logger.info("Loading eval dataset...")
-    # eval_data_config = DatasetConfig(
-    #     name=config.task_config.dataset_name,
-    #     hf_tokenizer_path=config.pretrained_model_name_hf,
-    #     split=config.task_config.eval_data_split,
-    #     n_ctx=config.task_config.max_seq_len,
-    #     is_tokenized=False,
-    #     streaming=True,
-    #     column_name=config.task_config.column_name,
-    # )
-    # eval_loader, _ = create_data_loader(
-    #     dataset_config=eval_data_config,
-    #     batch_size=config.batch_size,
-    #     buffer_size=config.task_config.buffer_size,
-    #     global_seed=config.seed,
-    #     ddp_rank=0,
-    #     ddp_world_size=1,
-    # )
-    # logger.info("Dataset and tokenizer loaded.")
-
     # TODO: Below not needed when TMS supports config.n_eval_steps
     assert config.n_eval_steps is not None, "n_eval_steps must be set"
     logger.info("Starting optimization...")
@@ -154,5 +136,4 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
 
 if __name__ == "__main__":
-    # fire.Fire(main)
-    main("spd/experiments/lm/gemma_config.yaml")
+    fire.Fire(main)

@@ -118,6 +118,10 @@ class Config(BaseModel):
         default="leaky_hard",
         description="Type of sigmoid to use for causal importance calculation",
     )
+    gate_init_central: bool = Field(
+        default=False,
+        description="If True, initialize the gate bias to 0.5",
+    )
     target_module_patterns: list[str] = Field(
         ...,
         description="List of fnmatch-style patterns that select modules to decompose",

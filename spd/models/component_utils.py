@@ -1,11 +1,10 @@
 from collections.abc import Iterator, Mapping
-from typing import Any, cast
+from typing import Any
 
 import einops
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from torch.utils.data import DataLoader
 
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
@@ -111,7 +110,10 @@ def calc_causal_importances(
     gates: Mapping[str, Gate | GateMLP],
     sigmoid_type: SigmoidTypes,
     detach_inputs: bool = False,
-) -> tuple[dict[str, Float[Tensor, "... C"]], dict[str, Float[Tensor, "... C"]]]:
+) -> tuple[
+    dict[str, Float[Tensor, "... C"]],
+    dict[str, Float[Tensor, "... C"]],
+]:
     """Calculate component activations and causal importances in one pass to save memory.
 
     Args:

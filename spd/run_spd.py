@@ -21,11 +21,7 @@ from spd.configs import Config
 from spd.log import logger
 from spd.losses import calc_ce_losses, calculate_losses
 from spd.models.component_model import ComponentModel, init_Vs_and_Us_
-from spd.models.component_utils import (
-    calc_causal_importances,
-    calc_ci_l_zero,
-    # component_activation_statistics, # basically inlined this
-)
+from spd.models.component_utils import calc_causal_importances, calc_ci_l_zero
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.models.sigmoids import SigmoidTypes
 from spd.plotting import (
@@ -40,7 +36,7 @@ from spd.utils import (
     get_lr_with_warmup,
 )
 
-CAUSAL_IMPORTANCE_ALIVE_THRESHOLD = 0.1
+CI_ALIVE_THRESHOLD = 0.1
 
 
 def get_common_run_name_suffix(config: Config) -> str:
@@ -177,7 +173,9 @@ def optimize(
         target_module_patterns=config.target_module_patterns,
         C=config.C,
         n_ci_mlp_neurons=config.n_ci_mlp_neurons,
+        init_central=config.gate_init_central,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
+        dtype=torch.bfloat16 if config.autocast_bfloat16 else torch.float32,
     )
     model.to(device)
 
@@ -282,7 +280,7 @@ def optimize(
                 )
 
                 for layer_name, ci_BxM in ci_upper_leaky_BxM.items():
-                    alive_this_step_BxM = ci_BxM > CAUSAL_IMPORTANCE_ALIVE_THRESHOLD
+                    alive_this_step_BxM = ci_BxM > CI_ALIVE_THRESHOLD
                     alive_this_step_M = reduce(alive_this_step_BxM, "... m -> m", torch.any)
                     alive_components_M[layer_name] = (
                         alive_components_M[layer_name] | alive_this_step_M
@@ -378,12 +376,10 @@ def optimize(
 
                 for module_name, ci in causal_importances.items():
                     # mask (batch, pos, C) or (batch, C)
-                    sum_dims = ci.shape[:-1]
+                    n_tokens[module_name] += ci.shape[:-1].numel()
 
-                    n_tokens[module_name] += sum_dims.numel()
-
-                    n_active_components = (ci > CAUSAL_IMPORTANCE_ALIVE_THRESHOLD).sum(dim=sum_dims)
-                    component_activation_counts[module_name] += n_active_components
+                    n_active_components_C = reduce(ci > CI_ALIVE_THRESHOLD, "... C -> C", torch.sum)
+                    component_activation_counts[module_name] += n_active_components_C
 
             mean_component_activation_counts_plot = plot_mean_component_activation_counts(
                 mean_component_activation_counts={

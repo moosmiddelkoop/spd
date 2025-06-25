@@ -12,10 +12,14 @@ from spd.module_utils import init_param_
 class Gate(nn.Module):
     """A gate that maps a single input to a single output."""
 
-    def __init__(self, C: int):
+    def __init__(self, C: int, init_central: bool, dtype: torch.dtype):
         super().__init__()
-        self.weight = nn.Parameter(torch.empty((C,)))
-        self.bias = nn.Parameter(torch.zeros((C,)))
+        self.weight = nn.Parameter(torch.empty((C,), dtype=dtype))
+        self.bias = nn.Parameter(torch.zeros((C,), dtype=dtype))
+        if init_central:
+            with torch.no_grad():
+                self.bias.add_(0.5)
+
         fan_val = 1  # Since each weight gets applied independently
         init_param_(self.weight, fan_val=fan_val, nonlinearity="linear")
 
@@ -27,14 +31,17 @@ class Gate(nn.Module):
 class GateMLP(nn.Module):
     """A gate with a hidden layer that maps a single input to a single output."""
 
-    def __init__(self, C: int, n_ci_mlp_neurons: int):
+    def __init__(self, C: int, n_ci_mlp_neurons: int, init_central: bool, dtype: torch.dtype):
         super().__init__()
         self.n_ci_mlp_neurons = n_ci_mlp_neurons
 
-        self.mlp_in = nn.Parameter(torch.empty((C, n_ci_mlp_neurons)))
-        self.in_bias = nn.Parameter(torch.zeros((C, n_ci_mlp_neurons)))
-        self.mlp_out = nn.Parameter(torch.empty((C, n_ci_mlp_neurons)))
-        self.out_bias = nn.Parameter(torch.zeros((C,)))
+        self.mlp_in = nn.Parameter(torch.empty((C, n_ci_mlp_neurons), dtype=dtype))
+        self.in_bias = nn.Parameter(torch.zeros((C, n_ci_mlp_neurons), dtype=dtype))
+        self.mlp_out = nn.Parameter(torch.empty((C, n_ci_mlp_neurons), dtype=dtype))
+        self.out_bias = nn.Parameter(torch.zeros((C,), dtype=dtype))
+        if init_central:
+            with torch.no_grad():
+                self.out_bias.add_(0.5)
 
         init_param_(self.mlp_in, fan_val=1, nonlinearity="relu")
         init_param_(self.mlp_out, fan_val=n_ci_mlp_neurons, nonlinearity="linear")
@@ -68,12 +75,12 @@ class LinearComponent(nn.Module):
     The weight matrix W is decomposed as W = U^T @ V^T, where V and U are learned parameters.
     """
 
-    def __init__(self, d_in: int, d_out: int, C: int, bias: Tensor | None):
+    def __init__(self, d_in: int, d_out: int, C: int, bias: Tensor | None, dtype: torch.dtype):
         super().__init__()
         self.C = C
 
-        self.V = nn.Parameter(torch.empty(d_in, C))
-        self.U = nn.Parameter(torch.empty(C, d_out))
+        self.V = nn.Parameter(torch.empty(d_in, C, dtype=dtype))
+        self.U = nn.Parameter(torch.empty(C, d_out, dtype=dtype))
         self.bias = bias
 
         init_param_(self.V, fan_val=d_out, nonlinearity="linear")
@@ -117,12 +124,13 @@ class EmbeddingComponent(nn.Module):
         vocab_size: int,
         embedding_dim: int,
         C: int,
+        dtype: torch.dtype,
     ):
         super().__init__()
         self.C: int = C
 
-        self.V: nn.Parameter = nn.Parameter(torch.empty(vocab_size, C))
-        self.U: nn.Parameter = nn.Parameter(torch.empty(C, embedding_dim))
+        self.V: nn.Parameter = nn.Parameter(torch.empty(vocab_size, C, dtype=dtype))
+        self.U: nn.Parameter = nn.Parameter(torch.empty(C, embedding_dim, dtype=dtype))
 
         init_param_(self.V, fan_val=embedding_dim, nonlinearity="linear")
         init_param_(self.U, fan_val=C, nonlinearity="linear")

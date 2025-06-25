@@ -1,8 +1,5 @@
-# Config for tinystories
-
 # --- WandB ---
 wandb_project: oli-spd
-# wandb_project: null
 wandb_run_name: null
 wandb_run_name_prefix: ""
 
@@ -16,21 +13,22 @@ target_module_patterns: ["model.layers.14.mlp.up_proj"]
 
 # --- Loss Coefficients ---
 faithfulness_coeff: 1.0
-recon_coeff: 0.0004 # HERE
-stochastic_recon_coeff: 0.0004 # HERE
+recon_coeff: 99999
+stochastic_recon_coeff: 99999
 recon_layerwise_coeff: null
 stochastic_recon_layerwise_coeff: null
-importance_minimality_coeff: 3.0e-9  # HERE
+importance_minimality_coeff: 99999
 schatten_coeff: null
 embedding_recon_coeff: null
 is_embed_unembed_recon: false
-pnorm: 1.0  # HERE
+pnorm: 99999
 output_loss_type: kl
 
 # --- Training ---
-batch_size: 2
-steps: 50_000
-lr: 1.0e-4  # HERE
+batch_size: 16
+gradient_accumulation_steps: 4
+steps: 10_000
+lr: 99999
 lr_schedule: constant
 lr_warmup_pct: 0.01
 lr_exponential_halflife: null
@@ -53,8 +51,8 @@ task_config:
   task_name: lm
   max_seq_len: 1024
   buffer_size: 1000
-  # dataset_name: cerebras/SlimPajama-627B
-  dataset_name: HuggingFaceFW/fineweb
+  dataset_name: cerebras/SlimPajama-627B
+  # dataset_name: HuggingFaceFW/fineweb
   column_name: "text"
   train_data_split: "train"
   eval_data_split: "asdf"

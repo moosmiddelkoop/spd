@@ -29,25 +29,26 @@ from spd.settings import REPO_ROOT
 from spd.slurm_utils import create_slurm_script, submit_slurm_jobs
 
 
-def get_sweep_configuration(decomp_script: Path, config_path: Path) -> dict[str, Any]:
+def get_sweep_configuration(
+    decomp_script: Path, base_config_path: Path, sweep_params_path: Path
+) -> dict[str, Any]:
     """Create a sweep configuration dictionary for the given experiment.
 
     Args:
         decomp_script: Path to the decomposition script
-        config_path: Path to the configuration YAML file
+        base_config_path: Path to the configuration YAML file
 
     Returns:
         Dictionary containing the sweep configuration
     """
     # Load sweep parameters from YAML file
-    sweep_params_path = REPO_ROOT / "spd/sweeps/sweep_params.yaml"
     with open(sweep_params_path) as f:
         sweep_params = yaml.safe_load(f)
 
     # Build the full sweep configuration
     sweep_config = {
         "program": str(decomp_script),
-        "command": ["${env}", "${interpreter}", "${program}", str(config_path)],
+        "command": ["${env}", "${interpreter}", "${program}", str(base_config_path)],
     }
 
     # Inject the loaded parameters into the configuration
@@ -59,6 +60,7 @@ def get_sweep_configuration(decomp_script: Path, config_path: Path) -> dict[str,
 def main(
     experiment: str,
     n_agents: int,
+    sweep_params_path: Path = REPO_ROOT / "spd/sweeps/sweep_params.yaml",
     job_suffix: str = "",
     cpu: bool = False,
 ) -> None:
@@ -67,7 +69,7 @@ def main(
     Args:
         experiment: Experiment name. See spd/registry.py for available experiments.
             Currently: tms_5-2, tms_5-2-id, tms_40-10, tms_40-10-id, resid_mlp1, resid_mlp2,
-            resid_mlp3, ss_emb
+            resid_mlp3, ss_emb, gemma
         n_agents: Number of SLURM agents to deploy for the sweep (must be positive)
         job_suffix: Optional suffix to add to SLURM job names for identification
         cpu: Use CPU instead of GPU (default: False, uses GPU)
@@ -88,9 +90,7 @@ def main(
     print(f"  Config file: {config_path}")
 
     # Create sweep configuration dictionary
-    sweep_config_dict = get_sweep_configuration(
-        decomp_script=decomp_script, config_path=config_path
-    )
+    sweep_config_dict = get_sweep_configuration(decomp_script, config_path, sweep_params_path)
 
     # Create the sweep using wandb API
     sweep_id = wandb.sweep(sweep=sweep_config_dict, project="spd")
@@ -110,7 +110,7 @@ def main(
 
     job_name = f"spd-sweep-{job_suffix}" if job_suffix else "spd-sweep"
     agent_id = f"{org_name}/{project_name}/{sweep_id}"
-    command = f"wandb agent {agent_id}"
+    command = f"export WANDB_DISABLE_SERVICE=true && wandb agent {agent_id}"
 
     # Use a temporary directory for the agent script
     with tempfile.TemporaryDirectory() as temp_dir:

@@ -34,26 +34,38 @@ class ComponentModel(nn.Module):
         target_module_patterns: list[str],
         C: int,
         n_ci_mlp_neurons: int,
+        init_central: bool,
         pretrained_model_output_attr: str | None,
+        dtype: torch.dtype,
     ):
         super().__init__()
         self.model = base_model
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
         self.components = self.create_target_components(
-            target_module_patterns=target_module_patterns, C=C
+            target_module_patterns=target_module_patterns, C=C, dtype=dtype
         )
 
         if n_ci_mlp_neurons > 0:
             gates = {
-                name: GateMLP(C=C, n_ci_mlp_neurons=n_ci_mlp_neurons) for name in self.components
+                name: GateMLP(
+                    C=C, n_ci_mlp_neurons=n_ci_mlp_neurons, init_central=init_central, dtype=dtype
+                )
+                for name in self.components
             }
         else:
-            gates = {name: Gate(C=C) for name in self.components}
+            gates = {
+                name: Gate(C=C, init_central=init_central, dtype=dtype) for name in self.components
+            }
 
         self.gates = nn.ModuleDict(gates)
 
-    def create_target_components(self, target_module_patterns: list[str], C: int) -> nn.ModuleDict:
+    def create_target_components(
+        self,
+        target_module_patterns: list[str],
+        C: int,
+        dtype: torch.dtype,
+    ) -> nn.ModuleDict:
         """Create target components for the model."""
         components: dict[str, LinearComponent | EmbeddingComponent] = {}
         matched_patterns: set[str] = set()
@@ -66,13 +78,14 @@ class ComponentModel(nn.Module):
                         d_out, d_in = module.weight.shape
                         # Replace "." with "-" in the name to avoid issues with module dict keys
                         components[name.replace(".", "-")] = LinearComponent(
-                            d_in=d_in, d_out=d_out, C=C, bias=module.bias
+                            d_in=d_in, d_out=d_out, C=C, bias=module.bias, dtype=dtype
                         )
                     elif isinstance(module, nn.Embedding):
                         components[name.replace(".", "-")] = EmbeddingComponent(
                             vocab_size=module.num_embeddings,
                             embedding_dim=module.embedding_dim,
                             C=C,
+                            dtype=dtype,
                         )
                     else:
                         raise ValueError(
@@ -268,6 +281,8 @@ class ComponentModel(nn.Module):
             C=config.C,
             n_ci_mlp_neurons=config.n_ci_mlp_neurons,
             pretrained_model_output_attr=config.pretrained_model_output_attr,
+            init_central=False,
+            # init_central=config.init_central,
         )
         comp_model.load_state_dict(model_weights)
         return comp_model, config, out_dir

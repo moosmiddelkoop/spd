@@ -1,15 +1,25 @@
 # These parameters will be injected into ./sweep.py
-method: grid
+method: random
 metric:
-  name: total_loss
+  name: loss/total
 parameters:
-  lr:
-    value: 0.0005
-  stochastic_recon_coeff:
-    value: 0.00005
+  gate_init_central:
+    values: [true, false]
   recon_coeff:
-    values: [0.0, 0.00002]
+    values: [1.0e-2, 1.0e-3, 1.0e-4, 0.0]
+  stochastic_recon_coeff:
+    distribution: log_uniform_values
+    min: 1.0e-4
+    max: 1.0e-1
   importance_minimality_coeff:
-    value: 3.0e-9
+    distribution: log_uniform_values
+    min: 1.0e-8
+    max: 1.0e-5
   pnorm:
-    value: 1.07
+    distribution: uniform
+    min: 1.0
+    max: 2.0
+  lr:
+    distribution: uniform
+    min: 1.0e-5
+    max: 2.0e-4

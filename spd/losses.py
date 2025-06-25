@@ -363,36 +363,36 @@ def calculate_losses(
         total_loss += config.stochastic_recon_coeff * stochastic_recon_loss
         loss_terms["loss/stochastic_recon"] = stochastic_recon_loss.item()
 
-    # Reconstruction layerwise loss
-    if config.recon_layerwise_coeff is not None:
-        recon_layerwise_loss = calc_masked_recon_layerwise_loss(
-            model=model,
-            batch=batch,
-            device=device,
-            components=components,
-            masks=[ci_lower_leaky],
-            target_out=target_out,
-            loss_type=config.output_loss_type,
-        )
-        total_loss += config.recon_layerwise_coeff * recon_layerwise_loss
-        loss_terms["loss/recon_layerwise"] = recon_layerwise_loss.item()
+    # # Reconstruction layerwise loss
+    # if config.recon_layerwise_coeff is not None:
+    #     recon_layerwise_loss = calc_masked_recon_layerwise_loss(
+    #         model=model,
+    #         batch=batch,
+    #         device=device,
+    #         components=components,
+    #         masks=[ci_lower_leaky],
+    #         target_out=target_out,
+    #         loss_type=config.output_loss_type,
+    #     )
+    #     total_loss += config.recon_layerwise_coeff * recon_layerwise_loss
+    #     loss_terms["loss/recon_layerwise"] = recon_layerwise_loss.item()
 
-    # Stochastic reconstruction layerwise loss
-    if config.stochastic_recon_layerwise_coeff is not None:
-        layerwise_stochastic_masks = calc_stochastic_masks(
-            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
-        )
-        stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
-            model=model,
-            batch=batch,
-            device=device,
-            components=components,
-            masks=layerwise_stochastic_masks,
-            target_out=target_out,
-            loss_type=config.output_loss_type,
-        )
-        total_loss += config.stochastic_recon_layerwise_coeff * stochastic_recon_layerwise_loss
-        loss_terms["loss/stochastic_recon_layerwise"] = stochastic_recon_layerwise_loss.item()
+    # # Stochastic reconstruction layerwise loss
+    # if config.stochastic_recon_layerwise_coeff is not None:
+    #     layerwise_stochastic_masks = calc_stochastic_masks(
+    #         causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
+    #     )
+    #     stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
+    #         model=model,
+    #         batch=batch,
+    #         device=device,
+    #         components=components,
+    #         masks=layerwise_stochastic_masks,
+    #         target_out=target_out,
+    #         loss_type=config.output_loss_type,
+    #     )
+    #     total_loss += config.stochastic_recon_layerwise_coeff * stochastic_recon_layerwise_loss
+    #     loss_terms["loss/stochastic_recon_layerwise"] = stochastic_recon_layerwise_loss.item()
 
     # Importance minimality loss
     importance_minimality_loss = calc_importance_minimality_loss(
@@ -412,37 +412,37 @@ def calculate_losses(
         total_loss += config.schatten_coeff * schatten_loss
         loss_terms["loss/schatten"] = schatten_loss.item()
 
-    # Output reconstruction loss
-    if config.out_recon_coeff is not None:
-        masks_all_ones = {k: torch.ones_like(v) for k, v in ci_lower_leaky.items()}
-        out_recon_loss = calc_masked_recon_loss(
-            model=model,
-            batch=batch,
-            components=components,
-            masks=masks_all_ones,
-            target_out=target_out,
-            loss_type=config.output_loss_type,
-        )
-        total_loss += config.out_recon_coeff * out_recon_loss
-        loss_terms["loss/output_recon"] = out_recon_loss.item()
+    # # Output reconstruction loss
+    # if config.out_recon_coeff is not None:
+    #     masks_all_ones = {k: torch.ones_like(v) for k, v in ci_lower_leaky.items()}
+    #     out_recon_loss = calc_masked_recon_loss(
+    #         model=model,
+    #         batch=batch,
+    #         components=components,
+    #         masks=masks_all_ones,
+    #         target_out=target_out,
+    #         loss_type=config.output_loss_type,
+    #     )
+    #     total_loss += config.out_recon_coeff * out_recon_loss
+    #     loss_terms["loss/output_recon"] = out_recon_loss.item()
 
-    # Embedding reconstruction loss
-    if config.embedding_recon_coeff is not None:
-        stochastic_masks = calc_stochastic_masks(
-            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
-        )
-        assert len(components) == 1, "Only one embedding component is supported"
-        component = list(components.values())[0]
-        assert isinstance(component, EmbeddingComponent)
-        embedding_recon_loss = calc_embedding_recon_loss(
-            model=model,
-            batch=batch,
-            component=component,
-            masks=stochastic_masks,
-            embed_module_name=next(iter(components.keys())),
-            unembed=config.is_embed_unembed_recon,
-        )
-        total_loss += config.embedding_recon_coeff * embedding_recon_loss
-        loss_terms["loss/embedding_recon"] = embedding_recon_loss.item()
+    # # Embedding reconstruction loss
+    # if config.embedding_recon_coeff is not None:
+    #     stochastic_masks = calc_stochastic_masks(
+    #         causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
+    #     )
+    #     assert len(components) == 1, "Only one embedding component is supported"
+    #     component = list(components.values())[0]
+    #     assert isinstance(component, EmbeddingComponent)
+    #     embedding_recon_loss = calc_embedding_recon_loss(
+    #         model=model,
+    #         batch=batch,
+    #         component=component,
+    #         masks=stochastic_masks,
+    #         embed_module_name=next(iter(components.keys())),
+    #         unembed=config.is_embed_unembed_recon,
+    #     )
+    #     total_loss += config.embedding_recon_coeff * embedding_recon_loss
+    #     loss_terms["loss/embedding_recon"] = embedding_recon_loss.item()
 
     return total_loss, loss_terms
