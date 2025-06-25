@@ -36,8 +36,14 @@ def _keep_single_column(dataset: Dataset | IterableDataset, col_name: str) -> Da
     """
     Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful
     when we want to tokenize and mix together different strings.
-    """ # features = 
-    for key in dataset.features or list(next(iter(dataset)).keys()): # Object of type "None" cannot be used as iterable valuebasedpyrightreportOptionalIterable
+    """
+    if dataset.features is None:
+        logger.warning("Dataset features are None, consuming a sample to get features")
+        features = list(next(iter(dataset)).keys())
+    else:
+        features = dataset.features
+
+    for key in features:
         if key != col_name:
             dataset = dataset.remove_columns(key)
     return dataset

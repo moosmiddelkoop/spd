@@ -1,7 +1,7 @@
 """Run SPD on a model."""
 
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -24,7 +24,7 @@ from spd.models.component_model import ComponentModel, init_Vs_and_Us_
 from spd.models.component_utils import (
     calc_causal_importances,
     calc_ci_l_zero,
-    # component_activation_statistics, # Inlined
+    # component_activation_statistics, # basically inlined this
 )
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.models.sigmoids import SigmoidTypes
@@ -85,7 +85,7 @@ def eval(
     data_iter: Iterator[dict[str, Any]],
     n_eval_microbatches: int,
     log_ce_losses: bool,
-    Vs: dict[str, Tensor],
+    Vs: Mapping[str, Tensor],
 ) -> dict[str, float | wandb.Table]:
     metrics = defaultdict[str, list[float]](list)
 
@@ -342,6 +342,7 @@ def optimize(
                     sigmoid_type=config.sigmoid_type,
                     n_eval_microbatches=10,  # TODO configure
                     log_ce_losses=config.log_ce_losses,
+                    Vs=Vs,
                 )
 
             log_data.update(eval_results)
@@ -392,7 +393,7 @@ def optimize(
             )
 
             # a little gross but it's fine - just use the last loop's causal_importances
-            ci_histogram_figs = plot_ci_histograms(causal_importances) # pyright: ignore [reportPossiblyUnboundVariable]
+            ci_histogram_figs = plot_ci_histograms(causal_importances)  # pyright: ignore [reportPossiblyUnboundVariable]
 
             figs_dict = {
                 **ci_histogram_figs,

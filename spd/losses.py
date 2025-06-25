@@ -244,13 +244,14 @@ def calc_ce_losses(
     # Flatten logits and batch for CE calculation
     assert batch.ndim == 2, "expected 2 dimensions (batch, seq_len)"
 
+    # make sure labels don't "wrap around": you **can't** predict the first token.
     masked_batch = batch.clone()
-    masked_batch[:, -1] = -100
-    masked_batch = masked_batch.flatten()
+    masked_batch[:, 0] = -99  # F.cross_entropy ignores -99
+    flat_masked_batch = masked_batch.flatten()
 
     def ce_vs_labels(logits: Float[Tensor, "batch seq_len vocab"]) -> Float[Tensor, ""]:
         flat_logits = einops.rearrange(logits, "batch seq_len vocab -> (batch seq_len) vocab")
-        return F.cross_entropy(flat_logits[:-1], masked_batch[1:])
+        return F.cross_entropy(flat_logits[:-1], flat_masked_batch[1:])
 
     # CE when every component is fully masked (all-zero masks)
     zero_masks = {k: torch.zeros_like(v) for k, v in masks.items()}
@@ -271,7 +272,7 @@ def calc_ce_losses(
     zero_masked_ce = ce_vs_labels(zero_masked_component_logits)
     rand_masked_ce = ce_vs_labels(rand_masked_component_logits)
 
-    # CE unrecovered vs zero-masked
+    # CE unrecovered: how much worse is some CE compared to zero-ablation?
     ce_unrecovered_masked = (masked_ce - target_ce) / (zero_masked_ce - target_ce)
     ce_unrecovered_unmasked = (unmasked_ce - target_ce) / (zero_masked_ce - target_ce)
     ce_unrecovered_rand_masked = (rand_masked_ce - target_ce) / (zero_masked_ce - target_ce)
