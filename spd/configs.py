@@ -176,7 +176,15 @@ class Config(BaseModel):
     # --- Training ---
     lr: PositiveFloat = Field(..., description="Learning rate for optimiser")
     steps: PositiveInt = Field(..., description="Total number of optimisation steps")
-    batch_size: PositiveInt = Field(..., description="Mini-batch size used for optimisation")
+    batch_size: PositiveInt = Field(
+        ...,
+        description="Mini-batch size used for optimisation. This is the effective batch size "
+        "after gradient accumulation.",
+    )
+    gradient_accumulation_steps: PositiveInt = Field(
+        default=1,
+        description="Number of steps to accumulate gradients over before updating parameters",
+    )
     lr_schedule: Literal["linear", "constant", "cosine", "exponential"] = Field(
         default="constant",
         description="Type of learning-rate schedule to apply",
@@ -215,6 +223,10 @@ class Config(BaseModel):
     log_ce_losses: bool = Field(
         default=False,
         description="If True, additionally track cross-entropy losses during training",
+    )
+    autocast_bfloat16: bool = Field(
+        default=False,
+        description="If True, train in bfloat16 precision with autocasting to float32. Saves memory",
     )
 
     # --- Pretrained model info ---
@@ -279,3 +291,10 @@ class Config(BaseModel):
                 "lr_exponential_halflife must be set if lr_schedule is exponential"
             )
         return self
+
+    def microbatch_size(self) -> int:
+        assert self.batch_size % self.gradient_accumulation_steps == 0, (
+            f"batch_size ({self.batch_size}) must be divisible by gradient_accumulation_steps "
+            f"({self.gradient_accumulation_steps})"
+        )
+        return self.batch_size // self.gradient_accumulation_steps

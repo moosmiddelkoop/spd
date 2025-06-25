@@ -107,7 +107,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
     train_loader, _ = create_data_loader(
         dataset_config=train_data_config,
-        batch_size=config.batch_size,
+        batch_size=config.microbatch_size(),
         buffer_size=config.task_config.buffer_size,
         global_seed=config.seed,
         ddp_rank=0,

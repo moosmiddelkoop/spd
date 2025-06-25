@@ -1,7 +1,10 @@
 """Run SPD on a model."""
 
+from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import nullcontext
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import matplotlib.pyplot as plt
 import torch
@@ -71,6 +74,145 @@ class PlotResultsFn(Protocol):
         device: str | torch.device,
         sigmoid_type: SigmoidTypes,
     ) -> dict[str, plt.Figure]: ...
+
+
+def eval(
+    model: ComponentModel,
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    gates: dict[str, Gate | GateMLP],
+    device: str | torch.device,
+    sigmoid_type: SigmoidTypes,
+    data_iter: Iterator[dict[str, Any]],
+    n_eval_microbatches: int,
+    log_ce_losses: bool,
+) -> dict[str, float | wandb.Table]:
+    metrics = defaultdict[str, list[float]](list)
+
+    all_ci_BxM = defaultdict[str, list[Tensor]](list)
+
+    for _ in range(n_eval_microbatches):
+        batch = extract_batch_data(next(data_iter)).to(device)
+
+        # This is "duplicated"
+        # =================
+        target_logits, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+            batch, module_names=list(components.keys())
+        )
+        Vs = {module_name: components[module_name].V for module_name in components}
+
+        # no upper-leaky needed bc no loss here
+        ci_BxM, _ = calc_causal_importances(
+            pre_weight_acts=pre_weight_acts,
+            Vs=Vs,
+            gates=gates,
+            sigmoid_type=sigmoid_type,
+            detach_inputs=False,
+        )
+        # =================
+
+        for k, v in ci_BxM.items():
+            all_ci_BxM[k].append(v)
+
+        # Calculate component logits and KL losses
+        masked_component_logits = model.forward_with_components(
+            batch,
+            components=components,
+            masks=ci_BxM,
+        )
+        unmasked_component_logits = model.forward_with_components(
+            batch,
+            components=components,
+            masks=None,
+        )
+        # target_logits = model(batch)
+
+        metrics["misc/unmasked_kl_loss_vs_target"].append(
+            calc_kl_divergence_lm(pred=unmasked_component_logits, target=target_logits).item()
+        )
+        metrics["misc/masked_kl_loss_vs_target"].append(
+            calc_kl_divergence_lm(pred=masked_component_logits, target=target_logits).item()
+        )
+
+        if log_ce_losses:
+            ce_losses = calc_ce_losses(
+                model=model,
+                batch=batch,
+                components=components,
+                masks=ci_BxM,
+                unmasked_component_logits=unmasked_component_logits,
+                masked_component_logits=masked_component_logits,
+                target_logits=target_logits,
+            )
+            for name, value in ce_losses.items():
+                metrics[name].append(value)
+
+    log_data: dict[str, float | wandb.Table] = {k: sum(v) / len(v) for k, v in metrics.items()}
+
+    stacked_ci_BxM = {k: torch.stack(v) for k, v in all_ci_BxM.items()}
+
+    embed_ci_table = create_embed_ci_sample_table(stacked_ci_BxM)
+    if embed_ci_table is not None:
+        log_data["misc/embed_ci_sample"] = embed_ci_table
+
+    ci_l_zero = calc_ci_l_zero(stacked_ci_BxM)
+    for layer_name, layer_ci_l_zero in ci_l_zero.items():
+        log_data[f"metric/ci_l0_{layer_name}"] = layer_ci_l_zero
+
+    return log_data
+
+
+def plot_images(
+    model: ComponentModel,
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    gates: dict[str, Gate | GateMLP],
+    data_iter: Iterator[dict[str, Any]],
+    n_eval_steps: int,
+    device: str,
+    sigmoid_type: SigmoidTypes,
+    ci_BxM: dict[str, Tensor],
+    # plot_results_fn: PlotResultsFn | None = None,
+) -> dict[str, plt.Figure]:
+    # fig_dict = {}
+
+    # if plot_results_fn is not None:
+    #     fig_dict = plot_results_fn(
+    #         model=model,
+    #         components=components,
+    #         gates=gates,
+    #         batch_shape=batch.shape,
+    #         device=device,
+    #         sigmoid_type=sigmoid_type,
+    #     )
+    # batch = extract_batch_data(next(data_iter)).to(device)
+    # _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+    #     batch, module_names=list(components.keys())
+    # )
+    # Vs = {module_name: components[module_name].V for module_name in components}
+    # ci_BxM, _ = calc_causal_importances(
+    #     pre_weight_acts=pre_weight_acts,
+    #     Vs=Vs,
+    #     gates=gates,
+    #     sigmoid_type=sigmoid_type,
+    #     detach_inputs=False,
+    # )
+
+    ci_histogram_figs = plot_ci_histograms(causal_importances=ci_BxM)
+    # fig_dict.update(ci_histogram_figs)
+
+    mean_component_activation_counts = component_activation_statistics(
+        model=model,
+        # dataloader=eval_loader,
+        data_iter=data_iter,
+        n_steps=n_eval_steps,
+        device=device,
+        sigmoid_type=sigmoid_type,
+    )[1]
+
+    fig_dict["mean_component_activation_counts"] = plot_mean_component_activation_counts(
+        mean_component_activation_counts=mean_component_activation_counts,
+    )
+
+    return fig_dict
 
 
 def optimize(
@@ -153,6 +295,14 @@ def optimize(
             lr_warmup_pct=config.lr_warmup_pct,
         )
 
+    def autocast_ctx():
+        # autocast_ctx = torch.autocast(str(device), dtype=torch.bfloat16) if cfg.autocast_bfloat else nullcontext()
+        return (
+            torch.autocast(str(device), dtype=torch.bfloat16)
+            if config.autocast_bfloat16
+            else nullcontext()
+        )
+
     # Iterate one extra step for final logging/plotting/saving
     for step in tqdm(range(config.steps + 1), ncols=0):
         step_lr = get_lr(step)
@@ -162,152 +312,178 @@ def optimize(
 
         optimizer.zero_grad()
 
-        try:
-            batch_item = next(data_iter)
-            batch = extract_batch_data(batch_item)
-        except StopIteration:
-            logger.warning("Dataloader exhausted, resetting iterator.")
-            data_iter = iter(train_loader)
-            batch_item = next(data_iter)
-            batch = extract_batch_data(batch_item)
-        batch = batch.to(device)
+        total_loss = torch.tensor(0.0, device=device)
+        loss_terms = defaultdict[str, list[float]](list)
 
-        target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-            batch, module_names=list(components.keys())
-        )
-        Vs = {module_name: components[module_name].V for module_name in components}
+        for _microbatch_idx in range(config.gradient_accumulation_steps):
+            with autocast_ctx():
+                try:
+                    batch_item = next(data_iter)
+                    batch = extract_batch_data(batch_item)
+                except StopIteration:
+                    logger.warning("Dataloader exhausted, resetting iterator.")
+                    data_iter = iter(train_loader)
+                    batch_item = next(data_iter)
+                    batch = extract_batch_data(batch_item)
+                batch = batch.to(device)
 
-        ci_lower_leaky_BxM, ci_upper_leaky_BxM = calc_causal_importances(
-            pre_weight_acts=pre_weight_acts,
-            Vs=Vs,
-            gates=gates,
-            sigmoid_type=config.sigmoid_type,
-            detach_inputs=False,
-        )
-
-        for layer_name, ci_BxM in ci_upper_leaky_BxM.items():
-            alive_this_step_BxM = ci_BxM > CAUSAL_IMPORTANCE_ALIVE_THRESHOLD
-            alive_this_step_M = reduce(alive_this_step_BxM, "... m -> m", torch.any)
-            alive_components_M[layer_name] = alive_components_M[layer_name] | alive_this_step_M
-
-        total_loss, loss_terms = calculate_losses(
-            model=model,
-            batch=batch,
-            config=config,
-            components=components,
-            ci_lower_leaky=ci_lower_leaky_BxM,
-            ci_upper_leaky=ci_upper_leaky_BxM,
-            target_out=target_out,
-            device=device,
-            n_params=n_params,
-        )
-
-        with torch.inference_mode():
-            # --- Logging --- #
-            if step % config.print_freq == 0:
-                log_data: dict[str, float | wandb.Table] = {
-                    "loss/total": total_loss.item(),
-                    **loss_terms,
-                    "lr": step_lr,
-                }
-
-                tqdm.write(f"--- Step {step} ---")
-                tqdm.write(f"LR: {step_lr:.6f}")
-                tqdm.write(f"Total Loss: {total_loss.item():.7f}")
-                for name, value in loss_terms.items():
-                    tqdm.write(f"{name}: {value:.7f}")
-
-                if step > 0:
-                    for layer_name, layer_alive_components_M in alive_components_M.items():
-                        log_data[f"metric/n_alive_01/{layer_name}"] = (
-                            layer_alive_components_M.sum().item()
-                        )
-                        alive_components_M[layer_name] = torch.zeros(config.C, device=device).bool()
-
-                # Calculate component logits and KL losses
-                masked_component_logits = model.forward_with_components(
-                    batch, components=components, masks=ci_lower_leaky_BxM
+                target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+                    batch, module_names=list(components.keys())
                 )
-                unmasked_component_logits = model.forward_with_components(
-                    batch, components=components, masks=None
+                Vs = {module_name: components[module_name].V for module_name in components}
+
+                ci_lower_leaky_BxM, ci_upper_leaky_BxM = calc_causal_importances(
+                    pre_weight_acts=pre_weight_acts,
+                    Vs=Vs,
+                    gates=gates,
+                    sigmoid_type=config.sigmoid_type,
+                    detach_inputs=False,
                 )
 
-                target_logits = model(batch)
-
-                log_data["misc/unmasked_kl_loss_vs_target"] = calc_kl_divergence_lm(
-                    pred=unmasked_component_logits, target=target_logits
-                ).item()
-                log_data["misc/masked_kl_loss_vs_target"] = calc_kl_divergence_lm(
-                    pred=masked_component_logits, target=target_logits
-                ).item()
-
-                if config.log_ce_losses:
-                    ce_losses = calc_ce_losses(
-                        model=model,
-                        batch=batch,
-                        components=components,
-                        masks=ci_lower_leaky_BxM,
-                        unmasked_component_logits=unmasked_component_logits,
-                        masked_component_logits=masked_component_logits,
-                        target_logits=target_logits,
-                    )
-                    log_data.update(ce_losses)
-
-                embed_ci_table = create_embed_ci_sample_table(ci_lower_leaky_BxM)
-                if embed_ci_table is not None:
-                    log_data["misc/embed_ci_sample"] = embed_ci_table
-
-                if config.wandb_project:
-                    ci_l_zero = calc_ci_l_zero(causal_importances=ci_lower_leaky_BxM)
-                    for layer_name, layer_ci_l_zero in ci_l_zero.items():
-                        log_data[f"metric/ci_l0_{layer_name}"] = layer_ci_l_zero
-                    wandb.log(log_data, step=step)
-
-            # --- Plotting --- #
-            if (
-                config.image_freq is not None
-                and step % config.image_freq == 0
-                and (step > 0 or config.image_on_first_step)
-            ):
-                logger.info(f"Step {step}: Generating plots...")
-                fig_dict = {}
-                if plot_results_fn is not None:
-                    fig_dict = plot_results_fn(
-                        model=model,
-                        components=components,
-                        gates=gates,
-                        batch_shape=batch.shape,
-                        device=device,
-                        sigmoid_type=config.sigmoid_type,
+                for layer_name, ci_BxM in ci_upper_leaky_BxM.items():
+                    alive_this_step_BxM = ci_BxM > CAUSAL_IMPORTANCE_ALIVE_THRESHOLD
+                    alive_this_step_M = reduce(alive_this_step_BxM, "... m -> m", torch.any)
+                    alive_components_M[layer_name] = (
+                        alive_components_M[layer_name] | alive_this_step_M
                     )
 
-                ci_histogram_figs = plot_ci_histograms(causal_importances=ci_lower_leaky_BxM)
-                fig_dict.update(ci_histogram_figs)
-
-                mean_component_activation_counts = component_activation_statistics(
+                microbatch_total_loss, microbatch_loss_terms = calculate_losses(
                     model=model,
-                    # dataloader=eval_loader,
+                    batch=batch,
+                    config=config,
+                    components=components,
+                    ci_lower_leaky=ci_lower_leaky_BxM,
+                    ci_upper_leaky=ci_upper_leaky_BxM,
+                    target_out=target_out,
+                    device=device,
+                    n_params=n_params,
+                )
+
+                total_loss += microbatch_total_loss
+                for name, value in microbatch_loss_terms.items():
+                    loss_terms[name].append(value)
+
+        mean_total_loss = total_loss / config.gradient_accumulation_steps
+        mean_loss_terms = {
+            name: sum(values) / len(values) for name, values in loss_terms.items()
+        }
+
+        mean_total_loss.backward(retain_graph=True)
+
+        if config.wandb_project and step % config.print_freq == 0:
+            tqdm.write(f"--- Step {step} ---")
+            tqdm.write(f"LR: {step_lr:.6f}")
+            tqdm.write(f"Total Loss: {total_loss.item():.7f}")
+            for name, value in loss_terms.items():
+                tqdm.write(f"{name}: {value:.7f}")
+
+            log_data: dict[str, float | wandb.Table] = {
+                "loss/total": mean_total_loss.item(),
+                **mean_loss_terms,
+                "lr": step_lr,
+            }
+
+            if step > 0:
+                for layer_name, layer_alive_components_M in alive_components_M.items():
+                    log_data[f"metric/n_alive_01/{layer_name}"] = (
+                        layer_alive_components_M.sum().item()
+                    )
+                    alive_components_M[layer_name] = torch.zeros(config.C, device=device).bool()
+
+            with torch.inference_mode():
+                eval_results = eval(
+                    model=model,
+                    components=components,
+                    gates=gates,
                     data_iter=data_iter,
-                    n_steps=n_eval_steps,
                     device=device,
                     sigmoid_type=config.sigmoid_type,
-                )[1]
-                assert mean_component_activation_counts is not None
-                fig_dict["mean_component_activation_counts"] = (
-                    plot_mean_component_activation_counts(
-                        mean_component_activation_counts=mean_component_activation_counts,
-                    )
+                    n_eval_microbatches=10,  # TODO configure
+                    log_ce_losses=config.log_ce_losses,
                 )
 
-                if config.wandb_project:
-                    wandb.log(
-                        {k: wandb.Image(v) for k, v in fig_dict.items()},
-                        step=step,
-                    )
-                    if out_dir is not None:
-                        for k, v in fig_dict.items():
-                            v.savefig(out_dir / f"{k}_{step}.png")
-                            tqdm.write(f"Saved plot to {out_dir / f'{k}_{step}.png'}")
+            log_data.update(eval_results)
+
+            wandb.log(log_data, step=step)
+
+        if (
+            config.image_freq is not None
+            and step % config.image_freq == 0
+            and (step > 0 or config.image_on_first_step)
+        ):
+            logger.info(f"Step {step}: Generating plots...")
+
+            # ci_histogram_figs = plot_ci_histograms(causal_importances=ci_lower_leaky_BxM)  # pyright: ignore [reportPossiblyUnboundVariable]
+
+            mean_component_activation_counts = component_activation_statistics(
+                model=model,
+                # dataloader=eval_loader,
+                data_iter=data_iter,
+                n_steps=n_eval_steps,
+                device=device,
+                sigmoid_type=config.sigmoid_type,
+            )[1]
+
+            mean_component_activation_counts = plot_mean_component_activation_counts(
+                mean_component_activation_counts
+            )
+
+            figs_dict = {
+                **ci_histogram_figs,
+                "mean_component_activation_counts": mean_component_activation_counts,
+            }
+            fig_imgs_dict = {k: wandb.Image(v) for k, v in figs_dict.items()}
+
+            wandb.log(fig_imgs_dict, step=step)
+
+            if out_dir is not None:
+                for k, v in figs_dict.items():
+                    v.savefig(out_dir / f"{k}_{step}.png")
+                    tqdm.write(f"Saved plot to {out_dir / f'{k}_{step}.png'}")
+
+            #     logger.info(f"Step {step}: Generating plots...")
+
+            #     fig_dict = {}
+
+            #     if plot_results_fn is not None:
+            #         fig_dict = plot_results_fn(
+            #             model=model,
+            #             components=components,
+            #             gates=gates,
+            #             batch_shape=batch.shape,  # pyright: ignore [reportPossiblyUnboundVariable]
+            #             device=device,
+            #             sigmoid_type=config.sigmoid_type,
+            #         )
+
+            #     ci_histogram_figs = plot_ci_histograms(causal_importances=ci_lower_leaky_BxM)  # pyright: ignore [reportPossiblyUnboundVariable]
+            #     fig_dict.update(ci_histogram_figs)
+
+            #     mean_component_activation_counts = component_activation_statistics(
+            #         model=model,
+            #         # dataloader=eval_loader,
+            #         data_iter=data_iter,
+            #         n_steps=n_eval_steps,
+            #         device=device,
+            #         sigmoid_type=config.sigmoid_type,
+            #     )[1]
+
+            #     fig_dict["mean_component_activation_counts"] = (
+            #         plot_mean_component_activation_counts(
+            #             mean_component_activation_counts=mean_component_activation_counts,
+            #         )
+            #     )
+
+            #     fig_imgs_dict = {k: wandb.Image(v) for k, v in fig_dict.items()}
+            #     wandb.log(fig_imgs_dict, step=step)
+
+            #     if out_dir is not None:
+            #         for k, v in fig_dict.items():
+            #             v.savefig(out_dir / f"{k}_{step}.png")
+            #             tqdm.write(f"Saved plot to {out_dir / f'{k}_{step}.png'}")
+        # plot_images = (
+        #     image_freq is not None and step % image_freq == 0 and (step > 0 or image_on_first_step)
+        # )
+        # if plot_images:
 
         # --- Saving Checkpoint --- #
         if (

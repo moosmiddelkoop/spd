@@ -48,8 +48,8 @@ def calc_ci_l_zero(
 
 def component_activation_statistics(
     model: ComponentModel,
-    # dataloader: DataLoader[Int[Tensor, "..."]]
-    # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    gates: dict[str, Gate | GateMLP],
     data_iter: Iterator[dict[str, Any]],
     n_steps: int,
     device: str,
@@ -57,17 +57,6 @@ def component_activation_statistics(
     threshold: float = 0.1,
 ) -> tuple[dict[str, float], dict[str, Float[Tensor, " C"]]]:
     """Get the number and strength of the masks over the full dataset."""
-    # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
-        for k, v in model.gates.items()
-    }
-    components: dict[str, LinearComponent | EmbeddingComponent] = {
-        k.removeprefix("components.").replace("-", "."): cast(
-            LinearComponent | EmbeddingComponent, v
-        )
-        for k, v in model.components.items()
-    }
 
     n_tokens = {module_name.replace("-", "."): 0 for module_name in components}
     total_n_active_components = {module_name.replace("-", "."): 0 for module_name in components}
@@ -75,16 +64,14 @@ def component_activation_statistics(
         module_name.replace("-", "."): torch.zeros(model.C, device=device)
         for module_name in components
     }
-    # data_iter = iter(dataloader)
+    Vs = {module_name: v.V for module_name, v in components.items()}
+
     for _ in range(n_steps):
-        # --- Get Batch --- #
-        batch = extract_batch_data(next(data_iter))
-        batch = batch.to(device)
+        batch = extract_batch_data(next(data_iter)).to(device)
 
         _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
             batch, module_names=list(components.keys())
         )
-        Vs = {module_name: v.V for module_name, v in components.items()}
 
         causal_importances, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
@@ -93,6 +80,7 @@ def component_activation_statistics(
             sigmoid_type=sigmoid_type,
             detach_inputs=False,
         )
+
         for module_name, ci in causal_importances.items():
             # mask (batch, pos, C) or (batch, C)
             n_tokens[module_name] += ci.shape[:-1].numel()
