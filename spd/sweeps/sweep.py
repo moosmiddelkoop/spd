@@ -1,14 +1,32 @@
-import subprocess
-from datetime import datetime
+"""Python sweep script for running SPD experiments on a SLURM cluster.
+
+This script creates a wandb sweep and deploys multiple SLURM agents to run it.
+This script is an entrypoint of the spd package, and thus can be called with `spd-sweep` once
+the package is installed.
+
+Usage:
+    spd-sweep <experiment> <num_agents> [--job_suffix <suffix>] [--cpu]
+
+Examples:
+    spd-sweep tms_5-2 5                    # Run TMS 5-2 sweep with 5 GPU agents
+    spd-sweep resid_mlp1 3 --cpu           # Run ResidMLP1 sweep with 3 CPU agents
+    spd-sweep ss_emb 2 --job_suffix test   # Run with job suffix
+
+Before running, update the spd/sweeps/sweep_params.yaml file with the desired parameters.
+"""
+
+import tempfile
 from pathlib import Path
 from typing import Any
 
+import fire
 import wandb
 import yaml
 
+from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
-from spd.slurm_utils import create_slurm_script
+from spd.slurm_utils import create_slurm_script, submit_slurm_jobs
 
 
 def get_sweep_configuration(decomp_script: Path, config_path: Path) -> dict[str, Any]:
@@ -49,12 +67,13 @@ def main(
     Args:
         experiment: Experiment name. See spd/registry.py for available experiments.
             Currently: tms_5-2, tms_5-2-id, tms_40-10, tms_40-10-id, resid_mlp1, resid_mlp2,
-            resid_mlp3, gemma_mlp_up_14
+            resid_mlp3, ss_emb
         n_agents: Number of SLURM agents to deploy for the sweep (must be positive)
         job_suffix: Optional suffix to add to SLURM job names for identification
         cpu: Use CPU instead of GPU (default: False, uses GPU)
 
     """
+    # Validate arguments
     if n_agents <= 0:
         raise ValueError("Please supply a positive integer for agents.")
 
@@ -68,59 +87,58 @@ def main(
     print(f"  Decomposition script: {decomp_script}")
     print(f"  Config file: {config_path}")
 
+    # Create sweep configuration dictionary
     sweep_config_dict = get_sweep_configuration(
         decomp_script=decomp_script, config_path=config_path
     )
 
-    print("Starting sweep...")
+    # Create the sweep using wandb API
     sweep_id = wandb.sweep(sweep=sweep_config_dict, project="spd")
 
     api = wandb.Api()
     org_name = api.settings["entity"]
     project_name = api.settings["project"]
 
+    # Construct the full agent ID for the sweep
     wandb_url = f"https://wandb.ai/{org_name}/{project_name}/sweeps/{sweep_id}"
-
-    job_name = f"spd-sweep-{job_suffix}" if job_suffix else "spd-sweep"
-    agent_id = f"{org_name}/{project_name}/{sweep_id}"
-    command = f"export WANDB_DISABLE_SERVICE=true && wandb agent {agent_id}"  # stops it from trying to connect to the service started by wandb.sweep above
-
-    experiment_dir = (
-        REPO_ROOT / "out" / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{experiment}"
-    )
-    experiment_dir.mkdir(exist_ok=True, parents=True)
-
-    print("Writing SLURM script...")
-    script_text = create_slurm_script(
-        output_dir=experiment_dir,
-        job_name=job_name,
-        command=command,
-        cpu=cpu,
-    )
-    script_path = experiment_dir / "run_agent.sh"
-    with open(script_path, "w") as f:
-        f.write(script_text)
-
-    script_path.chmod(0o755)  # Make script executable
 
     print(f"Deploying {n_agents} agents for experiment {experiment}...")
 
-    for _ in range(n_agents):
-        result = subprocess.run(
-            ["sbatch", str(script_path)], capture_output=True, text=True, check=True
-        )
-        # format: "Submitted batch job 12345"
-        job_id = result.stdout.strip().split()[-1]
-        print(f"Submitted job {job_id}")
+    # Create single git snapshot for all agents
+    snapshot_branch = create_git_snapshot(branch_name_prefix="sweep")
+    print(f"Using git snapshot: {snapshot_branch}")
 
-    print()
-    print("View logs in: ~/slurm_logs/slurm-<job_id>.out")
-    print(f"Sweep URL: {wandb_url}")
+    job_name = f"spd-sweep-{job_suffix}" if job_suffix else "spd-sweep"
+    agent_id = f"{org_name}/{project_name}/{sweep_id}"
+    command = f"wandb agent {agent_id}"
+
+    # Use a temporary directory for the agent script
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        run_agent_script = temp_path / "run_agent.sh"
+
+        create_slurm_script(
+            script_path=run_agent_script,
+            job_name=job_name,
+            command=command,
+            cpu=cpu,
+            snapshot_branch=snapshot_branch,
+        )
+
+        # Submit the job n times to create n parallel agents
+        script_paths = [run_agent_script] * n_agents
+        job_ids = submit_slurm_jobs(script_paths)
+
+        print(f"Job IDs: {', '.join(job_ids)}")
+        print("\nView logs in: ~/slurm_logs/slurm-<job_id>.out")
+        print(f"Sweep URL: {wandb_url}")
+        # Temporary directory and script file are automatically cleaned up here
+
+
+def cli():
+    """Command line interface for the sweep script."""
+    fire.Fire(main)
 
 
 if __name__ == "__main__":
-    main(
-        experiment="gemma_mlp_up_14",
-        n_agents=2,
-        job_suffix="test",
-    )
+    cli()

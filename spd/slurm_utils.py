@@ -3,20 +3,19 @@
 import subprocess
 import textwrap
 from pathlib import Path
-from time import sleep
 
+from spd.git_utils import create_git_snapshot
 from spd.settings import REPO_ROOT
 
 
 def create_slurm_script(
-    # script_path: Path,
+    script_path: Path,
     job_name: str,
     command: str,
-    output_dir: Path,
-    # snapshot_branch: str,
     cpu: bool = False,
     time_limit: str = "24:00:00",
-) -> str:
+    snapshot_branch: str | None = None,
+) -> None:
     """Create a SLURM batch script with git snapshot for consistent code.
 
     Args:
@@ -25,17 +24,24 @@ def create_slurm_script(
         command: Command to execute in the job
         cpu: If True, use CPU only, otherwise use GPU
         time_limit: Time limit for the job (default: 24:00:00)
+        snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
     """
-    gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
+    # Create git snapshot if not provided
+    if snapshot_branch is None:
+        snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
 
-    return textwrap.dedent(f"""
+    gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
+    slurm_logs_dir = Path.home() / "slurm_logs"
+    slurm_logs_dir.mkdir(exist_ok=True)
+
+    script_content = textwrap.dedent(f"""
         #!/bin/bash
         #SBATCH --nodes=1
         {gpu_config}
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
         #SBATCH --partition=all
-        #SBATCH --output={output_dir}/slurm-%j.out
+        #SBATCH --output={slurm_logs_dir}/slurm-%j.out
 
         # Create job-specific working directory
         WORK_DIR="/tmp/spd-gf-copy-${{SLURM_JOB_ID}}"
@@ -47,13 +53,17 @@ def create_slurm_script(
         cd $WORK_DIR
 
         # Checkout the snapshot branch to ensure consistent code
-
-        . .venv/bin/activate
+        git checkout {snapshot_branch}
 
         # Execute the command
         {command}
     """).strip()
-        # git checkout {snapshot_branch}
+
+    with open(script_path, "w") as f:
+        f.write(script_content)
+
+    # Make script executable
+    script_path.chmod(0o755)
 
 
 def submit_slurm_jobs(script_paths: list[Path]) -> list[str]:
@@ -68,7 +78,6 @@ def submit_slurm_jobs(script_paths: list[Path]) -> list[str]:
     job_ids = []
 
     for script_path in script_paths:
-        sleep(1)
         result = subprocess.run(
             ["sbatch", str(script_path)], capture_output=True, text=True, check=True
         )
