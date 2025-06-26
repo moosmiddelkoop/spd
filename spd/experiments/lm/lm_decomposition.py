@@ -78,8 +78,8 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         # torch_dtype=torch.bfloat16 if config.autocast_bfloat16 else torch.float32,
         attn_implementation="eager",
     )
+    target_model.train()
     if config.train_ops:
-        target_model.train()
         target_model.config.use_cache = False
 
     # --- Setup Run Name and Output Dir --- #

@@ -1,17 +1,16 @@
 """Run SPD on a model."""
 
+import time
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
 from contextlib import nullcontext
 from pathlib import Path
-import time
 from typing import Any, Protocol, cast
 
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.profiler import ProfilerActivity, profile, schedule
 import wandb
 from einops import reduce
 from jaxtyping import Bool, Float, Int
@@ -177,7 +176,7 @@ def optimize(
         n_ci_mlp_neurons=config.n_ci_mlp_neurons,
         init_central=config.gate_init_central,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
-        dtype=torch.float32, # torch.bfloat16 if config.autocast_bfloat16 else torch.float32,
+        dtype=torch.float32,  # torch.bfloat16 if config.autocast_bfloat16 else torch.float32,
     )
     model.to(device)
 
@@ -244,220 +243,199 @@ def optimize(
             return torch.autocast(str(device), dtype=torch.bfloat16)
         return nullcontext()
 
-    # Iterate one extra step for final logging/plotting/saving
     loop_start_time = time.perf_counter()
 
-    with nullcontext():
-    # torch.profiler.profile(
-    #     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-    #     schedule=schedule(skip_first=5, wait=5, warmup=1, active=3, repeat=10),
-    #     # on_trace_ready=torch.profiler.tensorboard_trace_handler("./tb"),
-    #     record_shapes=True,
-    #     profile_memory=True,
-    #     with_stack=True
-    # ) as prof:
-        for step in tqdm(range(config.steps + 1), ncols=0):
-            step_lr = get_lr(step)
+    for step in tqdm(range(config.steps + 1), ncols=0):
+        step_lr = get_lr(step)
 
-            for group in optimizer.param_groups:
-                group["lr"] = step_lr
+        for group in optimizer.param_groups:
+            group["lr"] = step_lr
 
-            optimizer.zero_grad()
+        optimizer.zero_grad()
 
-            total_loss = torch.tensor(0.0, device=device)
-            loss_terms = defaultdict[str, float](float)
+        total_loss = 0.0
+        loss_terms = defaultdict[str, float](float)
 
-            for _microbatch_idx in range(config.gradient_accumulation_steps):
-                with autocast_ctx():
-                    try:
-                        batch_item = next(data_iter)
-                    except StopIteration:
-                        logger.warning("Dataloader exhausted, resetting iterator.")
-                        data_iter = iter(train_loader)
-                        batch_item = next(data_iter)
+        for _microbatch_idx in range(config.gradient_accumulation_steps):
+            with autocast_ctx():
+                try:
+                    batch_item = next(data_iter)
+                except StopIteration:
+                    logger.warning("Dataloader exhausted, resetting iterator.")
+                    data_iter = iter(train_loader)
+                    batch_item = next(data_iter)
 
-                    batch = extract_batch_data(batch_item).to(device)
+                batch = extract_batch_data(batch_item).to(device)
 
-                    target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-                        batch, module_names=list(components.keys())
-                    )
+                target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+                    batch, module_names=list(components.keys())
+                )
 
-                    ci_lower_leaky_BxM, ci_upper_leaky_BxM = calc_causal_importances(
-                        pre_weight_acts=pre_weight_acts,
-                        Vs=Vs,
-                        gates=gates,
-                        sigmoid_type=config.sigmoid_type,
-                        detach_inputs=False,
-                    )
+                ci_lower_leaky_BxM, ci_upper_leaky_BxM = calc_causal_importances(
+                    pre_weight_acts=pre_weight_acts,
+                    Vs=Vs,
+                    gates=gates,
+                    sigmoid_type=config.sigmoid_type,
+                    detach_inputs=False,
+                )
 
-                    for layer_name, ci_BxM in ci_upper_leaky_BxM.items():
-                        alive_this_step_BxM = ci_BxM > CI_ALIVE_THRESHOLD
-                        alive_this_step_M = reduce(alive_this_step_BxM, "... m -> m", torch.any)
-                        alive_components_M[layer_name] = (
-                            alive_components_M[layer_name] | alive_this_step_M
+                for layer_name, ci_BxM in ci_upper_leaky_BxM.items():
+                    alive_this_step_BxM = ci_BxM > CI_ALIVE_THRESHOLD
+                    alive_this_step_M = reduce(alive_this_step_BxM, "... m -> m", torch.any)
+                    alive_components_M[layer_name] |= alive_this_step_M
+
+                microbatch_total_loss, microbatch_loss_terms = calculate_losses(
+                    model=model,
+                    batch=batch,
+                    config=config,
+                    components=components,
+                    ci_lower_leaky=ci_lower_leaky_BxM,
+                    ci_upper_leaky=ci_upper_leaky_BxM,
+                    target_out=target_out,
+                    device=device,
+                    n_params=n_params,
+                )
+
+                scaled_loss = microbatch_total_loss / config.gradient_accumulation_steps
+
+            # IMPORTANT: backward is outside of the loop
+            scaled_loss.backward()
+            # optimizer step is down after eval so we eval on the same exact model params as loss above
+
+            # Bookkeeping
+            total_loss += scaled_loss.item()
+            for name, value in microbatch_loss_terms.items():
+                loss_terms[name] += value / config.gradient_accumulation_steps
+
+        if step % config.print_freq == 0:
+            tqdm.write(f"--- Step {step} ---")
+            tqdm.write(f"LR: {step_lr:.6f}")
+            tqdm.write(f"Total Loss: {total_loss:.7f}")
+            for name, value in loss_terms.items():
+                tqdm.write(f"{name}: {value:.7f}")
+
+            n_tokens = batch.numel() * config.gradient_accumulation_steps * step  # pyright: ignore [reportPossiblyUnboundVariable]
+            tqdm.write(f"tokens/sec: {n_tokens / (time.perf_counter() - loop_start_time):.2f}")
+
+            if config.wandb_project:
+                log_data: dict[str, float | wandb.Table] = {
+                    "loss/total": total_loss,
+                    **loss_terms,
+                    "lr": step_lr,
+                    "tps": n_tokens / (time.perf_counter() - loop_start_time),
+                    "n_tokens": n_tokens,
+                }
+
+                if step > 0:
+                    # TODO: investigate whether this is wrong due to only running every n steps,
+                    # i.e. off by a constant factor
+                    for layer_name, layer_alive_components_M in alive_components_M.items():
+                        log_data[f"metrics/n_alive_01/{layer_name}"] = (
+                            layer_alive_components_M.sum().item()
                         )
+                        alive_components_M[layer_name] = torch.zeros(config.C, device=device).bool()
 
-                    microbatch_total_loss, microbatch_loss_terms = calculate_losses(
+                with torch.inference_mode():
+                    eval_results = eval(
                         model=model,
-                        batch=batch,
-                        config=config,
                         components=components,
-                        ci_lower_leaky=ci_lower_leaky_BxM,
-                        ci_upper_leaky=ci_upper_leaky_BxM,
-                        target_out=target_out,
+                        gates=gates,
+                        data_iter=data_iter,
                         device=device,
-                        n_params=n_params,
+                        sigmoid_type=config.sigmoid_type,
+                        n_eval_microbatches=10,  # TODO configure
+                        log_ce_losses=config.log_ce_losses,
+                        Vs=Vs,
                     )
 
-                    scaled_loss = (
-                        microbatch_total_loss / config.gradient_accumulation_steps
-                    )
+                log_data.update(eval_results)
 
-                total_loss += scaled_loss
-                for name, value in microbatch_loss_terms.items():
-                    loss_terms[name] += value / config.gradient_accumulation_steps
+                wandb.log(log_data, step=step)
 
-                # IMPORTANT: backward is outside of the loop
-                scaled_loss.backward()
-                # optimizer step is down after eval so we eval on the same exact model params as loss above
+        if (
+            config.image_freq is not None
+            and step % config.image_freq == 0
+            and (step > 0 or config.image_on_first_step)
+        ):
+            logger.info(f"Step {step}: Generating plots...")
 
-            if step % config.print_freq == 0:
-                tqdm.write(f"--- Step {step} ---")
-                tqdm.write(f"LR: {step_lr:.6f}")
-                tqdm.write(f"Total Loss: {total_loss.item():.7f}")
-                for name, value in loss_terms.items():
-                    tqdm.write(f"{name}: {value:.7f}")
+            n_tokens = {module_name.replace("-", "."): 0 for module_name in components}
 
-                n_tokens = batch.numel() * config.gradient_accumulation_steps * (step+1)  # pyright: ignore [reportPossiblyUnboundVariable]
-                tqdm.write(f"tokens/sec: {n_tokens / (time.perf_counter() - loop_start_time):.2f}")
+            component_activation_counts = {
+                module_name.replace("-", "."): torch.zeros(model.C, device=device)
+                for module_name in components
+            }
 
-            # if config.wandb_project and step % config.print_freq == 0:
-            #     tqdm.write(f"--- Step {step} ---")
-            #     tqdm.write(f"LR: {step_lr:.6f}")
-            #     tqdm.write(f"Total Loss: {total_loss.item():.7f}")
-            #     for name, value in loss_terms.items():
-            #         tqdm.write(f"{name}: {value:.7f}")
+            for _ in range(n_eval_steps):
+                batch = extract_batch_data(next(data_iter)).to(device)
+                _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+                    batch, module_names=list(components.keys())
+                )
+                causal_importances, _ = calc_causal_importances(
+                    pre_weight_acts=pre_weight_acts,
+                    Vs=Vs,
+                    gates=gates,
+                    sigmoid_type=config.sigmoid_type,
+                    detach_inputs=False,
+                )
 
-            #     n_tokens = batch.numel() * config.gradient_accumulation_steps * step  # pyright: ignore [reportPossiblyUnboundVariable]
+                for module_name, ci in causal_importances.items():
+                    # mask (batch, pos, C) or (batch, C)
+                    n_tokens[module_name] += ci.shape[:-1].numel()
 
-            #     log_data: dict[str, float | wandb.Table] = {
-            #         "loss/total": total_loss.item(),
-            #         **loss_terms,
-            #         "lr": step_lr,
-            #         "tps": n_tokens / (time.perf_counter() - loop_start_time),
-            #         "n_tokens": n_tokens,
-            #     }
+                    n_active_components_C = reduce(ci > CI_ALIVE_THRESHOLD, "... C -> C", torch.sum)
+                    component_activation_counts[module_name] += n_active_components_C
 
-            #     if step > 0:
-            #         for layer_name, layer_alive_components_M in alive_components_M.items():
-            #             log_data[f"metric/n_alive_01/{layer_name}"] = (
-            #                 layer_alive_components_M.sum().item()
-            #             )
-            #             alive_components_M[layer_name] = torch.zeros(config.C, device=device).bool()
+            mean_component_activation_counts_plot = plot_mean_component_activation_counts(
+                mean_component_activation_counts={
+                    module_name: component_activation_counts[module_name] / n_tokens[module_name]
+                    for module_name in components
+                }
+            )
 
-            #     with torch.inference_mode():
-            #         eval_results = eval(
-            #             model=model,
-            #             components=components,
-            #             gates=gates,
-            #             data_iter=data_iter,
-            #             device=device,
-            #             sigmoid_type=config.sigmoid_type,
-            #             n_eval_microbatches=10,  # TODO configure
-            #             log_ce_losses=config.log_ce_losses,
-            #             Vs=Vs,
-            #         )
+            # a little gross but it's fine - just use the last loop's causal_importances
+            ci_histogram_figs = plot_ci_histograms(causal_importances)  # pyright: ignore [reportPossiblyUnboundVariable]
 
-            #     log_data.update(eval_results)
+            figs_dict = {
+                **ci_histogram_figs,
+                "mean_component_activation_counts": mean_component_activation_counts_plot,
+            }
+            fig_imgs_dict = {k: wandb.Image(v) for k, v in figs_dict.items()}
 
-            #     wandb.log(log_data, step=step)
+            wandb.log(fig_imgs_dict, step=step)
 
-            # if (
-            #     config.image_freq is not None
-            #     and step % config.image_freq == 0
-            #     and (step > 0 or config.image_on_first_step)
-            # ):
-            #     logger.info(f"Step {step}: Generating plots...")
+            if out_dir is not None:
+                for k, v in figs_dict.items():
+                    v.savefig(out_dir / f"{k}_{step}.png")
+                    tqdm.write(f"Saved plot to {out_dir / f'{k}_{step}.png'}")
 
-            #     n_tokens = {module_name.replace("-", "."): 0 for module_name in components}
+        # --- Saving Checkpoint --- #
+        if (
+            (config.save_freq is not None and step % config.save_freq == 0 and step > 0)
+            or step == config.steps
+        ) and out_dir is not None:
+            torch.save(model.state_dict(), out_dir / f"model_{step}.pth")
+            logger.info(f"Saved model, optimizer, and out_dir to {out_dir}")
+            if config.wandb_project:
+                wandb.save(str(out_dir / f"model_{step}.pth"), base_path=str(out_dir), policy="now")
+                wandb.save(
+                    str(out_dir / f"optimizer_{step}.pth"), base_path=str(out_dir), policy="now"
+                )
 
-            #     component_activation_counts = {
-            #         module_name.replace("-", "."): torch.zeros(model.C, device=device)
-            #         for module_name in components
-            #     }
+        # Skip gradient step if we are at the last step (last step just for plotting and logging)
+        if step != config.steps:
+            if step % config.print_freq == 0 and config.wandb_project:
+                with torch.no_grad():
+                    grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            grad_norm += param.grad.data.flatten().pow(2).sum()
+                    grad_norm_val = grad_norm.sqrt().item()
+                    wandb.log({"grad_norm": grad_norm_val}, step=step)
 
-            #     for _ in range(n_eval_steps):
-            #         batch = extract_batch_data(next(data_iter)).to(device)
-            #         _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-            #             batch, module_names=list(components.keys())
-            #         )
-            #         causal_importances, _ = calc_causal_importances(
-            #             pre_weight_acts=pre_weight_acts,
-            #             Vs=Vs,
-            #             gates=gates,
-            #             sigmoid_type=config.sigmoid_type,
-            #             detach_inputs=False,
-            #         )
+                norm_torch = torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
+                wandb.log({"grad_norm_torch": norm_torch}, step=step)
 
-            #         for module_name, ci in causal_importances.items():
-            #             # mask (batch, pos, C) or (batch, C)
-            #             n_tokens[module_name] += ci.shape[:-1].numel()
-
-            #             n_active_components_C = reduce(ci > CI_ALIVE_THRESHOLD, "... C -> C", torch.sum)
-            #             component_activation_counts[module_name] += n_active_components_C
-
-            #     mean_component_activation_counts_plot = plot_mean_component_activation_counts(
-            #         mean_component_activation_counts={
-            #             module_name: component_activation_counts[module_name] / n_tokens[module_name]
-            #             for module_name in components
-            #         }
-            #     )
-
-            #     # a little gross but it's fine - just use the last loop's causal_importances
-            #     ci_histogram_figs = plot_ci_histograms(causal_importances)  # pyright: ignore [reportPossiblyUnboundVariable]
-
-            #     figs_dict = {
-            #         **ci_histogram_figs,
-            #         "mean_component_activation_counts": mean_component_activation_counts_plot,
-            #     }
-            #     fig_imgs_dict = {k: wandb.Image(v) for k, v in figs_dict.items()}
-
-            #     wandb.log(fig_imgs_dict, step=step)
-
-            #     if out_dir is not None:
-            #         for k, v in figs_dict.items():
-            #             v.savefig(out_dir / f"{k}_{step}.png")
-            #             tqdm.write(f"Saved plot to {out_dir / f'{k}_{step}.png'}")
-
-            # --- Saving Checkpoint --- #
-            if (
-                (config.save_freq is not None and step % config.save_freq == 0 and step > 0)
-                or step == config.steps
-            ) and out_dir is not None:
-                torch.save(model.state_dict(), out_dir / f"model_{step}.pth")
-                logger.info(f"Saved model, optimizer, and out_dir to {out_dir}")
-                if config.wandb_project:
-                    wandb.save(str(out_dir / f"model_{step}.pth"), base_path=str(out_dir), policy="now")
-                    wandb.save(
-                        str(out_dir / f"optimizer_{step}.pth"), base_path=str(out_dir), policy="now"
-                    )
-
-            # Skip gradient step if we are at the last step (last step just for plotting and logging)
-            if step != config.steps:
-                if step % config.print_freq == 0 and config.wandb_project:
-                    with torch.no_grad():
-                        grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
-                        for param in model.parameters():
-                            if param.grad is not None:
-                                grad_norm += param.grad.data.flatten().pow(2).sum()
-                        grad_norm_val = grad_norm.sqrt().item()
-                        wandb.log({"grad_norm": grad_norm_val}, step=step)
-
-                    norm_torch = torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
-                    wandb.log({"grad_norm_torch": norm_torch}, step=step)
-
-                optimizer.step()
-        #     prof.step()
-        # prof.export_chrome_trace('./prof/trace.json')
+            optimizer.step()
 
     logger.info("Finished training loop.")
