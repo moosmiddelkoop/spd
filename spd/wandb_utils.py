@@ -42,8 +42,8 @@ def fetch_wandb_run_dir(run_id: str) -> Path:
     ourselves, a directory of the name "run-<timestamp>-<run_id>" should exist). If not, we create a
     new wandb_run_dir.
     """
-    # Default to REPO_ROOT/wandb if SPD_CACHE_DIR not set
-    base_cache_dir = Path(os.environ.get("SPD_CACHE_DIR", REPO_ROOT / "wandb"))
+    # Default to REPO_ROOT/wandb
+    base_cache_dir = REPO_ROOT / "wandb"
     base_cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Set default wandb_run_dir
