@@ -1,5 +1,5 @@
 # --- WandB ---
-wandb_project: oli-spd
+wandb_project: null
 wandb_run_name: null
 wandb_run_name_prefix: ""
 
@@ -13,33 +13,34 @@ target_module_patterns: ["model.layers.14.mlp.up_proj"]
 
 # --- Loss Coefficients ---
 faithfulness_coeff: 1.0
-recon_coeff: 99999
-stochastic_recon_coeff: 99999
+recon_coeff: 0.002
+stochastic_recon_coeff: 0.002
 recon_layerwise_coeff: null
 stochastic_recon_layerwise_coeff: null
-importance_minimality_coeff: 99999
+importance_minimality_coeff: 0.0000006
 schatten_coeff: null
 embedding_recon_coeff: null
 is_embed_unembed_recon: false
-pnorm: 99999
+pnorm: 1.5
 output_loss_type: kl
 
 # --- Training ---
 batch_size: 16
 gradient_accumulation_steps: 4
 steps: 10_000
-lr: 99999
-lr_schedule: constant
+lr: 1.0e-4
+lr_schedule: cosine
 lr_warmup_pct: 0.01
 lr_exponential_halflife: null
 n_eval_steps: 10
 
 # --- Logging & Saving ---
-image_freq: 200
-image_on_first_step: true
+image_freq: 99999  # 200
+image_on_first_step: false # true
 print_freq: 10
-save_freq: null
+save_freq: 99999 # 1000
 log_ce_losses: true
+autocast_bfloat16: true
 
 # --- Pretrained model info ---
 pretrained_model_class: transformers.AutoModelForCausalLM

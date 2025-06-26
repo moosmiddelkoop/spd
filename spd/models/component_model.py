@@ -282,7 +282,7 @@ class ComponentModel(nn.Module):
             n_ci_mlp_neurons=config.n_ci_mlp_neurons,
             pretrained_model_output_attr=config.pretrained_model_output_attr,
             init_central=False,
-            # init_central=config.init_central,
+            dtype=torch.float32,
         )
         comp_model.load_state_dict(model_weights)
         return comp_model, config, out_dir

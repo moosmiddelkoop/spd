@@ -84,6 +84,11 @@ class LMTaskConfig(BaseModel):
 
 
 class Config(BaseModel):
+    train_ops: bool = Field(
+        default=False,
+        description="experimental optimization flag",
+    )
+
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     # --- WandB
     wandb_project: str | None = Field(

@@ -1,3 +1,4 @@
+import transformers
 import importlib
 import random
 from collections.abc import Callable
