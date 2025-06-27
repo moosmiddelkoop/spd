@@ -10,7 +10,7 @@ dependencies = [
     "torch==2.5",
     "torchvision",
     "pydantic",
-    "wandb",
+    "wandb>=0.20.1",
     "fire",
     "tqdm",
     "ipykernel",
