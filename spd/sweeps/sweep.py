@@ -26,7 +26,7 @@ import yaml
 from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
-from spd.slurm_utils import create_slurm_script, submit_slurm_jobs
+from spd.slurm_utils import create_slurm_array_script, format_runtime_str, submit_slurm_array
 
 
 def get_sweep_configuration(decomp_script: Path, config_path: Path) -> dict[str, Any]:
@@ -73,26 +73,21 @@ def main(
         cpu: Use CPU instead of GPU (default: False, uses GPU)
 
     """
-    # Validate arguments
     if n_agents <= 0:
         raise ValueError("Please supply a positive integer for agents.")
 
-    # Get experiment configuration from registry
     config = EXPERIMENT_REGISTRY[experiment]
     decomp_script = REPO_ROOT / config.decomp_script
     config_path = REPO_ROOT / config.config_path
-    job_suffix = job_suffix or config.expected_runtime
 
     print(f"Using sweep config for {experiment}:")
     print(f"  Decomposition script: {decomp_script}")
     print(f"  Config file: {config_path}")
 
-    # Create sweep configuration dictionary
     sweep_config_dict = get_sweep_configuration(
         decomp_script=decomp_script, config_path=config_path
     )
 
-    # Create the sweep using wandb API
     sweep_id = wandb.sweep(sweep=sweep_config_dict, project="spd")
 
     api = wandb.Api()
@@ -108,31 +103,34 @@ def main(
     snapshot_branch = create_git_snapshot(branch_name_prefix="sweep")
     print(f"Using git snapshot: {snapshot_branch}")
 
-    job_name = f"spd-sweep-{job_suffix}" if job_suffix else "spd-sweep"
+    # Build job name with expected runtime or custom suffix
+    runtime_str = format_runtime_str(config.expected_runtime)
+    job_name = f"spd-sweep-{job_suffix}" if job_suffix else f"spd-sweep-{runtime_str}"
+
     agent_id = f"{org_name}/{project_name}/{sweep_id}"
+    print(f"Agent ID: {agent_id}")
     command = f"wandb agent {agent_id}"
 
-    # Use a temporary directory for the agent script
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         run_agent_script = temp_path / "run_agent.sh"
 
-        create_slurm_script(
+        # Create list of identical commands for each agent
+        commands = [command] * n_agents
+
+        create_slurm_array_script(
             script_path=run_agent_script,
             job_name=job_name,
-            command=command,
+            commands=commands,
             cpu=cpu,
             snapshot_branch=snapshot_branch,
         )
 
-        # Submit the job n times to create n parallel agents
-        script_paths = [run_agent_script] * n_agents
-        job_ids = submit_slurm_jobs(script_paths)
+        job_id = submit_slurm_array(run_agent_script)
 
-        print(f"Job IDs: {', '.join(job_ids)}")
-        print("\nView logs in: ~/slurm_logs/slurm-<job_id>.out")
+        print(f"Job Array ID: {job_id}")
+        print(f"\nView logs in: ~/slurm_logs/slurm-{job_id}_*.out")
         print(f"Sweep URL: {wandb_url}")
-        # Temporary directory and script file are automatically cleaned up here
 
 
 def cli():

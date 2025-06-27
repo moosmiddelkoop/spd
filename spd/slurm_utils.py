@@ -8,31 +8,54 @@ from spd.git_utils import create_git_snapshot
 from spd.settings import REPO_ROOT
 
 
-def create_slurm_script(
+def format_runtime_str(runtime_minutes: int) -> str:
+    """Format runtime in minutes to a human-readable string like '2h30m' or '45m'.
+
+    Args:
+        runtime_minutes: Runtime in minutes
+
+    Returns:
+        Formatted string like '2h30m' for 150 minutes or '45m' for 45 minutes
+    """
+    minutes = runtime_minutes % 60
+    hours = runtime_minutes // 60
+    return f"{hours}h{minutes}m" if hours > 0 else f"{minutes}m"
+
+
+def create_slurm_array_script(
     script_path: Path,
     job_name: str,
-    command: str,
+    commands: list[str],
     cpu: bool = False,
     time_limit: str = "24:00:00",
     snapshot_branch: str | None = None,
 ) -> None:
-    """Create a SLURM batch script with git snapshot for consistent code.
+    """Create a SLURM job array script with git snapshot for consistent code.
 
     Args:
         script_path: Path where the script should be written
-        job_name: Name for the SLURM job
-        command: Command to execute in the job
+        job_name: Name for the SLURM job array
+        commands: List of commands to execute in each array job
         cpu: If True, use CPU only, otherwise use GPU
-        time_limit: Time limit for the job (default: 24:00:00)
+        time_limit: Time limit for each job (default: 24:00:00)
         snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
     """
-    # Create git snapshot if not provided
     if snapshot_branch is None:
         snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
 
     gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
     slurm_logs_dir = Path.home() / "slurm_logs"
     slurm_logs_dir.mkdir(exist_ok=True)
+
+    # Create array range (SLURM arrays are 1-indexed)
+    array_range = f"1-{len(commands)}"
+
+    # Create case statement for commands
+    case_statements = []
+    for i, command in enumerate(commands, 1):
+        case_statements.append(f"{i}) {command} ;;")
+
+    case_block = "\n        ".join(case_statements)
 
     script_content = textwrap.dedent(f"""
         #!/bin/bash
@@ -41,10 +64,11 @@ def create_slurm_script(
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
         #SBATCH --partition=all
-        #SBATCH --output={slurm_logs_dir}/slurm-%j.out
+        #SBATCH --array={array_range}
+        #SBATCH --output={slurm_logs_dir}/slurm-%A_%a.out
 
         # Create job-specific working directory
-        WORK_DIR="/tmp/spd-gf-copy-${{SLURM_JOB_ID}}"
+        WORK_DIR="/tmp/spd-gf-copy-${{SLURM_ARRAY_JOB_ID}}_${{SLURM_ARRAY_TASK_ID}}"
 
         # Clone the repository to the job-specific directory
         git clone {REPO_ROOT} $WORK_DIR
@@ -52,11 +76,16 @@ def create_slurm_script(
         # Change to the cloned repository directory
         cd $WORK_DIR
 
+        # Copy the .env file from the original repository for WandB authentication
+        cp {REPO_ROOT}/.env .env
+
         # Checkout the snapshot branch to ensure consistent code
         git checkout {snapshot_branch}
 
-        # Execute the command
-        {command}
+        # Execute the appropriate command based on array task ID
+        case $SLURM_ARRAY_TASK_ID in
+        {case_block}
+        esac
     """).strip()
 
     with open(script_path, "w") as f:
@@ -66,26 +95,21 @@ def create_slurm_script(
     script_path.chmod(0o755)
 
 
-def submit_slurm_jobs(script_paths: list[Path]) -> list[str]:
-    """Submit multiple SLURM jobs and return their job IDs.
+def submit_slurm_array(script_path: Path) -> str:
+    """Submit a SLURM job array and return the array job ID.
 
     Args:
-        script_paths: List of paths to SLURM batch scripts
+        script_path: Path to SLURM batch script
 
     Returns:
-        List of job IDs from submitted jobs
+        Array job ID from submitted job array
     """
-    job_ids = []
-
-    for script_path in script_paths:
-        result = subprocess.run(
-            ["sbatch", str(script_path)], capture_output=True, text=True, check=True
-        )
-        # Extract job ID from sbatch output (format: "Submitted batch job 12345")
-        job_id = result.stdout.strip().split()[-1]
-        job_ids.append(job_id)
-
-    return job_ids
+    result = subprocess.run(
+        ["sbatch", str(script_path)], capture_output=True, text=True, check=True
+    )
+    # Extract job ID from sbatch output (format: "Submitted batch job 12345")
+    job_id = result.stdout.strip().split()[-1]
+    return job_id
 
 
 def print_job_summary(job_info_list: list[str]) -> None:

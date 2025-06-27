@@ -108,7 +108,7 @@ def init_wandb(
     )
 
     # Update the config with the hyperparameters for this sweep (if any)
-    config = replace_pydantic_model(config, wandb.config)
+    config = replace_pydantic_model(config, wandb.config.as_dict())
 
     # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))

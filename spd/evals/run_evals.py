@@ -1,11 +1,12 @@
-"""Run SPD evaluations by deploying experiments as individual SLURM jobs.
+"""Run SPD evaluations by deploying experiments as a SLURM job array.
 
-This script runs SPD experiments from the registry as individual SLURM jobs,
-allowing for parallel evaluation of multiple experiments.
+This script is an entrypoint of the spd package, and thus can be called with `spd-evals` once
+the package is installed.
 
 Usage:
     spd-evals                                                  # Run all experiments
     spd-evals --experiments tms_5-2,resid_mlp3,ss_emb          # Run specific experiments
+    spd-evals tms_5-2,resid_mlp1 --job-suffix my_suffix        # Add a suffix to the job name
 """
 
 import tempfile
@@ -18,7 +19,12 @@ import wandb_workspaces.reports.v2 as wr
 from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
-from spd.slurm_utils import create_slurm_script, print_job_summary, submit_slurm_jobs
+from spd.slurm_utils import (
+    create_slurm_array_script,
+    format_runtime_str,
+    print_job_summary,
+    submit_slurm_array,
+)
 
 
 def generate_evals_id() -> str:
@@ -98,19 +104,18 @@ def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
     return report.url
 
 
-def main(experiments: str | None = None) -> None:
-    """Deploy SPD experiments as individual SLURM jobs.
+def main(experiments: str | None = None, job_suffix: str | None = None) -> None:
+    """Deploy SPD experiments as a SLURM job array.
 
     Args:
         experiments: Comma-separated list of experiment names to run. If None, runs all
             experiments from the registry. Available experiments: tms_5-2, tms_5-2-id,
             tms_40-10, tms_40-10-id, resid_mlp1, resid_mlp2, resid_mlp3, ss_emb
+        job_suffix: Optional suffix to add to the job name
     """
-    # If no experiments specified, run all experiments from registry
     if experiments is None:
         experiments_list = list(EXPERIMENT_REGISTRY.keys())
     else:
-        # Split comma-separated experiments
         experiments_list = [exp.strip() for exp in experiments.split(",")]
 
     # Validate experiment names
@@ -125,51 +130,51 @@ def main(experiments: str | None = None) -> None:
     snapshot_branch = create_git_snapshot(branch_name_prefix="eval")
     print(f"Made git snapshot on branch: {snapshot_branch}")
 
-    # Generate unique evaluation ID
     evals_id = generate_evals_id()
     print(f"Evaluation ID: {evals_id}")
 
     report_url = create_wandb_report(evals_id, experiments_list)
 
-    # Use a temporary directory for script files
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        script_paths: list[Path] = []
-        job_info_list: list[str] = []
+        commands: list[str] = []
+        experiment_names: list[str] = []
 
-        print(f"Deploying {len(experiments_list)} experiments as individual SLURM jobs...")
-        # Create SLURM scripts for all experiments
+        # Create commands for all experiments
         for experiment in experiments_list:
             config = EXPERIMENT_REGISTRY[experiment]
             decomp_script = REPO_ROOT / config.decomp_script
             config_path = REPO_ROOT / config.config_path
 
-            # Use expected_runtime in the job name for easier tracking
-            job_name = f"spd-eval-{config.expected_runtime}"
             command = f"python {decomp_script} {config_path} --evals_id {evals_id}"
+            commands.append(command)
+            experiment_names.append(experiment)
 
-            # Create experiment-specific run script in temp directory
-            run_script = temp_path / f"run_eval_{experiment}_{evals_id}.sh"
-            create_slurm_script(
-                script_path=run_script,
-                job_name=job_name,
-                command=command,
-                cpu=False,
-                snapshot_branch=snapshot_branch,
-            )
+        # Determine the longest expected runtime for job naming
+        max_runtime = max(EXPERIMENT_REGISTRY[exp].expected_runtime for exp in experiments_list)
+        runtime_str = format_runtime_str(max_runtime)
 
-            script_paths.append(run_script)
+        job_name = f"spd-evals-{runtime_str}" if job_suffix is None else f"spd-evals-{job_suffix}"
 
-        job_ids = submit_slurm_jobs(script_paths)
+        array_script = temp_path / f"run_eval_array_{evals_id}.sh"
+        create_slurm_array_script(
+            script_path=array_script,
+            job_name=job_name,
+            commands=commands,
+            cpu=False,
+            snapshot_branch=snapshot_branch,
+        )
 
-        # Create job info list for summary
-        for experiment, job_id in zip(experiments_list, job_ids, strict=False):
-            job_info_list.append(f"{experiment}:{job_id}")
+        array_job_id = submit_slurm_array(array_script)
+
+        job_info_list = [f"Array Job ID: {array_job_id}"]
+        for i, experiment in enumerate(experiment_names, 1):
+            job_info_list.append(f"  Task {i}: {experiment}")
 
         print_job_summary(job_info_list)
-
+        print(f"Array job submitted with ID: {array_job_id}")
+        print(f"Individual task logs will be in: ~/slurm_logs/slurm-{array_job_id}_<task_id>.out")
         print(f"View the report at: {report_url}")
-        # Temporary directory and all script files are automatically cleaned up here
 
 
 def cli():
