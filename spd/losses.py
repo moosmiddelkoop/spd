@@ -310,12 +310,12 @@ def calc_ce_losses(
 
     # make sure labels don't "wrap around": you **can't** predict the first token.
     masked_batch_BS = batch_BS.clone()
-    masked_batch_BS[:, 0] = -99  # F.cross_entropy ignores -99
+    masked_batch_BS[:, 0] = -100  # F.cross_entropy ignores -99
     flat_masked_batch_Bs = masked_batch_BS.flatten()
 
     def ce_vs_labels(logits_BSV: Tensor) -> Float[Tensor, ""]:
         flat_logits_BsV = einops.rearrange(logits_BSV, "b seq_len vocab -> (b seq_len) vocab")
-        return F.cross_entropy(flat_logits_BsV[:-1], flat_masked_batch_Bs[1:])
+        return F.cross_entropy(flat_logits_BsV[:-1], flat_masked_batch_Bs[1:], ignore_index=-100)
 
     # CE When...
     # every component is used

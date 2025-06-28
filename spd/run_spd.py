@@ -342,6 +342,7 @@ def optimize(
 
         if (
             config.image_freq is not None
+            and config.wandb_project is not None
             and step % config.image_freq == 0
             and (step > 0 or config.image_on_first_step)
         ):
