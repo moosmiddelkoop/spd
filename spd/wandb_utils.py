@@ -1,3 +1,4 @@
+from enum import Enum
 import os
 from pathlib import Path
 from typing import TypeVar
@@ -113,3 +114,10 @@ def init_wandb(
     # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))
     return config
+
+class WandbSections(Enum):
+    TRAIN = "train"
+    METRICS = "metrics"
+    CE_UNRECOVERED = "ce_unrecovered"
+    MISC = "misc"
+    LOSS = "loss"

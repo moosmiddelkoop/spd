@@ -4,6 +4,7 @@ import time
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
 from contextlib import nullcontext
+from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -36,6 +37,7 @@ from spd.utils import (
     get_lr_schedule_fn,
     get_lr_with_warmup,
 )
+from spd.wandb_utils import WandbSections
 
 CI_ALIVE_THRESHOLD = 0.1
 
@@ -123,13 +125,13 @@ def eval(
     # cat along batch bin
     stacked_ci_BxM = {k: torch.cat(v) for k, v in all_causal_importance_BxM.items()}
 
-    embed_ci_table = create_embed_ci_sample_table(stacked_ci_BxM)
-    if embed_ci_table is not None:
-        log_data["misc/embed_ci_sample"] = embed_ci_table
+    # embed_ci_table = create_embed_ci_sample_table(stacked_ci_BxM)
+    # if embed_ci_table is not None:
+    #     log_data["misc/embed_ci_sample"] = embed_ci_table
 
     ci_l_zero = calc_ci_l_zero(stacked_ci_BxM)
     for layer_name, layer_ci_l_zero in ci_l_zero.items():
-        log_data[f"metrics/ci_l0_{layer_name}"] = layer_ci_l_zero
+        log_data[f"{WandbSections.METRICS.value}/ci_l0_{layer_name}"] = layer_ci_l_zero
 
     return log_data
 
@@ -273,6 +275,7 @@ def optimize(
                     ci_upper_leaky=ci_upper_leaky_BxM,
                     target_out=target_out,
                     device=device,
+                    training_pct=step / config.steps,
                     n_params=n_params,
                 )
 
@@ -307,11 +310,11 @@ def optimize(
 
             if config.wandb_project:
                 log_data: dict[str, float | wandb.Table] = {
-                    "loss/total": avg_loss,
+                    f"{WandbSections.LOSS.value}/total": avg_loss,
                     **avg_loss_terms,
-                    "lr": step_lr,
-                    "tps": n_tokens / (time.perf_counter() - loop_start_time),
-                    "n_tokens": n_tokens,
+                    f"{WandbSections.TRAIN.value}/lr": step_lr,
+                    f"{WandbSections.TRAIN.value}/tps": n_tokens / (time.perf_counter() - loop_start_time),
+                    f"{WandbSections.TRAIN.value}/n_tokens": n_tokens,
                 }
 
                 if step > 0:

@@ -132,12 +132,8 @@ def calc_causal_importances(
     for param_name in pre_weight_acts:
         acts = pre_weight_acts[param_name]
 
-        if not acts.dtype.is_floating_point:
-            # Embedding layer
-            component_act = Vs[param_name][acts]
-        else:
-            # Linear layer
-            component_act = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
+        # if config
+        component_act = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
 
         gate_input = component_act.detach() if detach_inputs else component_act
         gate_output = gates[param_name](gate_input)

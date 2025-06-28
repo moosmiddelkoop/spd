@@ -1,30 +1,18 @@
 # These parameters will be injected into ./sweep.py
-name: "seed sensitivity"
-method: grid
+name: "SS narrower"
+method: random
 metric:
   name: loss/total
 parameters:
-  seed: 
-    values: [0, 1, 2, 3]
-  # lr:
-  #   distribution: log_uniform_values
-  #   min: 5.e-6
-  #   max: 1.e-4
-  # recon_coeff:
-  #   distribution: log_uniform_values
-  #   min: 5.e-4
-  #   max: 5.e-2
-  # stochastic_recon_coeff:
-  #   distribution: log_uniform_values
-  #   min: 5.e-5
-  #   max: 5.e-3
-  # stochastic_ablation_coeff:
-  #   distribution: log_uniform_values
-  #   min: 5.e-5
-  #   max: 5.e-3
-  # importance_minimality_coeff:
-  #   distribution: log_uniform_values
-  #   min: 1.e-7
-  #   max: 1.e-4
-  # print_freq:
-  #   values: [1, 2, 3, 4]
+  recon_coeff:
+    distribution: log_uniform_values
+    min: 0.005
+    max: .5
+  stochastic_recon_coeff:
+    distribution: log_uniform_values
+    min: 0.005
+    max: .5
+  importance_minimality_coeff:
+    distribution: log_uniform_values
+    min: 1.e-6
+    max: 1.e-4

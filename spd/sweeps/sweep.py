@@ -143,6 +143,6 @@ if __name__ == "__main__":
     # cli()
     main(
         experiment="gemma",
-        n_agents=4,
+        n_agents=16,
         job_suffix="oli",
     )

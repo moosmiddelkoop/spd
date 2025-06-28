@@ -157,6 +157,10 @@ class Config(BaseModel):
         ...,
         description="Coefficient for importance minimality loss",
     )
+    importance_minimality_warmup_pct: Probability = Field(
+        default=0.1,
+        description="Fraction of total steps to linearly warm up the importance minimality loss",
+    )
     schatten_coeff: NonNegativeFloat | None = Field(
         default=None,
         description="Coefficient for Schatten-norm regularisation (LM only)",

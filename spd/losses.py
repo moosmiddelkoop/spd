@@ -12,6 +12,7 @@ from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_stochastic_masks
 from spd.models.components import EmbeddingComponent, LinearComponent
 from spd.utils import calc_kl_divergence_lm
+from spd.wandb_utils import WandbSections
 
 
 def calc_embedding_recon_loss(
@@ -353,24 +354,24 @@ def calc_ce_losses(
     ce_unrecovered_rand_masked = (rand_masked_ce - target_ce) / (zero_masked_ce - target_ce)
 
     # KL
-    unmasked_kl_vs_target = calc_kl_divergence_lm( unmasked_component_logits_BSV, target_logits_BSV)
+    unmasked_kl_vs_target = calc_kl_divergence_lm(unmasked_component_logits_BSV, target_logits_BSV)
     masked_kl_vs_target = calc_kl_divergence_lm(masked_component_logits_BSV, target_logits_BSV)
 
     ce_losses = {
-        # bounds:
-        "ce_loss/target_ce_loss_vs_labels": target_ce.item(),
-        "ce_loss/zero_masked_ce_loss_vs_labels": zero_masked_ce.item(),
-        # raw CE
-        "ce_loss/unmasked_ce_loss_vs_labels": unmasked_ce.item(),
-        "ce_loss/masked_ce_loss_vs_labels": masked_ce.item(),
-        "ce_loss/rand_masked_ce_loss_vs_labels": rand_masked_ce.item(),
         # CE unrecovered (between target and zero-masked)
-        "ce_unrecovered/unmasked": ce_unrecovered_unmasked.item(),
-        "ce_unrecovered/masked": ce_unrecovered_masked.item(),
-        "ce_unrecovered/rand_masked": ce_unrecovered_rand_masked.item(),
+        f"{WandbSections.CE_UNRECOVERED.value}/unmasked": ce_unrecovered_unmasked.item(),
+        f"{WandbSections.CE_UNRECOVERED.value}/masked": ce_unrecovered_masked.item(),
+        f"{WandbSections.CE_UNRECOVERED.value}/rand_masked": ce_unrecovered_rand_masked.item(),
         # KL
-        "misc/unmasked_kl_loss_vs_target": unmasked_kl_vs_target.item(),
-        "misc/masked_kl_loss_vs_target": masked_kl_vs_target.item(),
+        f"{WandbSections.MISC.value}/unmasked_kl_loss_vs_target": unmasked_kl_vs_target.item(),
+        f"{WandbSections.MISC.value}/masked_kl_loss_vs_target": masked_kl_vs_target.item(),
+        # bounds:
+        f"{WandbSections.MISC.value}/z_ce/target_ce_loss_vs_labels": target_ce.item(),
+        f"{WandbSections.MISC.value}/z_ce/zero_masked_ce_loss_vs_labels": zero_masked_ce.item(),
+        # raw CE
+        f"{WandbSections.MISC.value}/z_ce/unmasked_ce_loss_vs_labels": unmasked_ce.item(),
+        f"{WandbSections.MISC.value}/z_ce/masked_ce_loss_vs_labels": masked_ce.item(),
+        f"{WandbSections.MISC.value}/z_ce/rand_masked_ce_loss_vs_labels": rand_masked_ce.item(),
     }
 
     return ce_losses
@@ -385,6 +386,7 @@ def calculate_losses(
     ci_upper_leaky: dict[str, Float[Tensor, "... C"]],
     target_out: Tensor,
     device: str,
+    training_pct: float,
     n_params: int,
 ) -> tuple[Float[Tensor, ""], dict[str, float]]:
     """Calculate all losses and return total loss and individual loss terms.
@@ -411,7 +413,7 @@ def calculate_losses(
         components=components, target_model=model.model, n_params=n_params, device=device
     )
     total_loss += config.faithfulness_coeff * faithfulness_loss
-    loss_terms["loss/faithfulness"] = faithfulness_loss.item()
+    loss_terms[f"{WandbSections.LOSS.value}/faithfulness"] = faithfulness_loss.item()
 
     # Reconstruction loss
     if config.recon_coeff is not None:
@@ -424,7 +426,7 @@ def calculate_losses(
             loss_type=config.output_loss_type,
         )
         total_loss += config.recon_coeff * recon_loss
-        loss_terms["loss/recon"] = recon_loss.item()
+        loss_terms[f"{WandbSections.LOSS.value}/recon"] = recon_loss.item()
 
     # Stochastic reconstruction loss
     if config.stochastic_recon_coeff is not None:
@@ -443,7 +445,7 @@ def calculate_losses(
             )
         stochastic_recon_loss = stochastic_recon_loss / len(stochastic_masks)
         total_loss += config.stochastic_recon_coeff * stochastic_recon_loss
-        loss_terms["loss/stochastic_recon"] = stochastic_recon_loss.item()
+        loss_terms[f"{WandbSections.LOSS.value}/stochastic_recon"] = stochastic_recon_loss.item()
 
     # # Reconstruction layerwise loss
     # if config.recon_layerwise_coeff is not None:
@@ -457,7 +459,7 @@ def calculate_losses(
     #         loss_type=config.output_loss_type,
     #     )
     #     total_loss += config.recon_layerwise_coeff * recon_layerwise_loss
-    #     loss_terms["loss/recon_layerwise"] = recon_layerwise_loss.item()
+    #     loss_terms[f"{WandbSections.LOSS.value}/recon_layerwise"] = recon_layerwise_loss.item()
 
     # # Stochastic reconstruction layerwise loss
     # if config.stochastic_recon_layerwise_coeff is not None:
@@ -474,25 +476,37 @@ def calculate_losses(
     #         loss_type=config.output_loss_type,
     #     )
     #     total_loss += config.stochastic_recon_layerwise_coeff * stochastic_recon_layerwise_loss
-    #     loss_terms["loss/stochastic_recon_layerwise"] = stochastic_recon_layerwise_loss.item()
+    #     loss_terms[f"{WandbSections.LOSS.value}/stochastic_recon_layerwise"] = stochastic_recon_layerwise_loss.item()
 
     # Importance minimality loss
     importance_minimality_loss = calc_importance_minimality_loss(
-        ci_upper_leaky=ci_upper_leaky, pnorm=config.pnorm
+        ci_upper_leaky=ci_upper_leaky,
+        pnorm=config.pnorm,
     )
-    total_loss += config.importance_minimality_coeff * importance_minimality_loss
-    loss_terms["loss/importance_minimality"] = importance_minimality_loss.item()
+
+    importance_minimality_coeff = (
+        (
+            training_pct
+            * config.importance_minimality_coeff
+            / config.importance_minimality_warmup_pct
+        )
+        if training_pct < config.importance_minimality_warmup_pct
+        else config.importance_minimality_coeff
+    )
+
+    total_loss += importance_minimality_coeff * importance_minimality_loss
+    loss_terms[f"{WandbSections.LOSS.value}/importance_minimality"] = importance_minimality_loss.item()
 
     # Schatten loss
-    if config.schatten_coeff is not None:
-        schatten_loss = calc_schatten_loss(
-            ci_upper_leaky=ci_upper_leaky,
-            pnorm=config.pnorm,
-            components=components,
-            device=device,
-        )
-        total_loss += config.schatten_coeff * schatten_loss
-        loss_terms["loss/schatten"] = schatten_loss.item()
+    # if config.schatten_coeff is not None:
+    #     schatten_loss = calc_schatten_loss(
+    #         ci_upper_leaky=ci_upper_leaky,
+    #         pnorm=config.pnorm,
+    #         components=components,
+    #         device=device,
+    #     )
+    #     total_loss += config.schatten_coeff * schatten_loss
+    #     loss_terms[f"{WandbSections.LOSS.value}/schatten"] = schatten_loss.item()
 
     # # Output reconstruction loss
     # if config.out_recon_coeff is not None:
@@ -506,7 +520,7 @@ def calculate_losses(
     #         loss_type=config.output_loss_type,
     #     )
     #     total_loss += config.out_recon_coeff * out_recon_loss
-    #     loss_terms["loss/output_recon"] = out_recon_loss.item()
+    #     loss_terms[f"{WandbSections.LOSS.value}/output_recon"] = out_recon_loss.item()
 
     # # Embedding reconstruction loss
     # if config.embedding_recon_coeff is not None:
@@ -525,7 +539,7 @@ def calculate_losses(
     #         unembed=config.is_embed_unembed_recon,
     #     )
     #     total_loss += config.embedding_recon_coeff * embedding_recon_loss
-    #     loss_terms["loss/embedding_recon"] = embedding_recon_loss.item()
+    #     loss_terms[f"{WandbSections.LOSS.value}/embedding_recon"] = embedding_recon_loss.item()
 
     # # stochastic layerwise ablation loss
     # if config.layerwise_random_ablation_coeff is not None:
@@ -542,7 +556,7 @@ def calculate_losses(
     #         loss_type=config.output_loss_type,
     #     )
     #     total_loss += config.layerwise_random_ablation_coeff * layerwise_random_ablation_loss
-    #     loss_terms["loss/layerwise_random_ablation_loss"] = (
+    #     loss_terms[f"{WandbSections.LOSS.value}/layerwise_random_ablation_loss"] = (
     #         layerwise_random_ablation_loss.item()
     #     )
 
@@ -563,6 +577,6 @@ def calculate_losses(
             )
         random_ablation_loss = random_ablation_loss / len(stochastic_ablation_masks)
         total_loss += config.stochastic_ablation_coeff * random_ablation_loss
-        loss_terms["loss/random_ablation_loss"] = random_ablation_loss.item()
+        loss_terms[f"{WandbSections.LOSS.value}/random_ablation_loss"] = random_ablation_loss.item()
 
     return total_loss, loss_terms

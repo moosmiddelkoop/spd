@@ -143,4 +143,5 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    # fire.Fire()
+    main("spd/experiments/lm/ss_config.yaml")

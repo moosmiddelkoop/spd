@@ -1,12 +1,12 @@
 # --- WandB ---
-wandb_project: null
+wandb_project: oli-spd
 # wandb_project: null
 wandb_run_name: null
 wandb_run_name_prefix: ""
 
 # --- General ---
 seed: 0
-C: 1024
+C: 4096
 n_mask_samples: 1
 n_ci_mlp_neurons: 16
 sigmoid_type: "leaky_hard"
@@ -14,12 +14,12 @@ target_module_patterns: ["model.layers.2.mlp.up_proj"]
 
 # --- Loss Coefficients ---
 faithfulness_coeff: 1.0
-recon_coeff: 0.01
-stochastic_recon_coeff: 0.002
-recon_layerwise_coeff: null
-stochastic_ablation_coeff: null
-stochastic_recon_layerwise_coeff: null
-importance_minimality_coeff: 1.e-6
+recon_coeff: 1.0
+recon_layerwise_coeff: 1.0
+stochastic_recon_coeff: 0.1
+stochastic_recon_layerwise_coeff: 0.1
+# stochastic_ablation_coeff: null
+importance_minimality_coeff: 1.e-5
 schatten_coeff: null
 embedding_recon_coeff: null
 is_embed_unembed_recon: false
@@ -27,10 +27,10 @@ pnorm: 1.5
 output_loss_type: kl
 
 # --- Training ---
-batch_size: 4
-steps: 50_000
-lr: 1e-4
-lr_schedule: constant
+batch_size: 16 # <------------------|==|
+steps: 100_000
+lr: 6e-5 # <------------------------|==|
+lr_schedule: cosine
 lr_warmup_pct: 0.01
 lr_exponential_halflife: null
 n_eval_steps: 100
@@ -38,7 +38,7 @@ n_eval_steps: 100
 # --- Logging & Saving ---
 image_freq: 2000
 image_on_first_step: true
-print_freq: 10
+print_freq: 20
 save_freq: null
 log_ce_losses: true
 
