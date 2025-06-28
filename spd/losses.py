@@ -218,14 +218,78 @@ def calc_faithfulness_loss(
     return faithfulness_loss
 
 
-def calc_ce_losses(
+def calc_ablation_loss(
+    model: ComponentModel,
+    batch: Float[Tensor, "... d_in"],
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    masks: dict[str, Float[Tensor, "... C"]],
+    target_out: Float[Tensor, "... d_mdoel_out"],
+    loss_type: Literal["mse", "kl"] = "mse",
+) -> Float[Tensor, ""]:
+    """Calculate the MSE over all masks."""
+    # Do a forward pass with all components
+    out = model.forward_plus_components(batch, components=components, masks=masks)
+    if loss_type == "mse":
+        loss = ((out - target_out) ** 2).mean()
+    elif loss_type == "kl":
+        loss = calc_kl_divergence_lm(pred=out, target=target_out)
+    return loss
+
+
+def calc_stochastic_ablation_masks(
+    causal_importances: dict[str, Float[Tensor, "... C"]],
+    n_mask_samples: int,
+) -> list[dict[str, Float[Tensor, "... C"]]]:
+    """Calculate n_mask_samples stochastic masks with the formula `-(1 - ci) * rand_unif(0,1)`.
+    Args:
+        causal_importances: The masks to use for the random masks.
+        n_mask_samples: The number of random masks to calculate.
+    Return:
+        A list of n_mask_samples dictionaries, each containing the stochastic masks for each layer.
+    """
+    stochastic_masks = []
+    for _ in range(n_mask_samples):
+        stochastic_masks.append(
+            {layer: (ci - 1.0) * torch.rand_like(ci) for layer, ci in causal_importances.items()}
+        )
+    return stochastic_masks
+
+
+def calc_layerwise_ablation_loss(
     model: ComponentModel,
     batch: Int[Tensor, "..."],
+    device: str,
     components: dict[str, LinearComponent | EmbeddingComponent],
-    masks: dict[str, Float[Tensor, "..."]],
-    unmasked_component_logits: Float[Tensor, "..."],
-    masked_component_logits: Float[Tensor, "..."],
-    target_logits: Float[Tensor, "..."],
+    masks: list[dict[str, Float[Tensor, "... C"]]],
+    target_out: Float[Tensor, "... d_model_out"],
+    loss_type: Literal["mse", "kl"] = "kl",
+) -> Float[Tensor, ""]:
+    """Calculate the recon loss when augmenting the model one (masked) component at a time."""
+    total_loss = torch.tensor(0.0, device=device)
+    for mask_info in masks:
+        for component_name, component in components.items():
+            modified_out = model.forward_plus_components(
+                batch,
+                components={component_name: component},
+                masks={component_name: mask_info[component_name]},
+            )
+            if loss_type == "mse":
+                loss = ((modified_out - target_out) ** 2).mean()
+            elif loss_type == "kl":
+                loss = calc_kl_divergence_lm(pred=modified_out, target=target_out)
+            else:
+                raise ValueError(f"Invalid loss type: {loss_type}")
+            total_loss += loss
+    n_modified_components = len(masks[0])
+    return total_loss / (n_modified_components * len(masks))
+
+
+def calc_ce_losses(
+    model: ComponentModel,
+    batch_BS: Tensor,
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    ci_masks_BxM: dict[str, Tensor],
+    target_logits_BSV: Tensor,
 ) -> dict[str, float]:
     """Calculate cross-entropy losses for various masking scenarios.
 
@@ -242,40 +306,55 @@ def calc_ce_losses(
         Dictionary containing CE losses for different scenarios
     """
     # Flatten logits and batch for CE calculation
-    assert batch.ndim == 2, "expected 2 dimensions (batch, seq_len)"
+    assert batch_BS.ndim == 2, "expected 2 dimensions (batch, seq_len)"
 
     # make sure labels don't "wrap around": you **can't** predict the first token.
-    masked_batch = batch.clone()
-    masked_batch[:, 0] = -99  # F.cross_entropy ignores -99
-    flat_masked_batch = masked_batch.flatten()
+    masked_batch_BS = batch_BS.clone()
+    masked_batch_BS[:, 0] = -99  # F.cross_entropy ignores -99
+    flat_masked_batch_Bs = masked_batch_BS.flatten()
 
-    def ce_vs_labels(logits: Float[Tensor, "batch seq_len vocab"]) -> Float[Tensor, ""]:
-        flat_logits = einops.rearrange(logits, "batch seq_len vocab -> (batch seq_len) vocab")
-        return F.cross_entropy(flat_logits[:-1], flat_masked_batch[1:])
+    def ce_vs_labels(logits_BSV: Tensor) -> Float[Tensor, ""]:
+        flat_logits_BsV = einops.rearrange(logits_BSV, "b seq_len vocab -> (b seq_len) vocab")
+        return F.cross_entropy(flat_logits_BsV[:-1], flat_masked_batch_Bs[1:])
 
-    # CE when every component is fully masked (all-zero masks)
-    zero_masks = {k: torch.zeros_like(v) for k, v in masks.items()}
-    zero_masked_component_logits = model.forward_with_components(
-        batch, components=components, masks=zero_masks
+    # CE When...
+    # every component is used
+    unmasked_component_logits_BSV = model.forward_with_components(
+        batch_BS, components=components, masks=None
     )
-
-    # CE when every component is completely randomly masked
-    rand_masks = {k: torch.rand_like(v) for k, v in masks.items()}
-    rand_masked_component_logits = model.forward_with_components(
-        batch, components=components, masks=rand_masks
+    # we use the causal importances as a mask
+    masked_component_logits_BSV = model.forward_with_components(
+        batch_BS, components=components, masks=ci_masks_BxM
+    )
+    # every component is fully masked out (all-zero masks)
+    zero_masked_component_logits_BSV = model.forward_with_components(
+        batch_BS,
+        components=components,
+        masks={k: torch.zeros_like(v) for k, v in ci_masks_BxM.items()},
+    )
+    # every component is completely randomly masked
+    rand_masked_component_logits_BSV = model.forward_with_components(
+        batch_BS,
+        components=components,
+        masks={k: torch.rand_like(v) for k, v in ci_masks_BxM.items()},
     )
 
     # CE vs true labels
-    unmasked_ce = ce_vs_labels(unmasked_component_logits)
-    masked_ce = ce_vs_labels(masked_component_logits)
-    target_ce = ce_vs_labels(target_logits)
-    zero_masked_ce = ce_vs_labels(zero_masked_component_logits)
-    rand_masked_ce = ce_vs_labels(rand_masked_component_logits)
+    unmasked_ce = ce_vs_labels(unmasked_component_logits_BSV)
+    masked_ce = ce_vs_labels(masked_component_logits_BSV)
+    rand_masked_ce = ce_vs_labels(rand_masked_component_logits_BSV)
+    # bounds:
+    zero_masked_ce = ce_vs_labels(zero_masked_component_logits_BSV)
+    target_ce = ce_vs_labels(target_logits_BSV)
 
     # CE unrecovered: how much worse is some CE compared to zero-ablation?
     ce_unrecovered_masked = (masked_ce - target_ce) / (zero_masked_ce - target_ce)
     ce_unrecovered_unmasked = (unmasked_ce - target_ce) / (zero_masked_ce - target_ce)
     ce_unrecovered_rand_masked = (rand_masked_ce - target_ce) / (zero_masked_ce - target_ce)
+
+    # KL
+    unmasked_kl_vs_target = calc_kl_divergence_lm( unmasked_component_logits_BSV, target_logits_BSV)
+    masked_kl_vs_target = calc_kl_divergence_lm(masked_component_logits_BSV, target_logits_BSV)
 
     ce_losses = {
         # bounds:
@@ -289,6 +368,9 @@ def calc_ce_losses(
         "ce_unrecovered/unmasked": ce_unrecovered_unmasked.item(),
         "ce_unrecovered/masked": ce_unrecovered_masked.item(),
         "ce_unrecovered/rand_masked": ce_unrecovered_rand_masked.item(),
+        # KL
+        "misc/unmasked_kl_loss_vs_target": unmasked_kl_vs_target.item(),
+        "misc/masked_kl_loss_vs_target": masked_kl_vs_target.item(),
     }
 
     return ce_losses
@@ -444,5 +526,43 @@ def calculate_losses(
     #     )
     #     total_loss += config.embedding_recon_coeff * embedding_recon_loss
     #     loss_terms["loss/embedding_recon"] = embedding_recon_loss.item()
+
+    # # stochastic layerwise ablation loss
+    # if config.layerwise_random_ablation_coeff is not None:
+    #     layerwise_ablation_masks = calc_stochastic_ablation_masks(
+    #         causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
+    #     )
+    #     layerwise_random_ablation_loss = calc_layerwise_ablation_loss(
+    #         model=model,
+    #         batch=batch,
+    #         device=device,
+    #         components=components,
+    #         masks=layerwise_ablation_masks,
+    #         target_out=target_out,
+    #         loss_type=config.output_loss_type,
+    #     )
+    #     total_loss += config.layerwise_random_ablation_coeff * layerwise_random_ablation_loss
+    #     loss_terms["loss/layerwise_random_ablation_loss"] = (
+    #         layerwise_random_ablation_loss.item()
+    #     )
+
+    # stochastic ablation loss
+    if config.stochastic_ablation_coeff is not None:
+        stochastic_ablation_masks = calc_stochastic_ablation_masks(
+            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
+        )
+        random_ablation_loss = torch.tensor(0.0, device=target_out.device)
+        for i in range(len(stochastic_ablation_masks)):
+            random_ablation_loss = calc_ablation_loss(
+                model=model,
+                batch=batch,
+                components=components,
+                masks=stochastic_ablation_masks[i],
+                target_out=target_out,
+                loss_type=config.output_loss_type,
+            )
+        random_ablation_loss = random_ablation_loss / len(stochastic_ablation_masks)
+        total_loss += config.stochastic_ablation_coeff * random_ablation_loss
+        loss_terms["loss/random_ablation_loss"] = random_ablation_loss.item()
 
     return total_loss, loss_terms

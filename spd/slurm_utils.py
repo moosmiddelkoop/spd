@@ -1,5 +1,6 @@
 """Shared utilities for SLURM job management."""
 
+from datetime import datetime
 import subprocess
 import textwrap
 from pathlib import Path
@@ -31,8 +32,10 @@ def create_slurm_script(
         snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
 
     gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
-    slurm_logs_dir = Path.home() / "slurm_logs"
-    slurm_logs_dir.mkdir(exist_ok=True)
+    slurm_logs_dir = (
+        REPO_ROOT / "slurm_logs" / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}-{job_name}"
+    )
+    slurm_logs_dir.mkdir(parents=True, exist_ok=True)
 
     script_content = textwrap.dedent(f"""
         #!/bin/bash

@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "scribe": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/mnt/polished-lake/home/oli/spd-gf/.venv/lib/python3.12/site-packages",
+        "run",
+        "python",
+        "-m",
+        "scribe.local_mcp"
+      ],
+      "env": {
+        "SCRIBE_PORT": "8888"
+      }
+    }
+  }
+}

@@ -28,6 +28,9 @@ from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
 from spd.slurm_utils import create_slurm_script, submit_slurm_jobs
 
+WANDB_ORG = "goodfire"
+WANDB_PROJECT = "oli-spd"
+
 
 def get_sweep_configuration(
     decomp_script: Path, base_config_path: Path, sweep_params_path: Path
@@ -93,14 +96,10 @@ def main(
     sweep_config_dict = get_sweep_configuration(decomp_script, config_path, sweep_params_path)
 
     # Create the sweep using wandb API
-    sweep_id = wandb.sweep(sweep=sweep_config_dict, project="spd")
-
-    api = wandb.Api()
-    org_name = api.settings["entity"]
-    project_name = api.settings["project"]
+    sweep_id = wandb.sweep(sweep=sweep_config_dict, project=WANDB_PROJECT)
 
     # Construct the full agent ID for the sweep
-    wandb_url = f"https://wandb.ai/{org_name}/{project_name}/sweeps/{sweep_id}"
+    wandb_url = f"https://wandb.ai/{WANDB_ORG}/{WANDB_PROJECT}/sweeps/{sweep_id}"
 
     print(f"Deploying {n_agents} agents for experiment {experiment}...")
 
@@ -109,7 +108,7 @@ def main(
     print(f"Using git snapshot: {snapshot_branch}")
 
     job_name = f"spd-sweep-{job_suffix}" if job_suffix else "spd-sweep"
-    agent_id = f"{org_name}/{project_name}/{sweep_id}"
+    agent_id = f"{WANDB_ORG}/{WANDB_PROJECT}/{sweep_id}"
     command = f"export WANDB_DISABLE_SERVICE=true && wandb agent {agent_id}"
 
     # Use a temporary directory for the agent script
@@ -130,7 +129,7 @@ def main(
         job_ids = submit_slurm_jobs(script_paths)
 
         print(f"Job IDs: {', '.join(job_ids)}")
-        print("\nView logs in: ~/slurm_logs/slurm-<job_id>.out")
+        print("\nView logs in: ./slurm_logs/.../slurm-<job_id>.out")
         print(f"Sweep URL: {wandb_url}")
         # Temporary directory and script file are automatically cleaned up here
 
@@ -141,4 +140,9 @@ def cli():
 
 
 if __name__ == "__main__":
-    cli()
+    # cli()
+    main(
+        experiment="gemma",
+        n_agents=4,
+        job_suffix="oli",
+    )

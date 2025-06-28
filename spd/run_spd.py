@@ -107,33 +107,13 @@ def eval(
         for k, v in ci_BxM.items():
             all_causal_importance_BxM[k].append(v)
 
-        unmasked_component_logits = model.forward_with_components(
-            batch,
-            components=components,
-            masks=None,
-        )
-        masked_component_logits = model.forward_with_components(
-            batch,
-            components=components,
-            masks=ci_BxM,
-        )
-
-        metrics["misc/unmasked_kl_loss_vs_target"].append(
-            calc_kl_divergence_lm(pred=unmasked_component_logits, target=target_logits).item()
-        )
-        metrics["misc/masked_kl_loss_vs_target"].append(
-            calc_kl_divergence_lm(pred=masked_component_logits, target=target_logits).item()
-        )
-
         if log_ce_losses:
             ce_losses = calc_ce_losses(
                 model=model,
-                batch=batch,
+                batch_BS=batch,
                 components=components,
-                masks=ci_BxM,
-                unmasked_component_logits=unmasked_component_logits,
-                masked_component_logits=masked_component_logits,
-                target_logits=target_logits,
+                ci_masks_BxM=ci_BxM,
+                target_logits_BSV=target_logits,
             )
             for name, value in ce_losses.items():
                 metrics[name].append(value)
@@ -149,7 +129,7 @@ def eval(
 
     ci_l_zero = calc_ci_l_zero(stacked_ci_BxM)
     for layer_name, layer_ci_l_zero in ci_l_zero.items():
-        log_data[f"metric/ci_l0_{layer_name}"] = layer_ci_l_zero
+        log_data[f"metrics/ci_l0_{layer_name}"] = layer_ci_l_zero
 
     return log_data
 
@@ -245,6 +225,9 @@ def optimize(
 
     loop_start_time = time.perf_counter()
 
+    total_loss = 0.0
+    loss_terms = defaultdict[str, float](float)
+
     for step in tqdm(range(config.steps + 1), ncols=0):
         step_lr = get_lr(step)
 
@@ -252,9 +235,6 @@ def optimize(
             group["lr"] = step_lr
 
         optimizer.zero_grad()
-
-        total_loss = 0.0
-        loss_terms = defaultdict[str, float](float)
 
         for _microbatch_idx in range(config.gradient_accumulation_steps):
             with autocast_ctx():
@@ -303,15 +283,23 @@ def optimize(
             # optimizer step is down after eval so we eval on the same exact model params as loss above
 
             # Bookkeeping
-            total_loss += scaled_loss.item()
+            total_loss += microbatch_total_loss.item()
             for name, value in microbatch_loss_terms.items():
-                loss_terms[name] += value / config.gradient_accumulation_steps
+                loss_terms[name] += value
 
         if step % config.print_freq == 0:
+            avg_loss = total_loss / config.gradient_accumulation_steps / config.print_freq
+            avg_loss_terms = {
+                k: v / config.gradient_accumulation_steps / config.print_freq
+                for k, v in loss_terms.items()
+            }
+            total_loss = 0.0
+            loss_terms.clear()
+
             tqdm.write(f"--- Step {step} ---")
             tqdm.write(f"LR: {step_lr:.6f}")
-            tqdm.write(f"Total Loss: {total_loss:.7f}")
-            for name, value in loss_terms.items():
+            tqdm.write(f"Total Loss: {avg_loss:.7f}")
+            for name, value in avg_loss_terms.items():
                 tqdm.write(f"{name}: {value:.7f}")
 
             n_tokens = batch.numel() * config.gradient_accumulation_steps * step  # pyright: ignore [reportPossiblyUnboundVariable]
@@ -319,8 +307,8 @@ def optimize(
 
             if config.wandb_project:
                 log_data: dict[str, float | wandb.Table] = {
-                    "loss/total": total_loss,
-                    **loss_terms,
+                    "loss/total": avg_loss,
+                    **avg_loss_terms,
                     "lr": step_lr,
                     "tps": n_tokens / (time.perf_counter() - loop_start_time),
                     "n_tokens": n_tokens,
@@ -433,8 +421,8 @@ def optimize(
                     grad_norm_val = grad_norm.sqrt().item()
                     wandb.log({"grad_norm": grad_norm_val}, step=step)
 
-                norm_torch = torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
-                wandb.log({"grad_norm_torch": norm_torch}, step=step)
+                # norm_torch = torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
+                # wandb.log({"grad_norm_torch": norm_torch}, step=step)
 
             optimizer.step()
 

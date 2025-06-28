@@ -20,6 +20,28 @@ from spd.utils import load_pretrained
 from spd.wandb_utils import download_wandb_file, fetch_latest_wandb_checkpoint, fetch_wandb_run_dir
 
 
+class CombinedModule(nn.Module):
+    """Combines an original module and a component, adding their outputs."""
+
+    def __init__(
+        self,
+        original_module: nn.Module,
+        component: LinearComponent | EmbeddingComponent,
+    ):
+        super().__init__()
+        self.original_module = original_module
+        self.component = component
+        self.mask: Float[Tensor, "... C"] | None = None
+
+    @override
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        # Set mask on the component before forward pass
+        self.component.mask = self.mask
+
+        original_output = self.original_module(*args, **kwargs)
+        component_output = self.component(*args, **kwargs)
+        return original_output + component_output
+
 class ComponentModel(nn.Module):
     """Wrapper around an arbitrary model for running SPD.
 
@@ -183,6 +205,31 @@ class ComponentModel(nn.Module):
             masks: Optional dictionary mapping component names to masks
         """
         with self._replaced_modules(components, masks):
+            return self(*args, **kwargs)
+
+    def forward_plus_components(
+        self,
+        *args: Any,
+        components: dict[str, LinearComponent | EmbeddingComponent],
+        masks: dict[str, Float[Tensor, "... C"]] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Forward pass where original modules and components are combined.
+
+        Args:
+            components: Dictionary mapping component names to components
+            masks: Optional dictionary mapping component names to masks
+        """
+        combined_modules = {}
+        for module_name, component in components.items():
+            original_module = self.model.get_submodule(module_name)
+            assert original_module is not None, f"Module {module_name} not found"
+            combined_modules[module_name] = CombinedModule(
+                original_module=original_module,
+                component=component,
+            )
+
+        with self._replaced_modules(combined_modules, masks):
             return self(*args, **kwargs)
 
     def forward_with_pre_forward_cache_hooks(

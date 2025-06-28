@@ -1,29 +1,30 @@
 # These parameters will be injected into ./sweep.py
+name: "seed sensitivity"
 method: grid
 metric:
   name: loss/total
 parameters:
-  # gate_init_central:
-  #   values: [true, false]
+  seed: 
+    values: [0, 1, 2, 3]
+  # lr:
+  #   distribution: log_uniform_values
+  #   min: 5.e-6
+  #   max: 1.e-4
   # recon_coeff:
   #   distribution: log_uniform_values
-  #   min: 1.0e-4
-  #   max: 1.0e-1
+  #   min: 5.e-4
+  #   max: 5.e-2
   # stochastic_recon_coeff:
   #   distribution: log_uniform_values
-  #   min: 1.0e-4
-  #   max: 1.0e-1
+  #   min: 5.e-5
+  #   max: 5.e-3
+  # stochastic_ablation_coeff:
+  #   distribution: log_uniform_values
+  #   min: 5.e-5
+  #   max: 5.e-3
   # importance_minimality_coeff:
   #   distribution: log_uniform_values
-  #   min: 1.0e-7
-  #   max: 1.0e-5
-  # pnorm:
-  #   distribution: uniform
-  #   min: 1.0
-  #   max: 2.0
-  # lr:
-  #   distribution: uniform
-  #   min: 1.0e-5
-  #   max: 2.0e-4
-  train_ops:
-    values: [true, false]
+  #   min: 1.e-7
+  #   max: 1.e-4
+  # print_freq:
+  #   values: [1, 2, 3, 4]

@@ -225,3 +225,11 @@ def create_data_loader(
         drop_last=True,
     )
     return loader, tokenizer
+
+
+if __name__ == "__main__":
+    # pre-warm cache
+    import os
+    assert os.environ["HF_HUB_ENABLE_HF_TRANSFER"] == "1"
+    from datasets import load_dataset
+    dataset = load_dataset("cerebras/SlimPajama-627B", split="train")

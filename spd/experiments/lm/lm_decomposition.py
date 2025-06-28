@@ -124,7 +124,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
     )
 
     # TODO: Below not needed when TMS supports config.n_eval_steps
-    assert config.n_eval_steps is not None, "n_eval_steps must be set"
+    # assert config.n_eval_steps is not None, "n_eval_steps must be set"
     logger.info("Starting optimization...")
     optimize(
         target_model=target_model,
@@ -143,5 +143,4 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
 
 if __name__ == "__main__":
-    # fire.Fire(main)
-    main("spd/experiments/lm/gemma_config.yaml")
+    fire.Fire(main)

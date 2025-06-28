@@ -1,11 +1,11 @@
 # --- WandB ---
-wandb_project: null
+wandb_project: oli-spd
 wandb_run_name: null
 wandb_run_name_prefix: ""
 
 # --- General ---
 seed: 0
-C: 4096
+C: 16384
 n_mask_samples: 1
 n_ci_mlp_neurons: 16
 sigmoid_type: "leaky_hard"
@@ -13,11 +13,12 @@ target_module_patterns: ["model.layers.14.mlp.up_proj"]
 
 # --- Loss Coefficients ---
 faithfulness_coeff: 1.0
-recon_coeff: 0.002
-stochastic_recon_coeff: 0.002
+recon_coeff: 1.e-3
+stochastic_recon_coeff: 1.e-4
+stochastic_ablation_coeff: null # 1.e-5
 recon_layerwise_coeff: null
 stochastic_recon_layerwise_coeff: null
-importance_minimality_coeff: 0.0000006
+importance_minimality_coeff: 1.e-7
 schatten_coeff: null
 embedding_recon_coeff: null
 is_embed_unembed_recon: false
@@ -26,19 +27,19 @@ output_loss_type: kl
 
 # --- Training ---
 batch_size: 16
-gradient_accumulation_steps: 4
+gradient_accumulation_steps: 8
 steps: 10_000
-lr: 1.0e-4
+lr: 5.e-6
 lr_schedule: cosine
 lr_warmup_pct: 0.01
 lr_exponential_halflife: null
 n_eval_steps: 10
 
 # --- Logging & Saving ---
-image_freq: 99999  # 200
-image_on_first_step: false # true
+image_freq: 200
+image_on_first_step: true
 print_freq: 10
-save_freq: 99999 # 1000
+save_freq: 1000
 log_ce_losses: true
 autocast_bfloat16: true
 
@@ -52,8 +53,8 @@ task_config:
   task_name: lm
   max_seq_len: 1024
   buffer_size: 1000
-  dataset_name: cerebras/SlimPajama-627B
-  # dataset_name: HuggingFaceFW/fineweb
+  # dataset_name: cerebras/SlimPajama-627B
+  dataset_name: HuggingFaceFW/fineweb
   column_name: "text"
   train_data_split: "train"
   eval_data_split: "asdf"
