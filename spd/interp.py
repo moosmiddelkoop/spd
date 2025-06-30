@@ -1,20 +1,15 @@
 # %%
-from transformers import AutoModelForCausalLM
-
-import yaml
 import html
-import re
-import gc
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import yaml
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 from spd.configs import Config, LMTaskConfig
@@ -23,27 +18,12 @@ from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_causal_importances
 from spd.models.sigmoids import SigmoidTypes
 
-# from research.cajal.tokens.sources import untokenized_text_hf
-# from research.experiments.parameter_decomposition.constants import CHECKPOINT_DIR
-# ComponentModel,
-# TrainConfig,
-# ce,
-# get_activation_scale,
-# get_dataloader,
-# get_model,
-# sample_masks_BSM,
-# upper_leaky_hard_sigmoid,
-
-
-@dataclass
-class ActivationsWithText:
-    tokens_HS: torch.Tensor
-
 
 @dataclass
 class ComponentExample:
     tokens_S: torch.Tensor
     last_tok_importance: float
+    token_importances_S: torch.Tensor  # Importance values for all tokens
 
 
 @dataclass
@@ -65,7 +45,7 @@ class ComponentExaminer:
         self.model = model
         self.tokens = tokens
 
-        self.module_names = [m.replace("-", ".") for m in model.gates.keys()]
+        self.module_names = [m.replace("-", ".") for m in model.gates]
         print("self.module_names", self.module_names)
 
         self.Vs = {
@@ -79,7 +59,7 @@ class ComponentExaminer:
         self.sigmoid_type = sigmoid_type
         self.device = device
 
-    def gather_component_summaries_fast(
+    def gather_component_summaries(
         self,
         total_batches: int,
         importance_threshold: float,
@@ -89,7 +69,7 @@ class ComponentExaminer:
 
         tokens_seen = 0
 
-        pbar = tqdm(range(total_batches), desc="Gathering component summaries (fast)")
+        pbar = tqdm(range(total_batches), desc="Gathering component summaries")
 
         for _ in pbar:
             tokens_BS = next(self.tokens).to(self.device)
@@ -101,8 +81,8 @@ class ComponentExaminer:
             importance_BSM_by_module, _ = calc_causal_importances(
                 pre_weight_acts=preact_cache_BSD,
                 Vs=self.Vs,
-                gates=self.gates,
-                sigmoid_type=self.sigmoid_type,
+                gates=self.gates,  # pyright: ignore[reportArgumentType]
+                sigmoid_type=self.sigmoid_type,  # pyright: ignore[reportArgumentType]
                 detach_inputs=False,
             )
 
@@ -116,7 +96,7 @@ class ComponentExaminer:
 
                 # -- Accumulate firing counts (every hit counts, regardless of example quota)
                 comps_unique, comps_counts = torch.unique(c_idx, return_counts=True)
-                for comp, cnt in zip(comps_unique.tolist(), comps_counts.tolist()):
+                for comp, cnt in zip(comps_unique.tolist(), comps_counts.tolist(), strict=True):
                     component_firing_counts[(module_name, comp)] += int(cnt)
 
                 # -- Sort hits by descending importance so the top examples are kept first
@@ -138,9 +118,13 @@ class ComponentExaminer:
                     key = (module_name, c)
                     ex_list = component_examples[key]
 
+                    # Get importance values for all tokens in this sequence
+                    token_importances = imp_BSM[b, : s + 1, c].detach().cpu()
+                    
                     example = ComponentExample(
                         tokens_S=tokens_BS[b, : s + 1].detach().cpu(),
                         last_tok_importance=float(imp),
+                        token_importances_S=token_importances,
                     )
                     ex_list.append(example)
 
@@ -162,315 +146,9 @@ class ComponentExaminer:
 
         return summaries
 
-        # @torch.no_grad()
-        # def gather_component_summaries(
-        #     self,
-        #     total_batches: int,
-        #     importance_threshold: float = 0.1,
-        # ) -> list[ComponentSummary]:
-        #     # Optimized version with GPU acceleration and vectorization
-        #     examples_by_component = defaultdict[tuple[str, int], list[ComponentExample]](list)
-        #     num_firings_by_component = defaultdict[tuple[str, int], int](int)
 
-        #     # Pre-allocate buffers for better memory management
-        #     last_position_by_component = {}
-
-        #     tokens_seen = 0
-        #     pbar = tqdm(range(total_batches), desc="Gathering component examples (optimized)")
-
-        #     for _ in pbar:
-        #         tokens_BS = next(self.tokens).to(self.device)
-        #         B, S = tokens_BS.shape
-
-        #         # Get importance values
-        #         _, preact_cache_BSD = self.model.forward_with_pre_forward_cache_hooks(
-        #             tokens_BS, module_names=self.module_names,
-        #         )
-
-        #         ci_BSM, _ = calc_causal_importances(
-        #             pre_weight_acts=preact_cache_BSD,
-        #             Vs=self.Vs,
-        #             gates=self.gates,
-        #             sigmoid_type=self.sigmoid_type,
-        #             detach_inputs=False,
-        #         )
-
-        #         # Process each module
-        #         for module_name, ci_BSM in ci_BSM.items():
-        #             # assert ci_BSM.shape == (B, S, self.model.m)
-
-        #             # Vectorized approach: find all positions exceeding threshold at once
-        #             high_importance_mask_BSM = ci_BSM > importance_threshold
-
-        #             # Get indices using torch.where - much faster than nested loops
-        #             batch_indices, pos_indices, component_indices = torch.where(
-        #                 high_importance_mask_BSM
-        #             )
-
-        #             # Count firings efficiently
-        #             component_counts = torch.bincount(component_indices, minlength=self.model.C)
-        #             for comp_idx, count in enumerate(component_counts):
-        #                 if count > 0:
-        #                     key = (module_name, comp_idx)
-        #                     num_firings_by_component[key] += int(count.item())
-
-        #             # Process examples in batches to minimize Python overhead
-        #             if len(batch_indices) > 0:
-        #                 # Sort by batch, then position for cache-friendly access
-        #                 sort_indices = torch.argsort(batch_indices * S + pos_indices)
-        #                 batch_indices = batch_indices[sort_indices]
-        #                 pos_indices = pos_indices[sort_indices]
-        #                 component_indices = component_indices[sort_indices]
-
-        #                 # Process each batch
-        #                 for b_idx in range(B):
-        #                     batch_mask = batch_indices == b_idx
-        #                     if not batch_mask.any():
-        #                         continue
-
-        #                     batch_positions = pos_indices[batch_mask]
-        #                     batch_components = component_indices[batch_mask]
-        #                     tokens_S = tokens_BS[b_idx]
-
-        #                     # Create position-component pairs
-        #                     for i in range(len(batch_positions)):
-        #                         pos = int(batch_positions[i].item())
-        #                         comp_idx = int(batch_components[i].item())
-        #                         component_key = (module_name, comp_idx)
-
-        #                         importance = ci_BSM[b_idx, pos, comp_idx].item()
-
-        #                         example = ComponentExample(
-        #                             tokens_S=tokens_S[: pos + 1],
-        #                             last_tok_importance=importance,
-        #                         )
-        #                         examples_by_component[component_key].append(example)
-        #                         last_position_by_component[component_key] = pos
-
-        #             pbar.set_postfix(n_components_with_examples=len(examples_by_component))
-
-        #         tokens_seen += B * S
-
-        # Create summaries
-        summaries = []
-        for (module_name, component_idx), examples in examples_by_component.items():
-            summaries.append(
-                ComponentSummary(
-                    module_name=module_name,
-                    component_idx=component_idx,
-                    selected_examples=sorted(
-                        examples, key=lambda x: x.last_tok_importance, reverse=True
-                    ),
-                    density=num_firings_by_component[(module_name, component_idx)] / tokens_seen,
-                )
-            )
-
-        return summaries
-
-    @torch.no_grad()
-    def gather_component_summaries_optimized(
-        self,
-        total_batches: int,
-        importance_threshold: float = 0.1,
-        separation_threshold_tokens: int = 5,
-    ) -> list[ComponentSummary]:
-        examples_by_component = defaultdict[tuple[str, int], list[ComponentExample]](list)
-        num_firings_by_component = defaultdict[tuple[str, int], int](int)
-
-        tokens_seen = 0
-
-        pbar = tqdm(range(total_batches), desc="Gathering component examples")
-
-        for _ in pbar:
-            tokens_BS = next(self.tokens).to(self.model.device)
-            B, S = tokens_BS.shape
-
-            # Get importance values
-            _, preact_cache_BSD = self.model.forward_with_pre_forward_cache_hooks(
-                tokens_BS, module_names=self.module_names
-            )
-            importance_BSM, _ = calc_causal_importances(
-                pre_weight_acts=preact_cache_BSD,
-                Vs=self.Vs,
-                gates=self.gates,
-                sigmoid_type=self.sigmoid_type,
-                detach_inputs=False,
-            )
-
-            # Process each module
-            for module_name, importance_vals_BSM in importance_BSM.items():
-                assert importance_vals_BSM.shape == (B, S, self.model.C)
-
-                # Find high importance positions
-                for b_idx in range(B):
-                    tokens_S = tokens_BS[b_idx]
-                    importance_SM = importance_vals_BSM[b_idx]
-
-                    # Get positions where any component exceeds threshold
-                    high_importance_positions = (
-                        (importance_SM > importance_threshold).any(dim=-1).nonzero(as_tuple=True)[0]
-                    )
-
-                    # For each position, find which components are active
-                    for pos in high_importance_positions:
-                        active_components = (importance_SM[pos] > importance_threshold).nonzero(
-                            as_tuple=True
-                        )[0]
-
-                        for component_idx in active_components:
-                            component_key = (module_name, int(component_idx.item()))
-
-                            # Check separation from last example
-                            if existing_examples := examples_by_component[component_key]:
-                                last_example_len = len(existing_examples[-1].tokens_S)
-                                if pos < last_example_len + separation_threshold_tokens:
-                                    continue
-
-                            example = ComponentExample(
-                                tokens_S=tokens_S[: pos + 1],
-                                last_tok_importance=importance_SM[pos, component_idx].item(),
-                            )
-                            examples_by_component[component_key].append(example)
-                            num_firings_by_component[component_key] += 1
-
-                pbar.set_postfix(n_components_with_examples=len(examples_by_component))
-
-            tokens_seen += B * S
-
-        # Create summaries
-        summaries = []
-        for (module_name, component_idx), examples in examples_by_component.items():
-            summaries.append(
-                ComponentSummary(
-                    module_name=module_name,
-                    component_idx=component_idx,
-                    selected_examples=sorted(
-                        examples, key=lambda x: x.last_tok_importance, reverse=True
-                    ),
-                    density=num_firings_by_component[(module_name, component_idx)] / tokens_seen,
-                )
-            )
-
-        return summaries
-
-    @torch.no_grad()
-    def gather_component_summaries_ultra_fast(
-        self,
-        total_batches: int,
-        importance_threshold: float = 0.1,
-        separation_threshold_tokens: int = 5,
-        max_examples_per_component: int = 1000,
-    ) -> list[ComponentSummary]:
-        """Ultra-fast version using advanced GPU operations and memory pre-allocation."""
-
-        # Pre-allocate GPU tensors for tracking
-        device = self.model.device
-        max_components = self.model.m
-
-        # Track last positions and counts on GPU
-        component_last_positions = {}  # (module_name, comp_idx) -> last_position
-        component_examples = defaultdict(
-            list
-        )  # (module_name, comp_idx) -> list of (tokens, importance)
-        component_firing_counts = defaultdict(int)
-
-        tokens_seen = 0
-        pbar = tqdm(range(total_batches), desc="Gathering examples (ultra-fast)")
-
-        # Process in larger batches if possible
-        effective_batch_size = min(self.batch_size * 4, 32)  # Process more at once
-
-        for batch_idx in pbar:
-            # Get larger batch for better GPU utilization
-            tokens_BS = next(self.tokens).to(self.device)
-            B, S = tokens_BS.shape
-
-            # Get importance values
-            _, preact_cache_BSD = self.model.forward_with_pre_forward_cache_hooks(
-                tokens_BS, module_names=self.module_names
-            )
-
-            importance_BSM, _ = calc_causal_importances(
-                pre_weight_acts=preact_cache_BSD,
-                Vs=self.Vs,
-                gates=self.gates,
-                sigmoid_type=self.sigmoid_type,
-                detach_inputs=False,
-            )
-
-            # Process each module
-            for module_name, importance_vals_BSM in importance_BSM.items():
-                # Find all high importance activations at once
-                high_mask = importance_vals_BSM > importance_threshold  # TODO: use threshold
-
-                if high_mask.any():
-                    # Get indices efficiently
-                    b_indices, s_indices, m_indices = torch.where(high_mask)
-                    importances = importance_vals_BSM[b_indices, s_indices, m_indices]
-
-                    # Group by component for efficient processing
-                    unique_components = torch.unique(m_indices)
-
-                    for comp_idx in unique_components:
-                        comp_mask = m_indices == comp_idx
-                        comp_b = b_indices[comp_mask]
-                        comp_s = s_indices[comp_mask]
-                        comp_imp = importances[comp_mask]
-
-                        # Update firing count
-                        key = (module_name, int(comp_idx.item()))
-                        component_firing_counts[key] += len(comp_b)
-
-                        # Get last position for this component
-                        last_pos = component_last_positions.get(
-                            key, -separation_threshold_tokens - 1
-                        )
-
-                        # Process examples for this component
-                        for i in range(len(comp_b)):
-                            b = int(comp_b[i].item())
-                            s = int(comp_s[i].item())
-
-                            # Check separation constraint
-                            if (
-                                s >= last_pos + separation_threshold_tokens
-                                and len(component_examples[key]) < max_examples_per_component
-                            ):
-                                # Only keep if under max examples
-                                example = ComponentExample(
-                                    tokens_S=tokens_BS[b, : s + 1],
-                                    last_tok_importance=int(comp_imp[i].item()),
-                                )
-                                component_examples[key].append(example)
-                                component_last_positions[key] = s
-
-            pbar.set_postfix(n_components=len(component_examples))
-            tokens_seen += B * S
-
-        # Create summaries with top examples only
-        summaries = []
-        for (module_name, component_idx), examples in component_examples.items():
-            # Keep only top examples by importance
-            sorted_examples = sorted(examples, key=lambda x: x.last_tok_importance, reverse=True)
-            top_examples = sorted_examples[:100]  # Keep top 100
-
-            summaries.append(
-                ComponentSummary(
-                    module_name=module_name,
-                    component_idx=component_idx,
-                    selected_examples=top_examples,
-                    density=component_firing_counts[(module_name, component_idx)] / tokens_seen,
-                )
-            )
-
-        return summaries
-
-
-# +=======================
-
-# Inline CSS for the highlight – darker green for sufficient contrast
-# _HIGHLIGHT_OPEN = '<span style="color:#1f7a1f;font-weight:bold;">'
-_HIGHLIGHT_OPEN = '<span style="color:#fff;background-color:#1f7a1f;">'
+# These will be dynamically generated based on importance
+_HIGHLIGHT_OPEN_TEMPLATE = '<span style="color:#fff;background-color:{color};">'
 _HIGHLIGHT_CLOSE = "</span>"
 
 # Visible‑whitespace glyphs – identical to the OP’s choice
@@ -489,7 +167,7 @@ def _make_visible(text: str) -> str:
     )
 
 
-def _apply_highlight(escaped_text: str, escaped_target: str) -> str:
+def _apply_highlight(escaped_text: str, escaped_target: str, importance: float) -> str:
     """Wrap **the last occurrence** of *escaped_target* in the highlight span.
 
     Both parameters **MUST** already be HTML-escaped.
@@ -498,55 +176,97 @@ def _apply_highlight(escaped_text: str, escaped_target: str) -> str:
     if pos == -1:
         # Fallback – shouldn’t normally happen, but fail gracefully
         return escaped_text
+    highlight_color = _get_highlight_color(importance)
+    highlight_open = _HIGHLIGHT_OPEN_TEMPLATE.format(color=highlight_color)
+    
     return (
         escaped_text[:pos]
-        + _HIGHLIGHT_OPEN
+        + highlight_open
         + escaped_target
         + _HIGHLIGHT_CLOSE
         + escaped_text[pos + len(escaped_target) :]
     )
 
 
+def _get_highlight_color(importance: float) -> str:
+    """Get highlight color based on importance value."""
+    importance_norm = min(max(importance, 0), 1)  # Clamp to [0, 1]
+    # Interpolate from light green (144, 238, 144) to dark green (31, 122, 31)
+    r = int(144 - (144 - 31) * importance_norm)
+    g = int(238 - (238 - 122) * importance_norm)
+    b = int(144 - (144 - 31) * importance_norm)
+    return f"rgb({r}, {g}, {b})"
+
+
+def _apply_multi_token_highlights(
+    token_ids: list[int],
+    token_importances: list[float],
+    tokenizer: PreTrainedTokenizer,
+) -> str:
+    """Apply highlights to all tokens based on their importance values."""
+    highlighted_parts = []
+    
+    for token_id, importance in zip(token_ids, token_importances, strict=True):
+        # Decode single token
+        token_str = tokenizer.decode([token_id], skip_special_tokens=True)
+        
+        # Make control chars visible
+        visible_token = _make_visible(token_str)
+        
+        # Escape for HTML
+        escaped_token = html.escape(visible_token, quote=False)
+        
+        # Apply highlight if importance > 0
+        if importance > 0:
+            highlight_color = _get_highlight_color(importance)
+            highlight_open = _HIGHLIGHT_OPEN_TEMPLATE.format(color=highlight_color)
+            highlighted_token = highlight_open + escaped_token + _HIGHLIGHT_CLOSE
+        else:
+            highlighted_token = escaped_token
+            
+        highlighted_parts.append(highlighted_token)
+    
+    return ''.join(highlighted_parts)
+
+
 def render_component_summary_html(
     summary: "ComponentSummary",
     tokenizer: PreTrainedTokenizer,
-    *,
-    topk: int = 10,
+    example_picker: Callable[[ComponentSummary], list[ComponentExample]],
     context_tokens: int = 20,
 ) -> str:
     """Return a fully escaped HTML `<section>` for *one* `ComponentSummary`."""
 
     rows: list[str] = []
 
-    for ex in summary.selected_examples[:topk]:
-        # --- reconstruct context string (right‑truncated) ---
-        ids_slice = ex.tokens_S[-context_tokens:]
-        ids_list = ids_slice.tolist()
-        decoded = tokenizer.decode(ids_list, skip_special_tokens=True)
+    examples = example_picker(summary)
 
-        # Last token (decoded) – needed later for the highlight search
-        last_tok_str = tokenizer.decode([ids_list[-1]], skip_special_tokens=True)
-
-        # Make control chars visible *before* escaping so glyphs are preserved
-        visible_decoded = _make_visible(decoded)
-        visible_last = _make_visible(last_tok_str)
-
-        # Escape both for safe HTML insertion
-        escaped_decoded = html.escape(visible_decoded, quote=False)
-        escaped_last = html.escape(visible_last, quote=False)
-
-        # Apply highlight (wrap last occurrence in <span>)
-        highlighted_html = _apply_highlight(escaped_decoded, escaped_last)
+    for ex in examples:
+        ids_list = ex.tokens_S[-context_tokens:].tolist()
+        importance_list = ex.token_importances_S[-context_tokens:].tolist()
+        
+        highlighted_html = _apply_multi_token_highlights(ids_list, importance_list, tokenizer)
+        # importance_bg_color = _get_highlight_color(ex.last_tok_importance)
+        # text_color = "#fff"  # White text on green background
 
         rows.append(
-            f'<tr><td>{ex.last_tok_importance:.3f}</td><td style="white-space:nowrap;">{highlighted_html}</td></tr>'
+            f'<tr>'
+            # f'<td style="background-color:{importance_bg_color};color:{text_color};'
+            f'font-weight:bold;">{ex.last_tok_importance:.3f}</td>'
+            f'<td style="white-space:nowrap;">{highlighted_html}</td>'
+            f'</tr>'
         )
 
     return (
         f"<section>\n"
-        f"  <h2>Module: {html.escape(summary.module_name)} / Component {summary.component_idx}</h2>\n"
-        f"  <p>Density: {summary.density:.4%} &nbsp;|&nbsp; Total examples: {len(summary.selected_examples)}</p>\n"
-        f"  <table>\n    <thead><tr><th>Importance</th><th>Context</th></tr></thead>\n    <tbody>\n      {'\n      '.join(rows)}\n    </tbody>\n  </table>\n"
+        f"  <h2>Module: {html.escape(summary.module_name)} / "
+        f"Component {summary.component_idx}</h2>\n"
+        f"  <p>Density: {summary.density:.4%} &nbsp;|&nbsp; "
+        f"Total examples: {len(summary.selected_examples)}</p>\n"
+        f"  <table>\n    <thead><tr>"
+        # "<th>Importance</th>"
+        "<th>Context</th></tr></thead>\n    "
+        f"<tbody>\n      {'\n      '.join(rows)}\n    </tbody>\n  </table>\n"
         f"</section>\n"
     )
 
@@ -556,7 +276,7 @@ def write_component_summaries_html(
     tokenizer: PreTrainedTokenizer,
     *,
     file_path: str | Path = "component_summaries.html",
-    topk: int = 10,
+    example_picker: Callable[[ComponentSummary], list[ComponentExample]],
     context_tokens: int = 20,
     page_title: str = "Component Example Visualisation",
 ) -> Path:
@@ -565,7 +285,7 @@ def write_component_summaries_html(
     file_path = Path(file_path)
 
     sections = [
-        render_component_summary_html(s, tokenizer, topk=topk, context_tokens=context_tokens)
+        render_component_summary_html(s, tokenizer, example_picker, context_tokens=context_tokens)
         for s in summaries
     ]
 
@@ -615,20 +335,36 @@ def write_component_summaries_html(
     file_path.write_text(html_doc, encoding="utf-8")
     return file_path
 
+
 if not torch.cuda.is_available():
     raise RuntimeError("CUDA is not available")
 
 DEVICE = torch.device("cuda")
 
 
-def write_summary_for_run(
-    experiment_out_dir: Path,
-    checkpoint_name: str,
-    total_batches: int = 1_000,
-    importance_threshold: float = 0.9,
-    n_context_tokens: int = 20,
-    topk_examples_to_render: int = 30,
-):
+# def write_summary_for_run(
+#     experiment_out_dir: Path,
+#     checkpoint_name: str,
+#     total_batches: int = 1_000,
+#     importance_threshold: float = 0.9,
+#     n_context_tokens: int = 20,
+#     # example_picker_cfg: dict[str, Any] = {},
+#     # topk_examples_to_render: int = 30,
+# ):
+# %%
+
+experiment_out_dir = Path(
+    "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/"
+    "20250629_194019_662_lm_nmasks1_stochrecon1.37e-01_stochreconlayer1.00e-01_"
+    "p1.50e+00_impmin2.49e-04_C4096_sd0_lr6.00e-05_bs16__"
+    "pretrainedSimpleStories_SimpleStories-1.25M_seq512"
+)
+checkpoint_name = "model_95000.pth"
+total_batches = 1_000
+importance_threshold = 0.9
+n_context_tokens = 20
+
+if __name__ == "__main__":
     last_checkpoint_path = experiment_out_dir / checkpoint_name
     config_path = experiment_out_dir / "final_config.yaml"
 
@@ -643,6 +379,7 @@ def write_summary_for_run(
         llm,
         cfg.target_module_patterns,
         cfg.C,
+        cfg.gate_type,
         cfg.n_ci_mlp_neurons,
         cfg.gate_init_central,
         cfg.pretrained_model_output_attr,
@@ -691,7 +428,9 @@ def write_summary_for_run(
         device=DEVICE,
     )
 
-    component_summaries = component_examiner.gather_component_summaries_fast(
+    # %%
+
+    component_summaries = component_examiner.gather_component_summaries(
         total_batches=total_batches,
         importance_threshold=importance_threshold,
     )
@@ -702,13 +441,42 @@ def write_summary_for_run(
         f"num examples per component: mean {np.mean(n_examples):.2f} std {np.std(n_examples):.2f}"
     )
 
-    report_dir = experiment_out_dir / "component_summary"
-    print(f"writing report to {report_dir}")
+    # %%
+
+    report_path = experiment_out_dir / "component_summary.html"
+    print(f"writing report to {report_path}")
+
+    def example_picker(summary: ComponentSummary) -> list[ComponentExample]:
+        out = []
+        out.extend(summary.selected_examples[:10])
+        out.extend(summary.selected_examples[-10:])
+        return out
 
     write_component_summaries_html(
+        # run_name=cfg.wandb_run_name,
         component_summaries,
         tokenizer,
-        file_path=report_dir / "component_summaries.html",
-        topk=topk_examples_to_render,
+        file_path=report_path,
+        example_picker=example_picker,
         context_tokens=n_context_tokens,
     )
+
+    # %%
+
+
+# if __name__ == "__main__":
+#     out_dir = (
+#         "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/"
+#         "20250629_194019_662_lm_nmasks1_stochrecon1.37e-01_stochreconlayer1.00e-01_"
+#         "p1.50e+00_impmin2.49e-04_C4096_sd0_lr6.00e-05_bs16__"
+#         "pretrainedSimpleStories_SimpleStories-1.25M_seq512"
+#     )
+#     model_name = "model_95000.pth"
+#     write_summary_for_run(
+#         experiment_out_dir=Path(out_dir),
+#         checkpoint_name=model_name,
+#         total_batches=10_000,
+#         importance_threshold=0.5,
+#         n_context_tokens=20,
+#     )
+# # %%
