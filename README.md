@@ -1,7 +1,7 @@
 # SPD - Stochastic Parameter Decomposition
 Code used in the paper [Stochastic Parameter Decomposition](https://arxiv.org/abs/2506.20790)
 
-Weights and Bias [report](https://wandb.ai/goodfire/spd-tms/reports/SPD-paper-report--VmlldzoxMzE3NzU0MQ?accessToken=427spmsbxig5cyp4jsprg9p183tysclk7ttzyxjlsiwafh8badzlpgxcvopsormm) accompanying the paper.
+Weights and Bias [report](https://wandb.ai/goodfire/spd-tms/reports/SPD-paper-report--VmlldzoxMzE3NzU0MQ) accompanying the paper.
 
 ## Installation
 From the root of the repository, run one of
