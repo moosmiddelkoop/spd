@@ -1,7 +1,12 @@
 # %%
+from transformers import AutoModelForCausalLM
+
+import yaml
+import html
+import re
 import gc
 from collections import defaultdict
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,7 +17,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from spd.configs import Config
+from spd.configs import Config, LMTaskConfig
 from spd.data import DatasetConfig, create_data_loader
 from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_causal_importances
@@ -78,7 +83,6 @@ class ComponentExaminer:
         self,
         total_batches: int,
         importance_threshold: float,
-        max_examples_per_component: int,
     ) -> list[ComponentSummary]:
         component_examples: dict[tuple[str, int], list[ComponentExample]] = defaultdict(list)
         component_firing_counts: dict[tuple[str, int], int] = defaultdict(int)
@@ -124,7 +128,6 @@ class ComponentExaminer:
                     imp_vals[order],
                 )
 
-                # -- Store up to ``max_examples_per_component`` examples per component
                 for b, s, c, imp in zip(
                     b_idx.tolist(),
                     s_idx.tolist(),
@@ -134,8 +137,6 @@ class ComponentExaminer:
                 ):
                     key = (module_name, c)
                     ex_list = component_examples[key]
-                    if len(ex_list) >= max_examples_per_component:
-                        continue
 
                     example = ComponentExample(
                         tokens_S=tokens_BS[b, : s + 1].detach().cpu(),
@@ -465,223 +466,179 @@ class ComponentExaminer:
         return summaries
 
 
-def display_component_examples(
-    summary: ComponentSummary,
-    tokenizer: PreTrainedTokenizer,
-    topk: int = 10,
-    context_tokens: int = 10,
-):
-    """Display top examples for a component with compact visualization."""
-    print(f"\n{'=' * 80}")
-    print(f"Module: {summary.module_name}")
-    print(f"Component: {summary.component_idx}")
-    print(f"Density: {summary.density:.4%} ({(summary.density * 100):.2f}%)")
-    print(f"Total examples: {len(summary.selected_examples)}")
-    print(f"{'=' * 80}\n")
+# +=======================
 
-    for i, example in enumerate(summary.selected_examples[:topk]):
-        tokens_list = tokenizer.convert_ids_to_tokens(example.tokens_S.tolist())
+# Inline CSS for the highlight – darker green for sufficient contrast
+# _HIGHLIGHT_OPEN = '<span style="color:#1f7a1f;font-weight:bold;">'
+_HIGHLIGHT_OPEN = '<span style="color:#fff;background-color:#1f7a1f;">'
+_HIGHLIGHT_CLOSE = "</span>"
 
-        # Sanitize tokens for display
-        sanitized_tokens = []
-        for token in tokens_list:
-            # Replace newlines with ↵ (U+21B5)
-            token = token.replace("\n", "↵")
-            token = token.replace("\r", "↵")
-            # Replace tabs with → (U+2192)
-            token = token.replace("\t", "→")
-            # Replace spaces with · (U+00B7)
-            token = token.replace(" ", "·")
-            sanitized_tokens.append(token)
-
-        target_idx = len(sanitized_tokens) - 1  # The last token is the target
-
-        # Calculate the window around the target token
-        start_idx = max(0, target_idx - context_tokens)
-        end_idx = min(len(sanitized_tokens), target_idx + context_tokens + 1)
-
-        # Extract tokens for display
-        display_tokens = []
-        if start_idx > 0:
-            display_tokens.append("...")
-
-        window_tokens = sanitized_tokens[start_idx:end_idx]
-        display_tokens.extend(window_tokens)
-
-        if end_idx < len(sanitized_tokens):
-            display_tokens.append("...")
-
-        # Find the target token in the display list and highlight it
-        target_display_idx = target_idx - start_idx + (1 if start_idx > 0 else 0)
-        if target_display_idx < len(display_tokens):
-            display_tokens[target_display_idx] = (
-                f"\033[92m{display_tokens[target_display_idx]}\033[0m"
-            )
-
-        print(f"{i + 1}. Importance: {example.last_tok_importance:.3f} | {''.join(display_tokens)}")
+# Visible‑whitespace glyphs – identical to the OP’s choice
+VISIBLE_SPACE = "·"  # U+00B7
+VISIBLE_NL = "↵"  # U+21B5
+VISIBLE_TAB = "→"  # U+2192
 
 
-# def double_leaky_hard_sigmoid(x: torch.Tensor, alpha: float = 0.01) -> torch.Tensor:
-#     return torch.clamp(x, min=0, max=1) + alpha * (torch.clamp(x, max=0)) + alpha * (torch.clamp(x, min=1) - 1)
-
-
-# def plot_multiple_gate_mlps(model: ComponentModel, module_name: str, n: int = 10, seed: int = 42):
-#     """Plot response curves for n randomly selected gate MLPs from a module."""
-#     # Set random seed for reproducibility
-#     torch.manual_seed(seed)
-#     np.random.seed(seed)
-
-#     # Get the gate MLP for the specified module
-#     gate_mlp = model.dual_modules[module_name].gate
-#     x_range = (-15, 15)
-
-#     # Create input values - shape (B=1, S=100, M) where S is used as the linspace dimension
-#     S = 100
-#     x_values_S = torch.linspace(x_range[0], x_range[1], S).to(model.device)
-#     # Expand to (1, S, M) shape - broadcast the same values across all M components
-#     x_values_1SM = x_values_S.unsqueeze(0).unsqueeze(-1).expand(1, S, gate_mlp.mlp_in_MH.shape[0])
-
-#     with torch.no_grad():
-#         # Get outputs for all components at once
-#         output_1SM = gate_mlp.forwards_BSM(x_values_1SM)
-#         output_SM = output_1SM[0]  # Remove batch dimension
-
-#     WIDTH = 4
-
-#     # Create subplots
-#     cols = min(WIDTH, n)
-#     rows = (n + cols - 1) // cols
-#     fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 2 * rows))
-
-#     axes = [axes] if n == 1 else axes.flatten() if rows > 1 else axes
-
-#     # Convert x values to numpy once
-#     x_np = x_values_S.cpu().numpy()
-
-#     # Plot each component
-#     for i, comp_idx in enumerate(range(n)):
-#         ax = axes[i] if n > 1 else axes[0]
-
-#         # Get output for this component
-#         output_S = output_SM[:, comp_idx]
-
-#         # Plot the response curve
-#         y_np = output_S.cpu().numpy()
-#         ax.plot(x_np, y_np, linewidth=2, label="Pre-sigmoid")
-
-#         # Apply sigmoid to visualize actual gate output
-#         y_sigmoid = double_leaky_hard_sigmoid(output_S).cpu().numpy()
-#         ax.plot(x_np, y_sigmoid, linewidth=2, linestyle="--", alpha=0.7, label="After (double leaky) sigmoid")
-
-#         ax.set_xlim(x_range)
-#         ax.set_ylim(-0.5, 1.5)
-#         ax.set_xlabel("Input (projection onto component)")
-#         ax.set_ylabel("Gate output")
-#         ax.set_title(f"Component {comp_idx}")
-#         ax.grid(True, alpha=0.3)
-#         ax.legend()
-
-#     # Hide unused subplots
-#     for i in range(n, len(axes)):
-#         axes[i].set_visible(False)
-
-#     plt.tight_layout()
-#     plt.suptitle(f"Gate MLP Response Curves - {module_name}", y=1.02)
-
-#     return fig
-
-
-# def get_ce_unrecovered(
-#     batch_BS, model: ComponentModel, normalize_acts: Callable[[dict[str, torch.Tensor]], dict[str, torch.Tensor]]
-# ):
-#     logits_target_BSV, preact_cache = model.forward_base_with_preact_cache_BSV(batch_BS)
-#     pre_sigmoid_importance_BSM = model.get_importance_values_BSM(normalize_acts(preact_cache))
-#     masks_BSM = sample_masks_BSM(pre_sigmoid_importance_BSM)
-#     logits_masked_BSV = model.forward_with_all_components_masked_BSV(batch_BS, masks_BSM)
-#     logits_masked_by_layer_BSV = model.forward_with_components_lw_masked_BSV(batch_BS, masks_BSM)
-#     logits_unmasked_BSV = model.forward_with_all_components_unmasked_BSV(batch_BS)
-#     ce_unmasked = ce(logits_unmasked_BSV, batch_BS)
-
-#     ce_masked = ce(logits_masked_BSV, batch_BS)
-
-#     ce_masked_lw = 0
-#     for logits_masked_lw_BSV in logits_masked_by_layer_BSV.values():
-#         ce_masked_lw += ce(logits_masked_lw_BSV, batch_BS).item()
-#     ce_masked_lw /= len(logits_masked_by_layer_BSV)
-#     # =====
-
-#     # bounding baselines:
-#     ce_base = ce(logits_target_BSV, batch_BS)
-#     logits_zero_masked_BSV = model.forward_with_all_components_ablated_BSV(batch_BS)
-#     ce_zero_masked = ce(logits_zero_masked_BSV, batch_BS)
-#     # =====
-
-#     # Cross-entropy unrecovered
-#     ce_unrecovered_masked = (ce_masked - ce_base) / (ce_zero_masked - ce_base)
-#     ce_unrecovered_masked_lw = (ce_masked_lw - ce_base) / (ce_zero_masked - ce_base)
-#     ce_unrecovered_unmasked = (ce_unmasked - ce_base) / (ce_zero_masked - ce_base)
-
-#     return (
-#         ce_unrecovered_masked,
-#         ce_unrecovered_masked_lw,
-#         ce_unrecovered_unmasked,
-#     )
-
-
-# def eval_ce_unrecovered(
-#     model: ComponentModel,
-#     dataloader: untokenized_text_hf.UntokenisedTextHF,
-#     normalize_acts: Callable[[dict[str, torch.Tensor]], dict[str, torch.Tensor]],
-# ):
-#     res = defaultdict(list)
-#     for _ in tqdm(range(10)):
-#         batch_BS = dataloader.get_token_batch(2).to(model.device)
-#         (
-#             ce_unrecovered_masked,
-#             ce_unrecovered_masked_lw,
-#             ce_unrecovered_unmasked,
-#         ) = get_ce_unrecovered(batch_BS, model, normalize_acts)
-#         res["ce_unrecovered_masked"].append(ce_unrecovered_masked.item())
-#         res["ce_unrecovered_masked_lw"].append(ce_unrecovered_masked_lw.item())
-#         res["ce_unrecovered_unmasked"].append(ce_unrecovered_unmasked.item())
-#         del (
-#             batch_BS,
-#             ce_unrecovered_masked,
-#             ce_unrecovered_masked_lw,
-#             ce_unrecovered_unmasked,
-#         )
-
-#     print(f"""Cross-entropy unrecovered:
-#               masked: {np.mean(res["ce_unrecovered_masked"])}
-#               masked_lw: {np.mean(res["ce_unrecovered_masked_lw"])}
-#               unmasked: {np.mean(res["ce_unrecovered_unmasked"])}""")
-
-
-# %%
-if __name__ == "__main__":
-    exp_base = Path(
-        "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/lm_nmasks1_stochrecon1.47e-03_p1.54e+00_impmin8.78e-07_C4096_sd0_lr1.87e-04_bs16__pretrainedgoogle/gemma-3-1b-pt_seq1024_20250625_123715_817"
+def _make_visible(text: str) -> str:
+    """Replace control/whitespace characters with visible glyphs *only*."""
+    return (
+        text.replace("\t", VISIBLE_TAB)
+        .replace("\r", VISIBLE_NL)
+        .replace("\n", VISIBLE_NL)
+        .replace(" ", VISIBLE_SPACE)
     )
 
-    last_checkpoint_path = exp_base / "model_5000.pth"
-    config_path = exp_base / "final_config.yaml"
 
-    import yaml
+def _apply_highlight(escaped_text: str, escaped_target: str) -> str:
+    """Wrap **the last occurrence** of *escaped_target* in the highlight span.
+
+    Both parameters **MUST** already be HTML-escaped.
+    """
+    pos = escaped_text.rfind(escaped_target)
+    if pos == -1:
+        # Fallback – shouldn’t normally happen, but fail gracefully
+        return escaped_text
+    return (
+        escaped_text[:pos]
+        + _HIGHLIGHT_OPEN
+        + escaped_target
+        + _HIGHLIGHT_CLOSE
+        + escaped_text[pos + len(escaped_target) :]
+    )
+
+
+def render_component_summary_html(
+    summary: "ComponentSummary",
+    tokenizer: PreTrainedTokenizer,
+    *,
+    topk: int = 10,
+    context_tokens: int = 20,
+) -> str:
+    """Return a fully escaped HTML `<section>` for *one* `ComponentSummary`."""
+
+    rows: list[str] = []
+
+    for ex in summary.selected_examples[:topk]:
+        # --- reconstruct context string (right‑truncated) ---
+        ids_slice = ex.tokens_S[-context_tokens:]
+        ids_list = ids_slice.tolist()
+        decoded = tokenizer.decode(ids_list, skip_special_tokens=True)
+
+        # Last token (decoded) – needed later for the highlight search
+        last_tok_str = tokenizer.decode([ids_list[-1]], skip_special_tokens=True)
+
+        # Make control chars visible *before* escaping so glyphs are preserved
+        visible_decoded = _make_visible(decoded)
+        visible_last = _make_visible(last_tok_str)
+
+        # Escape both for safe HTML insertion
+        escaped_decoded = html.escape(visible_decoded, quote=False)
+        escaped_last = html.escape(visible_last, quote=False)
+
+        # Apply highlight (wrap last occurrence in <span>)
+        highlighted_html = _apply_highlight(escaped_decoded, escaped_last)
+
+        rows.append(
+            f'<tr><td>{ex.last_tok_importance:.3f}</td><td style="white-space:nowrap;">{highlighted_html}</td></tr>'
+        )
+
+    return (
+        f"<section>\n"
+        f"  <h2>Module: {html.escape(summary.module_name)} / Component {summary.component_idx}</h2>\n"
+        f"  <p>Density: {summary.density:.4%} &nbsp;|&nbsp; Total examples: {len(summary.selected_examples)}</p>\n"
+        f"  <table>\n    <thead><tr><th>Importance</th><th>Context</th></tr></thead>\n    <tbody>\n      {'\n      '.join(rows)}\n    </tbody>\n  </table>\n"
+        f"</section>\n"
+    )
+
+
+def write_component_summaries_html(
+    summaries: Iterable[ComponentSummary],
+    tokenizer: PreTrainedTokenizer,
+    *,
+    file_path: str | Path = "component_summaries.html",
+    topk: int = 10,
+    context_tokens: int = 20,
+    page_title: str = "Component Example Visualisation",
+) -> Path:
+    """Compile *all* summaries into a single styled HTML file and return the path."""
+
+    file_path = Path(file_path)
+
+    sections = [
+        render_component_summary_html(s, tokenizer, topk=topk, context_tokens=context_tokens)
+        for s in summaries
+    ]
+
+    css = """
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    h1   { margin-bottom: 0.5rem; }
+    h2   { margin: 2rem 0 0.25rem; font-size: 1.1rem; }
+
+    /* ─── Table styling ─────────────────────────────────────────────── */
+    table {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+        font-size: 0.9rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        overflow: hidden;      /* keep radius on overflow x */
+    }
+
+    thead th {
+        background: #f3f4f6;
+        font-weight: 600;
+        border-bottom: 1px solid #e0e0e0;
+        position: sticky;
+        top: 0;                /* sticky header */
+    }
+
+    th, td {
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    /* allow the Context cell to wrap nicely */
+    td:nth-child(3) { word-wrap: break-word; white-space: pre-wrap; }
+
+    span { white-space: pre-wrap; }  /* keep highlighted token wrapping */
+    """
+
+    html_doc = (
+        '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+        f'  <meta charset="utf-8">\n  <title>{html.escape(page_title)}</title>\n'
+        f"  <style>{css}</style>\n</head>\n<body>\n"
+        f"  <h1>{html.escape(page_title)}</h1>\n  {''.join(sections)}\n</body>\n</html>\n"
+    )
+
+    file_path.write_text(html_doc, encoding="utf-8")
+    return file_path
+
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA is not available")
+
+DEVICE = torch.device("cuda")
+
+
+def write_summary_for_run(
+    experiment_out_dir: Path,
+    checkpoint_name: str,
+    total_batches: int = 1_000,
+    importance_threshold: float = 0.9,
+    n_context_tokens: int = 20,
+    topk_examples_to_render: int = 30,
+):
+    last_checkpoint_path = experiment_out_dir / checkpoint_name
+    config_path = experiment_out_dir / "final_config.yaml"
 
     with open(config_path) as f:
         cfg = Config(**yaml.safe_load(f))
-    # %%
-
-    # %%
-
-    # model = get_model(cfg, torch.device("cuda"))
-
-    # Load trained weights
-    from transformers import AutoModelForCausalLM
 
     llm = AutoModelForCausalLM.from_pretrained(
         cfg.pretrained_model_name_hf, torch_dtype=torch.bfloat16
     )
+
     model = ComponentModel(
         llm,
         cfg.target_module_patterns,
@@ -692,72 +649,66 @@ if __name__ == "__main__":
         dtype=torch.bfloat16,
     )
 
-    # %%
     cp = torch.load(last_checkpoint_path, map_location="cuda")
-    # %%
 
     model.load_state_dict(cp)
     model.eval()
+    model.to(DEVICE)
 
-    # %%
-
-    # Create data iterator
     print("getting tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(cfg.pretrained_model_name_hf)
+
+    tc = cfg.task_config
+    assert isinstance(tc, LMTaskConfig)
+
     print("getting dataloader")
+
     train_data_config = DatasetConfig(
-        name=cfg.task_config.dataset_name,
+        name=tc.dataset_name,
         hf_tokenizer_path=cfg.pretrained_model_name_hf,
-        split=cfg.task_config.train_data_split,
-        n_ctx=cfg.task_config.max_seq_len,
+        split=tc.train_data_split,
+        n_ctx=tc.max_seq_len,
         is_tokenized=False,
         streaming=True,
-        column_name=cfg.task_config.column_name,
+        column_name=tc.column_name,
     )
 
     train_loader, _ = create_data_loader(
         dataset_config=train_data_config,
         batch_size=cfg.microbatch_size(),
-        buffer_size=cfg.task_config.buffer_size,
+        buffer_size=tc.buffer_size,
         global_seed=cfg.seed,
         ddp_rank=0,
         ddp_world_size=1,
     )
 
-    # %%
-    # model
-    cfg.target_module_patterns
-    # %%
+    print("gathering component summaries")
 
     component_examiner = ComponentExaminer(
-        model, (x["input_ids"] for x in train_loader), cfg.sigmoid_type, torch.device("cuda")
+        model=model,
+        tokens=(x["input_ids"] for x in train_loader),
+        sigmoid_type=cfg.sigmoid_type,
+        device=DEVICE,
     )
 
-    # %%
-
-    component_summaries = component_examiner.gather_component_summaries(
-        total_batches=10_000,
-        importance_threshold=0.9,
-        separation_threshold_tokens=5,
+    component_summaries = component_examiner.gather_component_summaries_fast(
+        total_batches=total_batches,
+        importance_threshold=importance_threshold,
     )
 
-    # %%
-
-    for summary in component_summaries[:100]:
-        display_component_examples(summary, tokenizer)
-    # %%
-
-    component_summaries_faster = ComponentExaminer(
-        model, (x["input_ids"] for x in train_loader), cfg.sigmoid_type, torch.device("cuda")
-    ).gather_component_summaries_fast(
-        total_batches=10_000,
-        importance_threshold=0.9,
-        max_examples_per_component=1000,
+    print(f"gathered {len(component_summaries)} component summaries")
+    n_examples = [len(s.selected_examples) for s in component_summaries]
+    print(
+        f"num examples per component: mean {np.mean(n_examples):.2f} std {np.std(n_examples):.2f}"
     )
 
-    # %%
+    report_dir = experiment_out_dir / "component_summary"
+    print(f"writing report to {report_dir}")
 
-    for summary in component_summaries_faster[:100]:
-        display_component_examples(summary, tokenizer, context_tokens=20, topk=30)
-# %%
-
+    write_component_summaries_html(
+        component_summaries,
+        tokenizer,
+        file_path=report_dir / "component_summaries.html",
+        topk=topk_examples_to_render,
+        context_tokens=n_context_tokens,
+    )

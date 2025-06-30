@@ -83,16 +83,18 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         target_model.config.use_cache = False
 
     # --- Setup Run Name and Output Dir --- #
-    run_name = get_run_name(
-        config,
-        pretrained_model_name=config.pretrained_model_name_hf,
-        max_seq_len=config.task_config.max_seq_len,
-    )
+    # run_name = get_run_name(
+    #     config,
+    #     pretrained_model_name=config.pretrained_model_name_hf,
+    #     max_seq_len=config.task_config.max_seq_len,
+    # )
+    run_name = "run"
     if config.wandb_project:
         assert wandb.run, "wandb.run must be initialized before training"
-        wandb.run.name = run_name
+        run_name = wandb.run.name
+        # wandb.run.name = run_name
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-    out_dir = Path(__file__).parent / "out" / f"{run_name}_{timestamp}"
+    out_dir = Path(__file__).parent / "out" / f"{timestamp}_{run_name}"
     out_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output directory: {out_dir}")
 

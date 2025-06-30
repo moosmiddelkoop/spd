@@ -1,5 +1,5 @@
 # These parameters will be injected into ./sweep.py
-name: "SS narrower"
+name: "SS narrow, higher imp"
 method: random
 metric:
   name: loss/total
@@ -14,5 +14,5 @@ parameters:
     max: .5
   importance_minimality_coeff:
     distribution: log_uniform_values
-    min: 1.e-6
-    max: 1.e-4
+    min: 1.e-5
+    max: 1.e-3
