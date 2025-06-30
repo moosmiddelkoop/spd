@@ -1,5 +1,5 @@
 # SPD - Stochastic Parameter Decomposition
-Code used in the paper [Stochastic Parameter Decomposition (forthcoming)](TODO)
+Code used in the paper [Stochastic Parameter Decomposition](https://arxiv.org/abs/2506.20790)
 
 Weights and Bias [report](https://wandb.ai/goodfire/spd-tms/reports/SPD-paper-report--VmlldzoxMzE3NzU0MQ?accessToken=427spmsbxig5cyp4jsprg9p183tysclk7ttzyxjlsiwafh8badzlpgxcvopsormm) accompanying the paper.
 
@@ -31,7 +31,7 @@ supported, though these should cover most parameters).
 SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
 subdirectories, along with a corresponding config file. E.g.
 ```bash
-python spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_5-2_config.yaml
+uv run spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_5-2_config.yaml
 ```
 
 Each experiment is also saved in a registry which is used for sweeps and evals.
@@ -59,7 +59,7 @@ can be run in sweeps).
 ```bash
 spd-sweep tms_5-2 4 --job_suffix 5m             # Run TMS 5-2 sweep with 4 GPU agents
 spd-sweep resid_mlp2 3 --cpu                    # Run ResidMLP2 sweep with 3 CPU agents
-spd-sweep ss_emb 2 --job_suffix 1h              # Run with custom job suffix
+spd-sweep tms_5_2-id 2 --job_suffix 1h              # Run with custom job suffix
 ```
 
 (Note, the `spd-sweep` command will call `spd/sweeps/sweep.py`).
@@ -70,7 +70,9 @@ To test your changes on all experiments in the registry, run:
 spd-evals                                                    # Run all experiments
 spd-evals --experiments tms_5-2-id,resid_mlp2,resid_mlp3     # Run only the experiments listed
 ```
-This will deploy a slurm job for each experiment.
+This will deploy a slurm job for each experiment and create a wandb report for viewing each run.
+It will also create a job which will analyze the results of the eval afterwards and update the
+report.
 
 (Note, the `spd-evals` command will call `spd/evals/run_evals.py`).
 
@@ -82,8 +84,8 @@ settings, copy `.vscode/settings-example.json` to `.vscode/settings.json`.
 There are various `make` commands that may be helpful
 
 ```bash
-make check  # Run pre-commit on all files (i.e. pyright, ruff linter, and ruff formatter)
-make type  # Run pyright on all files
+make check  # Run pre-commit on all files (i.e. basedpyright, ruff linter, and ruff formatter)
+make type  # Run basedpyright on all files
 make format  # Run ruff linter and formatter on all files
 make test  # Run tests that aren't marked `slow`
 make test-all  # Run all tests

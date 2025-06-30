@@ -14,6 +14,19 @@
             }
         },
         {
+            "name": "analyze_evals",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/spd/evals/analyze_evals.py",
+            "args": ["eval_20250627_131926", "https://wandb.ai/goodfire/spd/reports/SPD-Evaluation-Report---eval_20250627_131926--VmlldzoxMzM3NTkzNw=="],
+            "python": "${command:python.interpreterPath}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
+        },
+        {
             "name": "tms_5-2",
             "type": "debugpy",
             "request": "launch",

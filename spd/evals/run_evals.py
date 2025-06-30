@@ -20,10 +20,12 @@ from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
 from spd.slurm_utils import (
+    create_analysis_slurm_script,
     create_slurm_array_script,
     format_runtime_str,
     print_job_summary,
     submit_slurm_array,
+    submit_slurm_job,
 )
 
 
@@ -48,7 +50,7 @@ def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
     for exp_type in unique_experiment_types:
         # Use experiment type tag for filtering
         combined_filter = (
-            f'(Metric("tags") in ["evals_id:{evals_id}"]) and (Metric("tags") in ["{exp_type}"])'
+            f'(Metric("tags") in ["evals_id-{evals_id}"]) and (Metric("tags") in ["{exp_type}"])'
         )
 
         # Create runset for this experiment type
@@ -104,7 +106,11 @@ def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
     return report.url
 
 
-def main(experiments: str | None = None, job_suffix: str | None = None) -> None:
+def main(
+    experiments: str | None = None,
+    job_suffix: str | None = None,
+    run_analysis_job: bool = True,
+) -> None:
     """Deploy SPD experiments as a SLURM job array.
 
     Args:
@@ -112,6 +118,7 @@ def main(experiments: str | None = None, job_suffix: str | None = None) -> None:
             experiments from the registry. Available experiments: tms_5-2, tms_5-2-id,
             tms_40-10, tms_40-10-id, resid_mlp1, resid_mlp2, resid_mlp3, ss_emb
         job_suffix: Optional suffix to add to the job name
+        run_analysis_job: Whether to submit analysis job after evaluation completes
     """
     if experiments is None:
         experiments_list = list(EXPERIMENT_REGISTRY.keys())
@@ -171,9 +178,33 @@ def main(experiments: str | None = None, job_suffix: str | None = None) -> None:
         for i, experiment in enumerate(experiment_names, 1):
             job_info_list.append(f"  Task {i}: {experiment}")
 
+        # Submit analysis job if enabled
+        analysis_job_id = None
+        if run_analysis_job:
+            analysis_script = temp_path / f"run_analysis_{evals_id}.sh"
+            analysis_command = f"python spd/evals/analyze_evals.py {evals_id} {report_url}"
+
+            create_analysis_slurm_script(
+                script_path=analysis_script,
+                job_name="spd-evals-analysis-1m",
+                command=analysis_command,
+                dependency_job_id=array_job_id,
+                cpu=True,
+                snapshot_branch=snapshot_branch,
+            )
+
+            analysis_job_id = submit_slurm_job(analysis_script)
+            job_info_list.append(f"Analysis Job ID: {analysis_job_id}")
+
         print_job_summary(job_info_list)
         print(f"Array job submitted with ID: {array_job_id}")
         print(f"Individual task logs will be in: ~/slurm_logs/slurm-{array_job_id}_<task_id>.out")
+
+        if analysis_job_id:
+            print(f"Analysis job submitted with ID: {analysis_job_id}")
+            print("Analysis job will run after all evaluation tasks complete")
+            print(f"Analysis log will be in: ~/slurm_logs/slurm-{analysis_job_id}.out")
+
         print(f"View the report at: {report_url}")
 
 

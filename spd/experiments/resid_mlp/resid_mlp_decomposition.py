@@ -67,7 +67,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
     if config.wandb_project:
         tags = ["resid_mlp"]
         if evals_id:
-            tags.append(f"evals_id:{evals_id}")
+            tags.append(f"evals_id-{evals_id}")
         config = init_wandb(config, config.wandb_project, tags=tags)
 
     set_seed(config.seed)

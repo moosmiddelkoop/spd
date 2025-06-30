@@ -112,6 +112,86 @@ def submit_slurm_array(script_path: Path) -> str:
     return job_id
 
 
+def create_analysis_slurm_script(
+    script_path: Path,
+    job_name: str,
+    command: str,
+    dependency_job_id: str,
+    cpu: bool = True,
+    time_limit: str = "01:00:00",
+    snapshot_branch: str | None = None,
+) -> None:
+    """Create a SLURM script for analysis job with dependency.
+
+    Args:
+        script_path: Path where the script should be written
+        job_name: Name for the SLURM job
+        command: Command to execute in the job
+        dependency_job_id: Job ID to depend on (will wait for this job to complete)
+        cpu: If True, use CPU only, otherwise use GPU
+        time_limit: Time limit for the job (default: 01:00:00)
+        snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
+    """
+    if snapshot_branch is None:
+        snapshot_branch = create_git_snapshot(branch_name_prefix="analysis")
+
+    gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
+    slurm_logs_dir = Path.home() / "slurm_logs"
+    slurm_logs_dir.mkdir(exist_ok=True)
+
+    script_content = textwrap.dedent(f"""
+        #!/bin/bash
+        #SBATCH --nodes=1
+        {gpu_config}
+        #SBATCH --time={time_limit}
+        #SBATCH --job-name={job_name}
+        #SBATCH --partition=all
+        #SBATCH --dependency=afterok:{dependency_job_id}
+        #SBATCH --output={slurm_logs_dir}/slurm-%j.out
+
+        # Create job-specific working directory
+        WORK_DIR="/tmp/spd-analysis-${{SLURM_JOB_ID}}"
+
+        # Clone the repository to the job-specific directory
+        git clone {REPO_ROOT} $WORK_DIR
+
+        # Change to the cloned repository directory
+        cd $WORK_DIR
+
+        # Copy the .env file from the original repository for WandB authentication
+        cp {REPO_ROOT}/.env .env
+
+        # Checkout the snapshot branch to ensure consistent code
+        git checkout {snapshot_branch}
+
+        # Execute the analysis command
+        {command}
+    """).strip()
+
+    with open(script_path, "w") as f:
+        f.write(script_content)
+
+    # Make script executable
+    script_path.chmod(0o755)
+
+
+def submit_slurm_job(script_path: Path) -> str:
+    """Submit a SLURM job and return the job ID.
+
+    Args:
+        script_path: Path to SLURM batch script
+
+    Returns:
+        Job ID from submitted job
+    """
+    result = subprocess.run(
+        ["sbatch", str(script_path)], capture_output=True, text=True, check=True
+    )
+    # Extract job ID from sbatch output (format: "Submitted batch job 12345")
+    job_id = result.stdout.strip().split()[-1]
+    return job_id
+
+
 def print_job_summary(job_info_list: list[str]) -> None:
     """Print summary of submitted jobs.
 
