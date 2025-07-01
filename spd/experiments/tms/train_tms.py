@@ -2,7 +2,6 @@
 https://colab.research.google.com/github/anthropics/toy-models-of-superposition/blob/main/toy_models.ipynb
 """
 
-from datetime import datetime
 from pathlib import Path
 from typing import Literal, Self
 
@@ -11,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wandb
-import yaml
 from matplotlib import collections as mc
 from pydantic import BaseModel, ConfigDict, PositiveInt, model_validator
 from tqdm import tqdm, trange
@@ -19,6 +17,7 @@ from tqdm import tqdm, trange
 from spd.data_utils import DatasetGeneratedDataLoader, SparseFeatureDataset
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
 from spd.log import logger
+from spd.run_utils import get_output_dir, save_file
 from spd.utils import set_seed
 
 
@@ -218,20 +217,17 @@ def run_train(config: TMSTrainConfig, device: str) -> None:
         run_name += "_fixed-identity"
     elif config.fixed_random_hidden_layers:
         run_name += "_fixed-random"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-    out_dir = Path(__file__).parent / "out" / f"{run_name}_{timestamp}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = get_output_dir()
 
     if config.wandb_project:
-        tag = f"tms_{model_cfg.n_features}-{model_cfg.n_hidden}"
+        tags = [f"tms_{model_cfg.n_features}-{model_cfg.n_hidden}"]
         if model_cfg.n_hidden_layers > 0:
-            tag += "-id"
-        wandb.init(project=config.wandb_project, name=run_name, tags=[tag])
+            tags[0] += "-id"
+        wandb.init(project=config.wandb_project, name=run_name, tags=tags)
 
     # Save config
     config_path = out_dir / "tms_train_config.yaml"
-    with open(config_path, "w") as f:
-        yaml.dump(config.model_dump(mode="json"), f, indent=2)
+    save_file(config.model_dump(mode="json"), config_path)
     if config.wandb_project:
         wandb.save(str(config_path), base_path=out_dir, policy="now")
     logger.info(f"Saved config to {config_path}")
@@ -248,7 +244,7 @@ def run_train(config: TMSTrainConfig, device: str) -> None:
     )
 
     model_path = out_dir / "tms.pth"
-    torch.save(model.state_dict(), model_path)
+    save_file(model.state_dict(), model_path)
     if config.wandb_project:
         wandb.save(str(model_path), base_path=out_dir, policy="now")
     logger.info(f"Saved model to {model_path}")

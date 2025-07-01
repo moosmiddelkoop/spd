@@ -1,14 +1,10 @@
 """Residual Linear decomposition script."""
 
-import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import fire
-import torch
 import wandb
-import yaml
 from jaxtyping import Float
 from torch import Tensor
 
@@ -19,6 +15,7 @@ from spd.experiments.resid_mlp.resid_mlp_dataset import ResidualMLPDataset
 from spd.log import logger
 from spd.plotting import create_toy_model_plot_results
 from spd.run_spd import get_common_run_name_suffix, optimize
+from spd.run_utils import get_output_dir, save_file
 from spd.utils import get_device, load_config, set_seed
 from spd.wandb_utils import init_wandb
 
@@ -47,13 +44,9 @@ def save_target_model_info(
     resid_mlp_train_config_dict: dict[str, Any],
     label_coeffs: Float[Tensor, " n_features"],
 ) -> None:
-    torch.save(resid_mlp.state_dict(), out_dir / "resid_mlp.pth")
-
-    with open(out_dir / "resid_mlp_train_config.yaml", "w") as f:
-        yaml.dump(resid_mlp_train_config_dict, f, indent=2)
-
-    with open(out_dir / "label_coeffs.json", "w") as f:
-        json.dump(label_coeffs.detach().cpu().tolist(), f, indent=2)
+    save_file(resid_mlp.state_dict(), out_dir / "resid_mlp.pth")
+    save_file(resid_mlp_train_config_dict, out_dir / "resid_mlp_train_config.yaml")
+    save_file(label_coeffs.detach().cpu().tolist(), out_dir / "label_coeffs.json")
 
     if save_to_wandb:
         wandb.save(str(out_dir / "resid_mlp.pth"), base_path=out_dir, policy="now")
@@ -69,6 +62,9 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         if evals_id:
             tags.append(f"evals_id-{evals_id}")
         config = init_wandb(config, config.wandb_project, tags=tags)
+
+    # Get output directory (automatically uses wandb run ID if available)
+    out_dir = get_output_dir()
 
     set_seed(config.seed)
     logger.info(config)
@@ -94,13 +90,9 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
     if config.wandb_project:
         assert wandb.run, "wandb.run must be initialized before training"
         wandb.run.name = run_name
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-    out_dir = Path(__file__).parent / "out" / f"{run_name}_{timestamp}"
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save config
-    with open(out_dir / "final_config.yaml", "w") as f:
-        yaml.dump(config.model_dump(mode="json"), f, indent=2)
+    save_file(config.model_dump(mode="json"), out_dir / "final_config.yaml")
     if config.wandb_project:
         wandb.save(str(out_dir / "final_config.yaml"), base_path=out_dir, policy="now")
 

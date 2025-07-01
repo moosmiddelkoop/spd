@@ -10,6 +10,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from wandb.apis.public import Run
 
+from spd.run_utils import check_run_exists
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
 from spd.wandb_utils import download_wandb_file, fetch_latest_wandb_checkpoint, fetch_wandb_run_dir
 
@@ -105,8 +106,18 @@ class TMSModel(nn.Module):
                 instantiate a train config due to circular import issues)
         """
         if isinstance(path, str) and path.startswith(WANDB_PATH_PREFIX):
-            wandb_path = path.removeprefix(WANDB_PATH_PREFIX)
-            paths = cls._download_wandb_files(wandb_path)
+            # Check if run exists in shared filesystem first
+            run_dir = check_run_exists(path)
+            if run_dir:
+                # Use local files from shared filesystem
+                paths = TMSModelPaths(
+                    tms_train_config=run_dir / "tms_train_config.yaml",
+                    checkpoint=run_dir / "tms.pth",
+                )
+            else:
+                # Download from wandb
+                wandb_path = path.removeprefix(WANDB_PATH_PREFIX)
+                paths = cls._download_wandb_files(wandb_path)
         else:
             # `path` should be a local path to a checkpoint
             paths = TMSModelPaths(

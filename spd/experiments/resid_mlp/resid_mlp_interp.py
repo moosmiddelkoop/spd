@@ -15,7 +15,7 @@ from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.plotting import plot_causal_importance_vals
-from spd.settings import REPO_ROOT
+from spd.run_utils import get_output_dir
 from spd.utils import get_device, set_seed
 
 
@@ -626,7 +626,7 @@ def plot_neuron_contribution_pairs(
 
 
 def main():
-    out_dir = REPO_ROOT / "spd/experiments/resid_mlp/out/figures/"
+    out_dir = get_output_dir() / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
     set_seed(0)
     device = get_device()
@@ -729,8 +729,7 @@ def main():
 
         # Create and save the combined figure
         fig = plot_increasing_importance_minimality_coeff_ci_vals(run_ids, best_idx=best_idx)
-        out_dir = REPO_ROOT / "spd/experiments/resid_mlp/out/"
-        out_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = get_output_dir()
         fig.savefig(
             out_dir / "resid_mlp_varying_importance_minimality_coeff_ci_vals.png",
             bbox_inches="tight",

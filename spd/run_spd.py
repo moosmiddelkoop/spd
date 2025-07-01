@@ -29,6 +29,7 @@ from spd.plotting import (
     plot_ci_histograms,
     plot_mean_component_activation_counts,
 )
+from spd.run_utils import save_file
 from spd.utils import (
     calc_kl_divergence_lm,
     extract_batch_data,
@@ -72,6 +73,8 @@ def optimize(
     tied_weights: list[tuple[str, str]] | None = None,
 ) -> None:
     """Run the optimization loop for LM decomposition."""
+
+    logger.info(f"Output directory: {out_dir}")
 
     model = ComponentModel(
         base_model=target_model,
@@ -274,22 +277,20 @@ def optimize(
                         step=step,
                     )
                     if out_dir is not None:
+                        fig_dir = out_dir / "figures"
                         for k, v in fig_dict.items():
-                            v.savefig(out_dir / f"{k}_{step}.png")
-                            tqdm.write(f"Saved plot to {out_dir / f'{k}_{step}.png'}")
+                            save_file(v, fig_dir / f"{k}_{step}.png")
+                            tqdm.write(f"Saved plot to {fig_dir / f'{k}_{step}.png'}")
 
         # --- Saving Checkpoint --- #
         if (
             (config.save_freq is not None and step % config.save_freq == 0 and step > 0)
             or step == config.steps
         ) and out_dir is not None:
-            torch.save(model.state_dict(), out_dir / f"model_{step}.pth")
+            save_file(model.state_dict(), out_dir / f"model_{step}.pth")
             logger.info(f"Saved model, optimizer, and out_dir to {out_dir}")
             if config.wandb_project:
                 wandb.save(str(out_dir / f"model_{step}.pth"), base_path=str(out_dir), policy="now")
-                wandb.save(
-                    str(out_dir / f"optimizer_{step}.pth"), base_path=str(out_dir), policy="now"
-                )
 
         # --- Backward Pass & Optimize --- #
         # Skip gradient step if we are at the last step (last step just for plotting and logging)

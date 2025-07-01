@@ -15,6 +15,7 @@ from wandb.apis.public import Run
 
 from spd.log import logger
 from spd.module_utils import init_param_
+from spd.run_utils import check_run_exists
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
 from spd.wandb_utils import download_wandb_file, fetch_latest_wandb_checkpoint, fetch_wandb_run_dir
 
@@ -152,8 +153,19 @@ class ResidualMLP(nn.Module):
             label_coeffs: The label coefficients used to train the model
         """
         if isinstance(path, str) and path.startswith(WANDB_PATH_PREFIX):
-            wandb_path = path.removeprefix(WANDB_PATH_PREFIX)
-            paths = cls._download_wandb_files(wandb_path)
+            # Check if run exists in shared filesystem first
+            run_dir = check_run_exists(path)
+            if run_dir:
+                # Use local files from shared filesystem
+                paths = ResidualMLPPaths(
+                    resid_mlp_train_config=run_dir / "resid_mlp_train_config.yaml",
+                    label_coeffs=run_dir / "label_coeffs.json",
+                    checkpoint=run_dir / "resid_mlp.pth",
+                )
+            else:
+                # Download from wandb
+                wandb_path = path.removeprefix(WANDB_PATH_PREFIX)
+                paths = cls._download_wandb_files(wandb_path)
         else:
             # `path` should be a local path to a checkpoint
             paths = ResidualMLPPaths(

@@ -1,14 +1,11 @@
 """Trains a residual linear model on one-hot input vectors."""
 
-import json
-from datetime import datetime
 from pathlib import Path
 from typing import Literal, Self
 
 import einops
 import torch
 import wandb
-import yaml
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict, PositiveFloat, PositiveInt, model_validator
 from torch import Tensor, nn
@@ -20,6 +17,7 @@ from spd.experiments.resid_mlp.resid_mlp_dataset import (
     ResidualMLPDataset,
 )
 from spd.log import logger
+from spd.run_utils import get_output_dir, save_file
 from spd.utils import compute_feature_importances, get_lr_schedule_fn, set_seed
 from spd.wandb_utils import init_wandb
 
@@ -106,15 +104,14 @@ def train(
     run_name: str,
 ) -> Float[Tensor, ""]:
     if config.wandb_project:
-        tag = f"resid_mlp{config.resid_mlp_config.n_layers}-train"
-        config = init_wandb(config, config.wandb_project, name=run_name, tags=[tag])
+        tags = [f"resid_mlp{config.resid_mlp_config.n_layers}-train"]
+        config = init_wandb(config, config.wandb_project, name=run_name, tags=tags)
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save config
     config_path = out_dir / "resid_mlp_train_config.yaml"
-    with open(config_path, "w") as f:
-        yaml.dump(config.model_dump(mode="json"), f, indent=2)
+    save_file(config.model_dump(mode="json"), config_path)
     logger.info(f"Saved config to {config_path}")
     if config.wandb_project:
         wandb.save(str(config_path), base_path=out_dir, policy="now")
@@ -124,8 +121,7 @@ def train(
     assert dataloader.dataset.label_coeffs is not None
     label_coeffs = dataloader.dataset.label_coeffs.tolist()
     label_coeffs_path = out_dir / "label_coeffs.json"
-    with open(label_coeffs_path, "w") as f:
-        json.dump(label_coeffs, f)
+    save_file(label_coeffs, label_coeffs_path)
     logger.info(f"Saved label coefficients to {label_coeffs_path}")
     if config.wandb_project:
         wandb.save(str(label_coeffs_path), base_path=out_dir, policy="now")
@@ -161,7 +157,7 @@ def train(
                 wandb.log({"loss": loss.item(), "lr": current_lr}, step=step)
 
     model_path = out_dir / "resid_mlp.pth"
-    torch.save(model.state_dict(), model_path)
+    save_file(model.state_dict(), model_path)
     if config.wandb_project:
         wandb.save(str(model_path), base_path=out_dir, policy="now")
     print(f"Saved model to {model_path}")
@@ -191,8 +187,7 @@ def run_train(config: ResidMLPTrainConfig, device: str) -> Float[Tensor, ""]:
         f"identity_embedding_{config.fixed_identity_embedding}_bias_{model_cfg.in_bias}_"
         f"{model_cfg.out_bias}_loss{config.loss_type}"
     )
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-    out_dir = Path(__file__).parent / "out" / f"{run_name}_{timestamp}"
+    out_dir = get_output_dir()
 
     model = ResidualMLP(config=model_cfg).to(device)
 

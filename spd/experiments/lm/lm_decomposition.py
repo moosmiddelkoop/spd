@@ -1,12 +1,10 @@
 """Language Model decomposition script."""
 
-from datetime import datetime
 from pathlib import Path
 
 import fire
 import matplotlib.pyplot as plt
 import wandb
-import yaml
 from jaxtyping import Float
 from torch import Tensor
 
@@ -15,6 +13,7 @@ from spd.data import DatasetConfig, create_data_loader
 from spd.log import logger
 from spd.plotting import plot_mean_component_activation_counts
 from spd.run_spd import get_common_run_name_suffix, optimize
+from spd.run_utils import get_output_dir, save_file
 from spd.utils import get_device, load_config, load_pretrained, set_seed
 from spd.wandb_utils import init_wandb
 
@@ -55,6 +54,9 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
             tags.append(f"evals_id-{evals_id}")
         config = init_wandb(config, config.wandb_project, tags=tags)
 
+    # Get output directory (automatically uses wandb run ID if available)
+    out_dir = get_output_dir()
+
     set_seed(config.seed)
     logger.info(config)
 
@@ -82,14 +84,10 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
     if config.wandb_project:
         assert wandb.run, "wandb.run must be initialized before training"
         wandb.run.name = run_name
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-    out_dir = Path(__file__).parent / "out" / f"{run_name}_{timestamp}"
-    out_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output directory: {out_dir}")
 
     # --- Save Config --- #
-    with open(out_dir / "final_config.yaml", "w") as f:
-        yaml.dump(config.model_dump(mode="json"), f, indent=2)
+    save_file(config.model_dump(mode="json"), out_dir / "final_config.yaml")
     if config.wandb_project:
         wandb.save(str(out_dir / "final_config.yaml"), base_path=out_dir, policy="now")
 
