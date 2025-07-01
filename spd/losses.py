@@ -101,13 +101,15 @@ def calc_schatten_loss(
 
 
 def calc_importance_minimality_loss(
-    ci_upper_leaky: dict[str, Float[Tensor, "... C"]], pnorm: float
+    ci_upper_leaky: dict[str, Float[Tensor, "... C"]], pnorm: float, eps: float = 1e-12
 ) -> Float[Tensor, ""]:
     """Calculate the importance minimality loss on the upper leaky relu causal importances.
 
     Args:
         ci_upper_leaky: Dictionary of causal importances upper leaky relu for each layer.
         pnorm: The pnorm to use for the importance minimality loss. Must be positive.
+        eps: The epsilon to add to the causal importances to avoid division by zero when computing
+            the gradients for pnorm < 1.
 
     Returns:
         The importance minimality loss on the upper leaky relu causal importances.
@@ -116,7 +118,7 @@ def calc_importance_minimality_loss(
 
     for layer_ci_upper_leaky in ci_upper_leaky.values():
         # Note, the paper uses an absolute value but our layer_ci_upper_leaky is already > 0
-        total_loss = total_loss + layer_ci_upper_leaky**pnorm
+        total_loss = total_loss + (layer_ci_upper_leaky + eps) ** pnorm
 
     # Sum over the C dimension and mean over the other dimensions
     return total_loss.sum(dim=-1).mean()
