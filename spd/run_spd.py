@@ -26,17 +26,8 @@ from spd.models.component_model import ComponentModel, init_Vs_and_Us_
 from spd.models.component_utils import calc_causal_importances, calc_ci_l_zero
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.models.sigmoids import SigmoidTypes
-from spd.plotting import (
-    create_embed_ci_sample_table,
-    plot_ci_histograms,
-    plot_mean_component_activation_counts,
-)
-from spd.utils import (
-    calc_kl_divergence_lm,
-    extract_batch_data,
-    get_lr_schedule_fn,
-    get_lr_with_warmup,
-)
+from spd.plotting import plot_ci_histograms, plot_mean_component_activation_counts
+from spd.utils import extract_batch_data, get_lr_schedule_fn, get_lr_with_warmup
 from spd.wandb_utils import WandbSections
 
 CI_ALIVE_THRESHOLD = 0.1
@@ -136,13 +127,36 @@ def eval(
     return log_data
 
 
+def get_target_module_mean_input_norms(
+    model: ComponentModel,
+    target_module_patterns: list[str],
+    train_iter: Iterator[dict[str, Any]],
+    device: str,
+    n_tokens: int = 100_000,
+) -> dict[str, float]:
+    target_module_input_norms = defaultdict[str, list[float]](list)
+    n_tokens_seen = 0
+    pbar = tqdm(total=n_tokens, desc="Computing target module mean input norms")
+    while n_tokens_seen < n_tokens:
+        batch = extract_batch_data(next(train_iter)).to(device)
+        n_tokens_seen += batch.numel()
+        pbar.update(batch.numel())
+        _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+            batch, module_names=target_module_patterns
+        )
+        for name, act in pre_weight_acts.items():
+            assert act.ndim == 3, "expected 3D tensor (b, s, d)"
+            target_module_input_norms[name].append(act.norm(dim=-1).mean().item())
+    pbar.close()
+    return {name: sum(norms) / len(norms) for name, norms in target_module_input_norms.items()}
+
+
 def optimize(
     target_model: nn.Module,
     config: Config,
     device: str,
-    train_loader: DataLoader[Int[Tensor, "..."]]
-    | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
-    # eval_loader: DataLoader[Int[Tensor, "..."]]
+    train_loader: DataLoader[Tensor] | DataLoader[tuple[Tensor, Tensor]],
+    # eval_loader: DataLoader[Tensor, "..."]]
     # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_eval_steps: int,
     out_dir: Path | None,
@@ -150,17 +164,28 @@ def optimize(
     tied_weights: list[tuple[str, str]] | None = None,
 ) -> None:
     """Run the optimization loop for LM decomposition."""
-
     model = ComponentModel(
         base_model=target_model,
         target_module_patterns=config.target_module_patterns,
         C=config.C,
+        type_=config.gate_type,
         n_ci_mlp_neurons=config.n_ci_mlp_neurons,
         init_central=config.gate_init_central,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
         dtype=torch.float32,  # torch.bfloat16 if config.autocast_bfloat16 else torch.float32,
     )
     model.to(device)
+
+    data_iter = iter(train_loader)
+
+    target_module_mean_input_norms = get_target_module_mean_input_norms(
+        model=model,
+        target_module_patterns=config.target_module_patterns,
+        train_iter=data_iter,
+        device=device,
+    )
+
+    model.init_gates_from_mean_input_norms_(target_module_mean_input_norms)
 
     for param in target_model.parameters():
         param.requires_grad = False
@@ -205,7 +230,6 @@ def optimize(
 
     n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
-    data_iter = iter(train_loader)
 
     alive_components_M: dict[str, Bool[Tensor, " C"]] = {
         layer_name: torch.zeros(config.C, device=device).bool() for layer_name in components
@@ -313,7 +337,8 @@ def optimize(
                     f"{WandbSections.LOSS.value}/total": avg_loss,
                     **avg_loss_terms,
                     f"{WandbSections.TRAIN.value}/lr": step_lr,
-                    f"{WandbSections.TRAIN.value}/tps": n_tokens / (time.perf_counter() - loop_start_time),
+                    f"{WandbSections.TRAIN.value}/tps": n_tokens
+                    / (time.perf_counter() - loop_start_time),
                     f"{WandbSections.TRAIN.value}/n_tokens": n_tokens,
                 }
 

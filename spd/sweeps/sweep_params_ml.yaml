@@ -1,0 +1,18 @@
+# These parameters will be injected into ./sweep.py
+name: "attn #1"
+method: random
+metric:
+  name: loss/total
+parameters:
+  recon_coeff:
+    distribution: log_uniform_values
+    min: 1.e-5
+    max: 1.e-3
+  stochastic_recon_coeff:
+    distribution: log_uniform_values
+    min: 1.e-5
+    max: 1.e-3
+  importance_minimality_coeff:
+    distribution: log_uniform_values
+    min: 1.e-7
+    max: 1.e-4

@@ -19,7 +19,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import fire
 import wandb
 import yaml
 
@@ -134,15 +133,10 @@ def main(
         # Temporary directory and script file are automatically cleaned up here
 
 
-def cli():
-    """Command line interface for the sweep script."""
-    fire.Fire(main)
-
-
 if __name__ == "__main__":
-    # cli()
     main(
-        experiment="gemma",
-        n_agents=16,
-        job_suffix="oli",
+        experiment="ss_attn",
+        n_agents=4,
+        sweep_params_path=REPO_ROOT / "spd/sweeps/sweep_params_ml.yaml",
+        job_suffix="oli-4h",
     )

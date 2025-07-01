@@ -3,10 +3,13 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any, override
+import re
+from typing import Any, Literal, cast, override
 
 import einops
 import torch
+from transformers import LlamaForCausalLM
+from transformers.models.llama.modeling_llama import LlamaRMSNorm
 import wandb
 import yaml
 from jaxtyping import Float
@@ -14,10 +17,20 @@ from torch import Tensor, nn
 from wandb.apis.public import Run
 
 from spd.configs import Config
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent, ResidGateMLP
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
 from spd.utils import load_pretrained
 from spd.wandb_utils import download_wandb_file, fetch_latest_wandb_checkpoint, fetch_wandb_run_dir
+
+
+IS_MLP_COMPONENT_REGEX = re.compile(r"^model\.layers\.\d+\.mlp\.(up_proj|gate_proj|down_proj)$")
+
+
+def get_pre_mlp_rms_norm_name(component_name: str) -> str:
+    layer_name = component_name.replace("-", ".")
+    assert IS_MLP_COMPONENT_REGEX.match(layer_name), "expected MLP component name"
+    model, layers, layer_idx, _mlp, _proj = layer_name.split(".")
+    return f"{model}.{layers}.{layer_idx}.post_attn_layernorm"
 
 
 class CombinedModule(nn.Module):
@@ -42,6 +55,7 @@ class CombinedModule(nn.Module):
         component_output = self.component(*args, **kwargs)
         return original_output + component_output
 
+
 class ComponentModel(nn.Module):
     """Wrapper around an arbitrary model for running SPD.
 
@@ -55,6 +69,7 @@ class ComponentModel(nn.Module):
         base_model: nn.Module,
         target_module_patterns: list[str],
         C: int,
+        type_: Literal["linear", "mlp", "resid_mlp"],
         n_ci_mlp_neurons: int,
         init_central: bool,
         pretrained_model_output_attr: str | None,
@@ -65,22 +80,35 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
         self.components = self.create_target_components(
-            target_module_patterns=target_module_patterns, C=C, dtype=dtype
+            target_module_patterns=target_module_patterns,
+            C=C,
+            dtype=dtype,
         )
 
-        if n_ci_mlp_neurons > 0:
-            gates = {
-                name: GateMLP(
-                    C=C, n_ci_mlp_neurons=n_ci_mlp_neurons, init_central=init_central, dtype=dtype
-                )
-                for name in self.components
-            }
-        else:
-            gates = {
-                name: Gate(C=C, init_central=init_central, dtype=dtype) for name in self.components
-            }
+        assert type_ == "resid_mlp", f"expected type_ to be 'resid_mlp', got {type_}"
+
+        gates = {}
+        for component_name, component in self.components.items():
+            assert isinstance(component, LinearComponent)
+            gates[component_name] = ResidGateMLP(
+                C=C,
+                d_in=component.weight.shape[1],
+                n_ci_mlp_neurons=n_ci_mlp_neurons,
+                init_central=init_central,
+                dtype=dtype,
+            )
 
         self.gates = nn.ModuleDict(gates)
+
+    def init_gates_from_mean_input_norms_(
+        self,
+        target_module_mean_input_norms: dict[str, float],
+    ) -> None:
+        for component_name, gate in self.gates.items():
+            assert isinstance(gate, ResidGateMLP)
+            gate.init_weights_from_mean_input_norm_(
+                target_module_mean_input_norms[component_name.replace("-", ".")]
+            )
 
     def create_target_components(
         self,
@@ -326,6 +354,9 @@ class ComponentModel(nn.Module):
             base_model=base_model,
             target_module_patterns=config.target_module_patterns,
             C=config.C,
+            type_=config.gate_type,
+            # if hasattr(config, "gate_type")
+            # else ("mlp" if config.n_ci_mlp_neurons == 1 else "resid_mlp"),
             n_ci_mlp_neurons=config.n_ci_mlp_neurons,
             pretrained_model_output_attr=config.pretrained_model_output_attr,
             init_central=False,

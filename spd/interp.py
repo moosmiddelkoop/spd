@@ -1,5 +1,4 @@
 # %%
-import html
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -10,7 +9,7 @@ import torch
 import yaml
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
 from spd.configs import Config, LMTaskConfig
 from spd.data import DatasetConfig, create_data_loader
@@ -22,8 +21,7 @@ from spd.models.sigmoids import SigmoidTypes
 @dataclass
 class ComponentExample:
     tokens_S: torch.Tensor
-    last_tok_importance: float
-    token_importances_S: torch.Tensor  # Importance values for all tokens
+    token_importances_S: torch.Tensor
 
 
 @dataclass
@@ -46,15 +44,12 @@ class ComponentExaminer:
         self.tokens = tokens
 
         self.module_names = [m.replace("-", ".") for m in model.gates]
-        print("self.module_names", self.module_names)
 
         self.Vs = {
             name.replace("-", "."): component.V for name, component in model.components.items()
         }
-        print("self.Vs", list(self.Vs.keys()))
 
-        self.gates = {name.replace("-", "."): gate for name, gate in self.model.gates.items()}
-        print("self.gates", list(self.gates.keys()))
+        self.gates = {name.replace("-", "."): gate for name, gate in model.gates.items()}
 
         self.sigmoid_type = sigmoid_type
         self.device = device
@@ -92,41 +87,23 @@ class ComponentExaminer:
                     continue
 
                 b_idx, s_idx, c_idx = torch.where(mask)
-                imp_vals = imp_BSM[b_idx, s_idx, c_idx]
 
-                # -- Accumulate firing counts (every hit counts, regardless of example quota)
                 comps_unique, comps_counts = torch.unique(c_idx, return_counts=True)
                 for comp, cnt in zip(comps_unique.tolist(), comps_counts.tolist(), strict=True):
                     component_firing_counts[(module_name, comp)] += int(cnt)
 
-                # -- Sort hits by descending importance so the top examples are kept first
-                order = torch.argsort(imp_vals, descending=True)
-                b_idx, s_idx, c_idx, imp_vals = (
-                    b_idx[order],
-                    s_idx[order],
-                    c_idx[order],
-                    imp_vals[order],
-                )
-
-                for b, s, c, imp in zip(
+                for b, s, c in zip(
                     b_idx.tolist(),
                     s_idx.tolist(),
                     c_idx.tolist(),
-                    imp_vals.tolist(),
                     strict=True,
                 ):
-                    key = (module_name, c)
-                    ex_list = component_examples[key]
-
-                    # Get importance values for all tokens in this sequence
-                    token_importances = imp_BSM[b, : s + 1, c].detach().cpu()
-                    
+                    trail = 3
                     example = ComponentExample(
-                        tokens_S=tokens_BS[b, : s + 1].detach().cpu(),
-                        last_tok_importance=float(imp),
-                        token_importances_S=token_importances,
+                        tokens_S=tokens_BS[b, : s + 1 + trail].detach().cpu(),
+                        token_importances_S=imp_BSM[b, : s + 1 + trail, c].detach().cpu(),
                     )
-                    ex_list.append(example)
+                    component_examples[(module_name, c)].append(example)
 
             tokens_seen += B * S
             pbar.set_postfix(n_components=len(component_examples))
@@ -134,7 +111,7 @@ class ComponentExaminer:
         summaries: list[ComponentSummary] = []
         for (module_name, comp_idx), examples in component_examples.items():
             # Ensure deterministic ordering for repeatability
-            examples.sort(key=lambda x: x.last_tok_importance, reverse=True)
+            examples.sort(key=lambda x: x.token_importances_S[-1].item(), reverse=True)
             summaries.append(
                 ComponentSummary(
                     module_name=module_name,
@@ -144,118 +121,66 @@ class ComponentExaminer:
                 )
             )
 
+        summaries.sort(key=lambda x: x.density, reverse=True)
+
         return summaries
 
 
-# These will be dynamically generated based on importance
-_HIGHLIGHT_OPEN_TEMPLATE = '<span style="color:#fff;background-color:{color};">'
-_HIGHLIGHT_CLOSE = "</span>"
-
-# Visible‑whitespace glyphs – identical to the OP’s choice
-VISIBLE_SPACE = "·"  # U+00B7
-VISIBLE_NL = "↵"  # U+21B5
-VISIBLE_TAB = "→"  # U+2192
+def interpolate(bottom: float, top: float, x: float) -> float:
+    """Interpolate between a and b using x, which is in [0, 1]."""
+    return bottom + (top - bottom) * x
 
 
-def _make_visible(text: str) -> str:
-    """Replace control/whitespace characters with visible glyphs *only*."""
-    return (
-        text.replace("\t", VISIBLE_TAB)
-        .replace("\r", VISIBLE_NL)
-        .replace("\n", VISIBLE_NL)
-        .replace(" ", VISIBLE_SPACE)
-    )
+WHITE = (255, 255, 255, 255)
+DARK_GREEN = (31, 122, 31, 255)
+LIGHT_GREEN = (144, 238, 144, 255)
 
 
-def _apply_highlight(escaped_text: str, escaped_target: str, importance: float) -> str:
-    """Wrap **the last occurrence** of *escaped_target* in the highlight span.
-
-    Both parameters **MUST** already be HTML-escaped.
-    """
-    pos = escaped_text.rfind(escaped_target)
-    if pos == -1:
-        # Fallback – shouldn’t normally happen, but fail gracefully
-        return escaped_text
-    highlight_color = _get_highlight_color(importance)
-    highlight_open = _HIGHLIGHT_OPEN_TEMPLATE.format(color=highlight_color)
-    
-    return (
-        escaped_text[:pos]
-        + highlight_open
-        + escaped_target
-        + _HIGHLIGHT_CLOSE
-        + escaped_text[pos + len(escaped_target) :]
-    )
-
-
-def _get_highlight_color(importance: float) -> str:
+def _get_highlight_color(
+    importance: float,
+    color_upper: tuple[int, int, int, int] = DARK_GREEN,
+    color_lower: tuple[int, int, int, int] = LIGHT_GREEN,
+) -> str:
     """Get highlight color based on importance value."""
     importance_norm = min(max(importance, 0), 1)  # Clamp to [0, 1]
-    # Interpolate from light green (144, 238, 144) to dark green (31, 122, 31)
-    r = int(144 - (144 - 31) * importance_norm)
-    g = int(238 - (238 - 122) * importance_norm)
-    b = int(144 - (144 - 31) * importance_norm)
-    return f"rgb({r}, {g}, {b})"
+    r = int(interpolate(color_lower[0], color_upper[0], importance_norm))
+    g = int(interpolate(color_lower[1], color_upper[1], importance_norm))
+    b = int(interpolate(color_lower[2], color_upper[2], importance_norm))
+    a = int(interpolate(color_lower[3], color_upper[3], importance_norm))
+    return f"rgba({r}, {g}, {b}, {a})"
 
 
 def _apply_multi_token_highlights(
     token_ids: list[int],
     token_importances: list[float],
-    tokenizer: PreTrainedTokenizer,
+    tokenizer: PreTrainedTokenizerFast,
 ) -> str:
-    """Apply highlights to all tokens based on their importance values."""
-    highlighted_parts = []
-    
-    for token_id, importance in zip(token_ids, token_importances, strict=True):
-        # Decode single token
-        token_str = tokenizer.decode([token_id], skip_special_tokens=True)
-        
-        # Make control chars visible
-        visible_token = _make_visible(token_str)
-        
-        # Escape for HTML
-        escaped_token = html.escape(visible_token, quote=False)
-        
-        # Apply highlight if importance > 0
-        if importance > 0:
-            highlight_color = _get_highlight_color(importance)
-            highlight_open = _HIGHLIGHT_OPEN_TEMPLATE.format(color=highlight_color)
-            highlighted_token = highlight_open + escaped_token + _HIGHLIGHT_CLOSE
+    assert len(token_ids) == len(token_importances), "length mismatch"
+    token_strings = tokenizer.convert_ids_to_tokens(token_ids)
+    escaped_token_strings = [html.escape(ts, quote=False) for ts in token_strings]
+    parts = []
+    for imp, escaped_token_string in zip(token_importances, escaped_token_strings, strict=True):
+        if imp > 0:
+            color = _get_highlight_color(
+                imp,
+                color_lower=(DARK_GREEN[0], DARK_GREEN[1], DARK_GREEN[2], 0),
+            )
+            parts.append(
+                f'<span style="color:#fff;background-color:{color};">{escaped_token_string}</span>'
+            )
         else:
-            highlighted_token = escaped_token
-            
-        highlighted_parts.append(highlighted_token)
-    
-    return ''.join(highlighted_parts)
+            parts.append(escaped_token_string)
+    return " ".join(parts)
 
 
 def render_component_summary_html(
-    summary: "ComponentSummary",
-    tokenizer: PreTrainedTokenizer,
-    example_picker: Callable[[ComponentSummary], list[ComponentExample]],
-    context_tokens: int = 20,
+    summary: ComponentSummary,
+    # tokenizer: PreTrainedTokenizerFast,
+    # example_picker:Callable[[ComponentSummary], list[ComponentExample]],
+    render_examples: Callable[[ComponentSummary], str],
+    # context_tokens: int = 20,
 ) -> str:
     """Return a fully escaped HTML `<section>` for *one* `ComponentSummary`."""
-
-    rows: list[str] = []
-
-    examples = example_picker(summary)
-
-    for ex in examples:
-        ids_list = ex.tokens_S[-context_tokens:].tolist()
-        importance_list = ex.token_importances_S[-context_tokens:].tolist()
-        
-        highlighted_html = _apply_multi_token_highlights(ids_list, importance_list, tokenizer)
-        # importance_bg_color = _get_highlight_color(ex.last_tok_importance)
-        # text_color = "#fff"  # White text on green background
-
-        rows.append(
-            f'<tr>'
-            # f'<td style="background-color:{importance_bg_color};color:{text_color};'
-            f'font-weight:bold;">{ex.last_tok_importance:.3f}</td>'
-            f'<td style="white-space:nowrap;">{highlighted_html}</td>'
-            f'</tr>'
-        )
 
     return (
         f"<section>\n"
@@ -263,31 +188,18 @@ def render_component_summary_html(
         f"Component {summary.component_idx}</h2>\n"
         f"  <p>Density: {summary.density:.4%} &nbsp;|&nbsp; "
         f"Total examples: {len(summary.selected_examples)}</p>\n"
-        f"  <table>\n    <thead><tr>"
-        # "<th>Importance</th>"
-        "<th>Context</th></tr></thead>\n    "
-        f"<tbody>\n      {'\n      '.join(rows)}\n    </tbody>\n  </table>\n"
-        f"</section>\n"
+        f"{render_examples(summary)}"
     )
 
 
-def write_component_summaries_html(
+def format_component_summaries_html(
     summaries: Iterable[ComponentSummary],
-    tokenizer: PreTrainedTokenizer,
-    *,
-    file_path: str | Path = "component_summaries.html",
-    example_picker: Callable[[ComponentSummary], list[ComponentExample]],
-    context_tokens: int = 20,
+    render_examples: Callable[[ComponentSummary], str],
     page_title: str = "Component Example Visualisation",
-) -> Path:
+) -> str:
     """Compile *all* summaries into a single styled HTML file and return the path."""
 
-    file_path = Path(file_path)
-
-    sections = [
-        render_component_summary_html(s, tokenizer, example_picker, context_tokens=context_tokens)
-        for s in summaries
-    ]
+    sections = [render_component_summary_html(s, render_examples) for s in summaries]
 
     css = """
     body { font-family: system-ui, sans-serif; margin: 2rem; }
@@ -332,8 +244,7 @@ def write_component_summaries_html(
         f"  <h1>{html.escape(page_title)}</h1>\n  {''.join(sections)}\n</body>\n</html>\n"
     )
 
-    file_path.write_text(html_doc, encoding="utf-8")
-    return file_path
+    return html_doc
 
 
 if not torch.cuda.is_available():
@@ -342,39 +253,44 @@ if not torch.cuda.is_available():
 DEVICE = torch.device("cuda")
 
 
-# def write_summary_for_run(
-#     experiment_out_dir: Path,
-#     checkpoint_name: str,
-#     total_batches: int = 1_000,
-#     importance_threshold: float = 0.9,
-#     n_context_tokens: int = 20,
-#     # example_picker_cfg: dict[str, Any] = {},
-#     # topk_examples_to_render: int = 30,
-# ):
-# %%
+# experiment_out_dir = Path(
+#     "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/"
+#     "20250629_194019_662_lm_nmasks1_stochrecon1.37e-01_stochreconlayer1.00e-01_"
+#     "p1.50e+00_impmin2.49e-04_C4096_sd0_lr6.00e-05_bs16__"
+#     "pretrainedSimpleStories_SimpleStories-1.25M_seq512"
+# )
+# checkpoint_name = "model_95000.pth"
 
 experiment_out_dir = Path(
-    "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/"
-    "20250629_194019_662_lm_nmasks1_stochrecon1.37e-01_stochreconlayer1.00e-01_"
-    "p1.50e+00_impmin2.49e-04_C4096_sd0_lr6.00e-05_bs16__"
-    "pretrainedSimpleStories_SimpleStories-1.25M_seq512"
+    "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/20250630_110913_309_distinctive-sweep-5"
 )
 checkpoint_name = "model_95000.pth"
-total_batches = 1_000
-importance_threshold = 0.9
-n_context_tokens = 20
 
+
+# def main(
+# experiment_out_dir: Path,
+# checkpoint_name: str,
 if __name__ == "__main__":
+    total_batches: int = 2
+    importance_threshold: float = 0.9
+    n_context_tokens: int = 30
+    # ):
     last_checkpoint_path = experiment_out_dir / checkpoint_name
     config_path = experiment_out_dir / "final_config.yaml"
 
-    with open(config_path) as f:
-        cfg = Config(**yaml.safe_load(f))
+    # %%
 
+    with open(config_path) as f:
+        cfg_dict = yaml.safe_load(f)
+
+        if "gate_type" not in cfg_dict:
+            raise ValueError("gate_type not in config")
+        cfg = Config(**cfg_dict)
+
+    print("creating model")
     llm = AutoModelForCausalLM.from_pretrained(
         cfg.pretrained_model_name_hf, torch_dtype=torch.bfloat16
     )
-
     model = ComponentModel(
         llm,
         cfg.target_module_patterns,
@@ -385,21 +301,17 @@ if __name__ == "__main__":
         cfg.pretrained_model_output_attr,
         dtype=torch.bfloat16,
     )
-
-    cp = torch.load(last_checkpoint_path, map_location="cuda")
-
-    model.load_state_dict(cp)
+    state_dict = torch.load(last_checkpoint_path, map_location="cuda")
+    model.load_state_dict(state_dict)
     model.eval()
     model.to(DEVICE)
 
     print("getting tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(cfg.pretrained_model_name_hf)
 
+    print("getting dataloader")
     tc = cfg.task_config
     assert isinstance(tc, LMTaskConfig)
-
-    print("getting dataloader")
-
     train_data_config = DatasetConfig(
         name=tc.dataset_name,
         hf_tokenizer_path=cfg.pretrained_model_name_hf,
@@ -409,7 +321,6 @@ if __name__ == "__main__":
         streaming=True,
         column_name=tc.column_name,
     )
-
     train_loader, _ = create_data_loader(
         dataset_config=train_data_config,
         batch_size=cfg.microbatch_size(),
@@ -419,16 +330,15 @@ if __name__ == "__main__":
         ddp_world_size=1,
     )
 
-    print("gathering component summaries")
+    # %%
 
+    print("gathering component summaries")
     component_examiner = ComponentExaminer(
         model=model,
         tokens=(x["input_ids"] for x in train_loader),
         sigmoid_type=cfg.sigmoid_type,
         device=DEVICE,
     )
-
-    # %%
 
     component_summaries = component_examiner.gather_component_summaries(
         total_batches=total_batches,
@@ -442,41 +352,81 @@ if __name__ == "__main__":
     )
 
     # %%
+    report_dir = Path("reports") / experiment_out_dir.name
+    report_dir.mkdir(parents=True, exist_ok=True)
 
-    report_path = experiment_out_dir / "component_summary.html"
+    report_path = report_dir / checkpoint_name.replace(".pth", ".html")
     print(f"writing report to {report_path}")
 
-    def example_picker(summary: ComponentSummary) -> list[ComponentExample]:
-        out = []
-        out.extend(summary.selected_examples[:10])
-        out.extend(summary.selected_examples[-10:])
-        return out
-
-    write_component_summaries_html(
-        # run_name=cfg.wandb_run_name,
-        component_summaries,
-        tokenizer,
-        file_path=report_path,
-        example_picker=example_picker,
-        context_tokens=n_context_tokens,
-    )
+    context_tokens = 20
 
     # %%
 
+    import matplotlib.pyplot as plt
 
-# if __name__ == "__main__":
-#     out_dir = (
-#         "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/"
-#         "20250629_194019_662_lm_nmasks1_stochrecon1.37e-01_stochreconlayer1.00e-01_"
-#         "p1.50e+00_impmin2.49e-04_C4096_sd0_lr6.00e-05_bs16__"
-#         "pretrainedSimpleStories_SimpleStories-1.25M_seq512"
-#     )
-#     model_name = "model_95000.pth"
-#     write_summary_for_run(
-#         experiment_out_dir=Path(out_dir),
-#         checkpoint_name=model_name,
-#         total_batches=10_000,
-#         importance_threshold=0.5,
-#         n_context_tokens=20,
-#     )
-# # %%
+    plt.hist([cs.density for cs in component_summaries], bins=100)
+    plt.show()
+    # %%
+
+    def get_example_text(ex: ComponentExample) -> str:
+        ids_list = ex.tokens_S[-context_tokens:].tolist()
+        importance_list = ex.token_importances_S[-context_tokens:].tolist()
+        return _apply_multi_token_highlights(ids_list, importance_list, tokenizer)
+
+    def render_examples(summary: ComponentSummary) -> str:
+        top_examples = summary.selected_examples[:20]
+        top_percentile_section = [get_example_text(ex) for ex in top_examples]
+
+        bottom_examples = summary.selected_examples[max(20, len(summary.selected_examples) - 20) :]
+        bottom_percentile_section = [get_example_text(ex) for ex in bottom_examples]
+
+        def row(ex: str) -> str:
+            return f"<tr><td style='white-space:nowrap;'>{ex}</td></tr>"
+
+        def section(title: str, examples: list[str]) -> str:
+            return f"""
+            <section>
+                <h3>{title}</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Context</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"\n".join(row(ex) for ex in examples)}
+                    </tbody>
+                </table>
+            </section>
+            """
+
+        return section("Top 20% of examples", top_percentile_section) + section(
+            "Bottom 20% of examples", bottom_percentile_section
+        )
+
+    doc = format_component_summaries_html(component_summaries, render_examples)
+
+    report_path.write_text(doc, encoding="utf-8")
+
+    print(f"wrote report to {report_path}")
+
+    # %%
+    from IPython.display import HTML
+
+    HTML(report_path.read_text(encoding="utf-8"))
+    # %%
+
+
+experiments = [
+    "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/20250630_110913_309_distinctive-sweep-5",
+    "/mnt/polished-lake/home/oli/spd-gf/spd/experiments/lm/out/20250630_050123_661_usual-sweep-12",
+]
+
+model_cp = "model_95000.pth"
+
+for experiment_out_dir in experiments:
+    main(
+        total_batches=1,
+        experiment_out_dir=Path(experiment_out_dir),
+        checkpoint_name=model_cp,
+    )

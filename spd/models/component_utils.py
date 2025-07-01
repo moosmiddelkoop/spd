@@ -131,12 +131,14 @@ def calc_causal_importances(
 
     for param_name in pre_weight_acts:
         acts = pre_weight_acts[param_name]
+        gate = gates[param_name]
 
-        # if config
-        component_act = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
+        if isinstance(gate, GateMLP):
+            inner_act = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
 
-        gate_input = component_act.detach() if detach_inputs else component_act
-        gate_output = gates[param_name](gate_input)
+            gate_output = gate(inner_act.detach() if detach_inputs else inner_act)
+        else:
+            gate_output = gate(acts.detach() if detach_inputs else acts)
 
         if sigmoid_type == "leaky_hard":
             causal_importances[param_name] = SIGMOID_TYPES["leaky_hard"](gate_output)

@@ -69,6 +69,59 @@ class GateMLP(nn.Module):
         return out
 
 
+class ResidGateMLP(nn.Module):
+    """A gate with a hidden layer that maps a single input to a single output."""
+
+    def __init__(
+        self,
+        C: int,
+        d_in: int,
+        n_ci_mlp_neurons: int,
+        init_central: bool,
+        dtype: torch.dtype,
+    ):
+        super().__init__()
+        self.n_ci_mlp_neurons = n_ci_mlp_neurons
+
+        self.mlp_in_CIH = nn.Parameter(torch.empty((C, d_in, n_ci_mlp_neurons), dtype=dtype))
+        self.in_bias_CH = nn.Parameter(torch.zeros((C, n_ci_mlp_neurons), dtype=dtype))
+        self.mlp_out_CH = nn.Parameter(torch.empty((C, n_ci_mlp_neurons), dtype=dtype))
+        self.out_bias_C = nn.Parameter(torch.zeros((C,), dtype=dtype))
+        if init_central:
+            with torch.no_grad():
+                self.out_bias_C.add_(0.5)
+
+        init_param_(self.mlp_in_CIH, fan_val=d_in, nonlinearity="relu")
+        init_param_(self.mlp_out_CH, fan_val=n_ci_mlp_neurons, nonlinearity="linear")
+
+    @override
+    def forward(self, x_BxD: Tensor) -> Tensor:
+        hidden_CH = (
+            einops.einsum(
+                x_BxD,
+                self.mlp_in_CIH,
+                "... d_in, C d_in n_ci_mlp_neurons -> ... C n_ci_mlp_neurons",
+            )
+            + self.in_bias_CH
+        )
+        hidden_CH = F.gelu(hidden_CH)
+
+        out_BxC = (
+            einops.einsum(
+                hidden_CH,
+                self.mlp_out_CH,
+                "... C n_ci_mlp_neurons, C n_ci_mlp_neurons -> ... C",
+            )
+            + self.out_bias_C
+        )
+        return out_BxC
+    
+    @torch.no_grad()
+    def init_weights_from_mean_input_norm_(self, input_mean_norm: float):
+        """Initialize the weights of the gate from the mean of the input."""
+        self.mlp_in_CIH.div_(input_mean_norm)
+
+
 class LinearComponent(nn.Module):
     """A linear transformation made from V and U matrices for SPD.
 

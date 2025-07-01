@@ -5,7 +5,6 @@ from pathlib import Path
 
 import fire
 import matplotlib.pyplot as plt
-import torch
 import wandb
 import yaml
 from jaxtyping import Float
@@ -17,7 +16,7 @@ from spd.data import DatasetConfig, create_data_loader
 from spd.log import logger
 from spd.plotting import plot_mean_component_activation_counts
 from spd.run_spd import get_common_run_name_suffix, optimize
-from spd.utils import get_device, load_config, load_pretrained, set_seed
+from spd.utils import get_device, load_config, set_seed
 from spd.wandb_utils import init_wandb
 
 
@@ -145,5 +144,4 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
 
 
 if __name__ == "__main__":
-    # fire.Fire()
-    main("spd/experiments/lm/ss_config.yaml")
+    fire.Fire(main)

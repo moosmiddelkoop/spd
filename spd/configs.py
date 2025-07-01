@@ -127,6 +127,10 @@ class Config(BaseModel):
         default=False,
         description="If True, initialize the gate bias to 0.5",
     )
+    gate_type: Literal["linear", "mlp", "resid_mlp"] = Field(
+        ...,
+        description="Type of gate to use for the SPD model",
+    )
     target_module_patterns: list[str] = Field(
         ...,
         description="List of fnmatch-style patterns that select modules to decompose",
@@ -185,7 +189,7 @@ class Config(BaseModel):
         default=False,
         description="If True, apply embedding recon jointly to embed & unembed matrices",
     )
-    pnorm: PositiveFloat = Field(
+    pnorm: PositiveFloat | Literal["anneal-1-2"] = Field(
         ...,
         description="The p-value used for the importance minimality loss",
     )

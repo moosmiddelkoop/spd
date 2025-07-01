@@ -11,7 +11,7 @@
         "scribe.local_mcp"
       ],
       "env": {
-        "SCRIBE_PORT": "8888"
+        "SCRIBE_PORT": "27344"
       }
     }
   }

@@ -76,4 +76,22 @@ EXPERIMENT_REGISTRY: dict[str, ExperimentConfig] = {
         config_path=Path("spd/experiments/lm/gemma_config.yaml"),
         expected_runtime="10h", # roughly
     ),
+    "ss_mlp": ExperimentConfig(
+        experiment_type="lm",
+        decomp_script=Path("spd/experiments/lm/lm_decomposition.py"),
+        config_path=Path("spd/experiments/lm/ss_config.yaml"),
+        expected_runtime="2h",
+    ),
+    "ss_mlp_ml": ExperimentConfig(
+        experiment_type="lm",
+        decomp_script=Path("spd/experiments/lm/lm_decomposition.py"),
+        config_path=Path("spd/experiments/lm/ss_ml_config.yaml"),
+        expected_runtime="2h",
+    ),
+    "ss_attn": ExperimentConfig(
+        experiment_type="lm",
+        decomp_script=Path("spd/experiments/lm/lm_decomposition.py"),
+        config_path=Path("spd/experiments/lm/ss_attn_config.yaml"),
+        expected_runtime="2h",
+    ),
 }
