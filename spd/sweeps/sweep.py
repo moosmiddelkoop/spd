@@ -5,14 +5,16 @@ This script is an entrypoint of the spd package, and thus can be called with `sp
 the package is installed.
 
 Usage:
-    spd-sweep <experiment> <num_agents> [--job_suffix <suffix>] [--cpu]
+    spd-sweep <experiment> <num_agents> [--job_suffix <suffix>] [--cpu] [--sweep_params_file <file>]
 
 Examples:
-    spd-sweep tms_5-2 5                    # Run TMS 5-2 sweep with 5 GPU agents
-    spd-sweep resid_mlp1 3 --cpu           # Run ResidMLP1 sweep with 3 CPU agents
-    spd-sweep ss_emb 2 --job_suffix test   # Run with job suffix
+    spd-sweep tms_5-2 5                                        # Run TMS 5-2 sweep with 5 GPU agents
+    spd-sweep resid_mlp1 3 --cpu                               # Run ResidMLP1 sweep with 3 CPU agents
+    spd-sweep ss_emb 2 --job_suffix test                       # Run with job suffix
+    spd-sweep tms_5-2 4 --sweep_params_file my_params.yaml     # Use custom sweep params file
 
-Before running, update the spd/sweeps/sweep_params.yaml file with the desired parameters.
+Before running, update the default sweep parameters YAML file or
+create a new sweep.yaml and pass it with --sweep_params_file.
 """
 
 import tempfile
@@ -29,23 +31,54 @@ from spd.settings import REPO_ROOT
 from spd.slurm_utils import create_slurm_array_script, format_runtime_str, submit_slurm_array
 
 
-def get_sweep_configuration(decomp_script: Path, config_path: Path) -> dict[str, Any]:
+def resolve_sweep_params_path(sweep_params_file: str) -> Path:
+    """Resolve the full path to the sweep parameters file.
+
+    Args:
+        sweep_params_file: Filename or path to sweep params file
+            - "my_sweep" -> <repo_root>/spd/sweeps/my_sweep.yaml
+            - "my_sweep.yaml" -> <repo_root>/spd/sweeps/my_sweep.yaml
+            - "experiments/sweep.yaml" -> <repo_root>/experiments/sweep.yaml
+
+    Returns:
+        Full resolved path to the sweep params file
+    """
+    # Add .yaml extension if not present
+    if not sweep_params_file.endswith((".yaml", ".yml")):
+        sweep_params_file = f"{sweep_params_file}.yaml"
+
+    # Handle sweep params path
+    if "/" not in sweep_params_file:
+        return REPO_ROOT / "spd/sweeps" / sweep_params_file
+    else:
+        return REPO_ROOT / sweep_params_file
+
+
+def get_sweep_configuration(
+    decomp_script: Path,
+    config_path: Path,
+    experiment_name: str,
+    sweep_params_file: str = "sweep_params.yaml",
+) -> dict[str, Any]:
     """Create a sweep configuration dictionary for the given experiment.
 
     Args:
         decomp_script: Path to the decomposition script
         config_path: Path to the configuration YAML file
+        experiment_name: Name of the experiment for the sweep
+        sweep_params_file: Sweep parameters YAML file (default: sweep_params.yaml)
 
     Returns:
         Dictionary containing the sweep configuration
     """
-    # Load sweep parameters from YAML file
-    sweep_params_path = REPO_ROOT / "spd/sweeps/sweep_params.yaml"
+    sweep_params_path = resolve_sweep_params_path(sweep_params_file)
+
     with open(sweep_params_path) as f:
         sweep_params = yaml.safe_load(f)
 
     # Build the full sweep configuration
     sweep_config = {
+        "name": experiment_name,
         "program": str(decomp_script),
         "command": ["${env}", "${interpreter}", "${program}", str(config_path)],
     }
@@ -61,6 +94,7 @@ def main(
     n_agents: int,
     job_suffix: str = "",
     cpu: bool = False,
+    sweep_params_file: str = "sweep_params.yaml",
 ) -> None:
     """Create a wandb sweep and deploy SLURM agents to run it.
 
@@ -71,6 +105,7 @@ def main(
         n_agents: Number of SLURM agents to deploy for the sweep (must be positive)
         job_suffix: Optional suffix to add to SLURM job names for identification
         cpu: Use CPU instead of GPU (default: False, uses GPU)
+        sweep_params_file: Sweep parameters YAML file (default: sweep_params.yaml)
 
     """
     if n_agents <= 0:
@@ -80,12 +115,19 @@ def main(
     decomp_script = REPO_ROOT / config.decomp_script
     config_path = REPO_ROOT / config.config_path
 
+    # Resolve the full path for sweep params file
+    sweep_params_full_path = resolve_sweep_params_path(sweep_params_file)
+
     print(f"Using sweep config for {experiment}:")
     print(f"  Decomposition script: {decomp_script}")
     print(f"  Config file: {config_path}")
+    print(f"  Sweep params file: {sweep_params_full_path}")
 
     sweep_config_dict = get_sweep_configuration(
-        decomp_script=decomp_script, config_path=config_path
+        decomp_script=decomp_script,
+        config_path=config_path,
+        experiment_name=experiment,
+        sweep_params_file=sweep_params_file,
     )
 
     sweep_id = wandb.sweep(sweep=sweep_config_dict, project="spd")
