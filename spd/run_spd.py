@@ -14,26 +14,14 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from spd.configs import Config
+from spd.core_metrics_and_figs import create_figures, create_metrics
 from spd.log import logger
-from spd.losses import calc_ce_losses, calculate_losses
+from spd.losses import calculate_losses
 from spd.models.component_model import ComponentModel, init_Vs_and_Us_
-from spd.models.component_utils import (
-    calc_causal_importances,
-    calc_ci_l_zero,
-)
+from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
-from spd.plotting import create_embed_ci_sample_table, create_figures
 from spd.run_utils import save_file
-
-try:
-    from spd.user_metrics_and_figs import (  # pyright: ignore[reportMissingImports]
-        compute_user_metrics,
-    )
-except ImportError:
-    compute_user_metrics = None
-
 from spd.utils import (
-    calc_kl_divergence_lm,
     extract_batch_data,
     get_lr_schedule_fn,
     get_lr_with_warmup,
@@ -59,75 +47,6 @@ def get_common_run_name_suffix(config: Config) -> str:
     run_suffix += f"lr{config.lr:.2e}_"
     run_suffix += f"bs{config.batch_size}_"
     return run_suffix
-
-
-def create_metrics(
-    model: ComponentModel,
-    components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
-    causal_importances: dict[str, Float[Tensor, "... C"]],
-    target_out: Float[Tensor, "... d_model_out"],
-    batch: Tensor,
-    device: str,
-    config: Config,
-    step: int,
-) -> dict[str, float | int | wandb.Table]:
-    """Create metrics for logging."""
-    metrics: dict[str, float | int | wandb.Table] = {"misc/step": step}
-
-    masked_component_out = model.forward_with_components(
-        batch, components=components, masks=causal_importances
-    )
-    unmasked_component_out = model.forward_with_components(batch, components=components, masks=None)
-
-    if config.task_config.task_name == "lm":
-        metrics["misc/unmasked_kl_loss_vs_target"] = calc_kl_divergence_lm(
-            pred=unmasked_component_out, target=target_out
-        ).item()
-        metrics["misc/masked_kl_loss_vs_target"] = calc_kl_divergence_lm(
-            pred=masked_component_out, target=target_out
-        ).item()
-
-    if config.log_ce_losses:
-        ce_losses = calc_ce_losses(
-            model=model,
-            batch=batch,
-            components=components,
-            masks=causal_importances,
-            unmasked_component_logits=unmasked_component_out,
-            masked_component_logits=masked_component_out,
-            target_logits=target_out,
-        )
-        metrics.update(ce_losses)
-
-    for key in ["transformer.wte", "model.embed_tokens"]:
-        if key in causal_importances:
-            embed_ci_table = create_embed_ci_sample_table(causal_importances, key)
-            metrics["misc/embed_ci_sample"] = embed_ci_table
-            break
-
-    # Causal importance L0
-    ci_l_zero = calc_ci_l_zero(causal_importances=causal_importances)
-    for layer_name, layer_ci_l_zero in ci_l_zero.items():
-        metrics[f"{layer_name}/ci_l0"] = layer_ci_l_zero
-
-    if compute_user_metrics is not None:
-        user_metrics = compute_user_metrics(
-            model=model,
-            components=components,
-            gates=gates,
-            causal_importances=causal_importances,
-            unmasked_component_out=unmasked_component_out,
-            masked_component_out=masked_component_out,
-            target_out=target_out,
-            batch=batch,
-            device=device,
-            config=config,
-            step=step,
-        )
-        metrics.update(user_metrics)
-
-    return metrics
 
 
 def optimize(

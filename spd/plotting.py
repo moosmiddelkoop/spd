@@ -6,24 +6,15 @@ import matplotlib.ticker as tkr
 import numpy as np
 import torch
 import wandb
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from matplotlib import pyplot as plt
 from matplotlib.colors import CenteredNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
-from torch.utils.data import DataLoader
 
-from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import calc_causal_importances, component_activation_statistics
+from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
-
-try:
-    from spd.user_metrics_and_figs import (  # pyright: ignore[reportMissingImports]
-        create_user_figures,
-    )
-except ImportError:
-    create_user_figures = None
 
 
 def permute_to_identity(
@@ -438,81 +429,4 @@ def plot_ci_histograms(
 
         fig_dict[f"mask_vals_{layer_name}"] = fig
 
-    return fig_dict
-
-
-def create_figures(
-    model: ComponentModel,
-    components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
-    causal_importances: dict[str, Float[Tensor, "... C"]],
-    target_out: Float[Tensor, "... d_model_out"],
-    batch: Int[Tensor, "... d_model_in"] | Float[Tensor, "... d_model_in"],
-    device: str | torch.device,
-    config: Config,
-    step: int,
-    eval_loader: DataLoader[Int[Tensor, "..."]]
-    | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
-    n_eval_steps: int,
-) -> dict[str, plt.Figure]:
-    """Create figures for logging.
-
-    Args:
-        model: The ComponentModel
-        components: Dictionary of components
-        gates: Dictionary of gates
-        causal_importances: Current causal importances
-        target_out: Output of target model
-        batch: Current batch tensor
-        device: Current device (cuda/cpu)
-        config: The full configuration object
-        step: Current training step
-        eval_loader: Evaluation loader
-        n_eval_steps: Number of evaluation steps
-
-    Returns:
-        Dictionary of figures
-    """
-    fig_dict = {}
-
-    # Core plots for all experiments
-    ci_histogram_figs = plot_ci_histograms(causal_importances=causal_importances)
-    fig_dict.update(ci_histogram_figs)
-
-    mean_component_activation_counts = component_activation_statistics(
-        model=model, dataloader=eval_loader, n_steps=n_eval_steps, device=str(device)
-    )[1]
-    fig_dict["mean_component_activation_counts"] = plot_mean_component_activation_counts(
-        mean_component_activation_counts=mean_component_activation_counts,
-    )
-
-    # TMS and ResidMLP experiments get causal importance value plots and UV matrix plots
-    if config.task_config.task_name in ["tms", "residual_mlp"]:
-        figures, all_perm_indices = plot_causal_importance_vals(
-            model=model,
-            components=components,
-            gates=gates,
-            batch_shape=batch.shape,
-            device=device,
-            input_magnitude=0.75,
-        )
-        fig_dict.update(figures)
-
-        fig_dict["UV_matrices"] = plot_UV_matrices(
-            components=components, all_perm_indices=all_perm_indices
-        )
-
-    if create_user_figures is not None:
-        user_figures = create_user_figures(
-            model=model,
-            components=components,
-            gates=gates,
-            causal_importances=causal_importances,
-            target_out=target_out,
-            batch=batch,
-            device=device,
-            config=config,
-            step=step,
-        )
-        fig_dict.update(user_figures)
     return fig_dict
