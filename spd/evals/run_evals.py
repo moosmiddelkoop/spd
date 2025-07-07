@@ -12,6 +12,7 @@ Usage:
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import fire
 import wandb_workspaces.reports.v2 as wr
@@ -42,7 +43,7 @@ def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
         description=f"Evaluations on: {', '.join(experiments_list)}",
     )
 
-    unique_experiment_types = set(
+    unique_experiment_types: set[Literal["tms", "resid_mlp", "lm"]] = set(
         EXPERIMENT_REGISTRY[exp_name].experiment_type for exp_name in experiments_list
     )
 
@@ -60,41 +61,51 @@ def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
         )
 
         # Create panel grid with causal importance media and loss plots
+        # Build panels list, excluding KL loss plots for TMS and ResidMLP experiments
+        panels: list[wr.interface.PanelTypes] = [
+            wr.MediaBrowser(
+                media_keys=["causal_importances_upper_leaky"],
+                layout=wr.Layout(x=-6, y=0, w=24, h=12),  # Full width at top
+            ),
+            wr.LinePlot(
+                x="Step",
+                y=["loss/stochastic_recon_layerwise", "loss/stochastic_recon"],
+                log_y=True,
+                layout=wr.Layout(x=-6, y=12, w=10, h=6),  # First row, first plot
+            ),
+            wr.LinePlot(
+                x="Step",
+                y=["loss/faithfulness"],
+                log_y=True,
+                layout=wr.Layout(x=4, y=12, w=10, h=6),  # First row, second plot
+            ),
+            wr.LinePlot(
+                x="Step",
+                y=["loss/importance_minimality"],
+                layout=wr.Layout(x=14, y=12, w=10, h=6),  # First row, third plot
+            ),
+        ]
+
+        # Only add KL loss plots for language model experiments
+        if exp_type == "lm":
+            panels.extend(
+                [
+                    wr.LinePlot(
+                        x="Step",
+                        y=["misc/masked_kl_loss_vs_target"],
+                        layout=wr.Layout(x=-6, y=18, w=10, h=6),  # Second row, first plot
+                    ),
+                    wr.LinePlot(
+                        x="Step",
+                        y=["misc/unmasked_kl_loss_vs_target"],
+                        layout=wr.Layout(x=4, y=18, w=10, h=6),  # Second row, second plot
+                    ),
+                ]
+            )
+
         panel_grid = wr.PanelGrid(
             runsets=[runset],
-            panels=[
-                wr.MediaBrowser(
-                    media_keys=["causal_importances_upper_leaky"],
-                    layout=wr.Layout(x=-6, y=0, w=24, h=12),  # Full width at top
-                ),
-                wr.LinePlot(
-                    x="Step",
-                    y=["loss/stochastic_recon_layerwise", "loss/stochastic_recon"],
-                    log_y=True,
-                    layout=wr.Layout(x=-6, y=12, w=10, h=6),  # First row, first plot
-                ),
-                wr.LinePlot(
-                    x="Step",
-                    y=["loss/faithfulness"],
-                    log_y=True,
-                    layout=wr.Layout(x=4, y=12, w=10, h=6),  # First row, second plot
-                ),
-                wr.LinePlot(
-                    x="Step",
-                    y=["loss/importance_minimality"],
-                    layout=wr.Layout(x=14, y=12, w=10, h=6),  # First row, third plot
-                ),
-                wr.LinePlot(
-                    x="Step",
-                    y=["misc/masked_kl_loss_vs_target"],
-                    layout=wr.Layout(x=-6, y=18, w=10, h=6),  # Second row, first plot
-                ),
-                wr.LinePlot(
-                    x="Step",
-                    y=["misc/unmasked_kl_loss_vs_target"],
-                    layout=wr.Layout(x=4, y=18, w=10, h=6),  # Second row, second plot
-                ),
-            ],
+            panels=panels,
         )
 
         # Add title block and panel grid
