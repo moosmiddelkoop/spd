@@ -1,10 +1,9 @@
 """Run SPD on a model."""
 
-from collections.abc import Callable
+import json
 from pathlib import Path
 from typing import cast
 
-import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,15 +20,18 @@ from spd.models.component_model import ComponentModel, init_Vs_and_Us_
 from spd.models.component_utils import (
     calc_causal_importances,
     calc_ci_l_zero,
-    component_activation_statistics,
 )
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
-from spd.plotting import (
-    create_embed_ci_sample_table,
-    plot_ci_histograms,
-    plot_mean_component_activation_counts,
-)
+from spd.plotting import create_embed_ci_sample_table, create_figures
 from spd.run_utils import save_file
+
+try:
+    from spd.user_metrics_and_figs import (  # pyright: ignore[reportMissingImports]
+        compute_user_metrics,
+    )
+except ImportError:
+    compute_user_metrics = None
+
 from spd.utils import (
     calc_kl_divergence_lm,
     extract_batch_data,
@@ -59,6 +61,75 @@ def get_common_run_name_suffix(config: Config) -> str:
     return run_suffix
 
 
+def create_metrics(
+    model: ComponentModel,
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    gates: dict[str, Gate | GateMLP],
+    causal_importances: dict[str, Float[Tensor, "... C"]],
+    target_out: Float[Tensor, "... d_model_out"],
+    batch: Tensor,
+    device: str,
+    config: Config,
+    step: int,
+) -> dict[str, float | int | wandb.Table]:
+    """Create metrics for logging."""
+    metrics: dict[str, float | int | wandb.Table] = {"misc/step": step}
+
+    masked_component_out = model.forward_with_components(
+        batch, components=components, masks=causal_importances
+    )
+    unmasked_component_out = model.forward_with_components(batch, components=components, masks=None)
+
+    if config.task_config.task_name == "lm":
+        metrics["misc/unmasked_kl_loss_vs_target"] = calc_kl_divergence_lm(
+            pred=unmasked_component_out, target=target_out
+        ).item()
+        metrics["misc/masked_kl_loss_vs_target"] = calc_kl_divergence_lm(
+            pred=masked_component_out, target=target_out
+        ).item()
+
+    if config.log_ce_losses:
+        ce_losses = calc_ce_losses(
+            model=model,
+            batch=batch,
+            components=components,
+            masks=causal_importances,
+            unmasked_component_logits=unmasked_component_out,
+            masked_component_logits=masked_component_out,
+            target_logits=target_out,
+        )
+        metrics.update(ce_losses)
+
+    for key in ["transformer.wte", "model.embed_tokens"]:
+        if key in causal_importances:
+            embed_ci_table = create_embed_ci_sample_table(causal_importances, key)
+            metrics["misc/embed_ci_sample"] = embed_ci_table
+            break
+
+    # Causal importance L0
+    ci_l_zero = calc_ci_l_zero(causal_importances=causal_importances)
+    for layer_name, layer_ci_l_zero in ci_l_zero.items():
+        metrics[f"{layer_name}/ci_l0"] = layer_ci_l_zero
+
+    if compute_user_metrics is not None:
+        user_metrics = compute_user_metrics(
+            model=model,
+            components=components,
+            gates=gates,
+            causal_importances=causal_importances,
+            unmasked_component_out=unmasked_component_out,
+            masked_component_out=masked_component_out,
+            target_out=target_out,
+            batch=batch,
+            device=device,
+            config=config,
+            step=step,
+        )
+        metrics.update(user_metrics)
+
+    return metrics
+
+
 def optimize(
     target_model: nn.Module,
     config: Config,
@@ -69,12 +140,12 @@ def optimize(
     | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_eval_steps: int,
     out_dir: Path | None,
-    plot_results_fn: Callable[..., dict[str, plt.Figure]] | None = None,
     tied_weights: list[tuple[str, str]] | None = None,
 ) -> None:
     """Run the optimization loop for LM decomposition."""
 
     logger.info(f"Output directory: {out_dir}")
+    metrics_file = out_dir / "metrics.jsonl" if out_dir is not None else None
 
     model = ComponentModel(
         base_model=target_model,
@@ -125,7 +196,6 @@ def optimize(
 
     n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
-    log_data: dict[str, float | wandb.Table] = {}
     data_iter = iter(train_loader)
 
     alive_components: dict[str, Bool[Tensor, " C"]] = {
@@ -143,7 +213,8 @@ def optimize(
         )
         for group in optimizer.param_groups:
             group["lr"] = step_lr
-        log_data["lr"] = step_lr
+
+        log_data: dict[str, int | float | wandb.Table] = {"misc/step": step, "misc/lr": step_lr}
 
         optimizer.zero_grad()
 
@@ -202,43 +273,28 @@ def optimize(
                         log_data[f"{layer_name}/n_alive_01"] = layer_alive_components.sum().item()
                         alive_components[layer_name] = torch.zeros(config.C, device=device).bool()
 
-                # Calculate component logits and KL losses
-                masked_component_logits = model.forward_with_components(
-                    batch, components=components, masks=causal_importances
+                metrics = create_metrics(
+                    model=model,
+                    components=components,
+                    gates=gates,
+                    causal_importances=causal_importances,
+                    target_out=target_out,
+                    batch=batch,
+                    device=device,
+                    config=config,
+                    step=step,
                 )
-                unmasked_component_logits = model.forward_with_components(
-                    batch, components=components, masks=None
-                )
+                log_data.update(metrics)
 
-                target_logits = model(batch)
-
-                log_data["misc/unmasked_kl_loss_vs_target"] = calc_kl_divergence_lm(
-                    pred=unmasked_component_logits, target=target_logits
-                ).item()
-                log_data["misc/masked_kl_loss_vs_target"] = calc_kl_divergence_lm(
-                    pred=masked_component_logits, target=target_logits
-                ).item()
-
-                if config.log_ce_losses:
-                    ce_losses = calc_ce_losses(
-                        model=model,
-                        batch=batch,
-                        components=components,
-                        masks=causal_importances,
-                        unmasked_component_logits=unmasked_component_logits,
-                        masked_component_logits=masked_component_logits,
-                        target_logits=target_logits,
-                    )
-                    log_data.update(ce_losses)
-
-                embed_ci_table = create_embed_ci_sample_table(causal_importances)
-                if embed_ci_table is not None:
-                    log_data["misc/embed_ci_sample"] = embed_ci_table
+                if metrics_file is not None:
+                    # Filter out non-JSON-serializable objects (like wandb.Table) for file logging
+                    file_metrics = {
+                        k: v for k, v in log_data.items() if not isinstance(v, wandb.Table)
+                    }
+                    with open(metrics_file, "a") as f:
+                        f.write(json.dumps(file_metrics) + "\n")
 
                 if config.wandb_project:
-                    ci_l_zero = calc_ci_l_zero(causal_importances=causal_importances)
-                    for layer_name, layer_ci_l_zero in ci_l_zero.items():
-                        log_data[f"{layer_name}/ci_l0"] = layer_ci_l_zero
                     wandb.log(log_data, step=step)
 
             # --- Plotting --- #
@@ -248,27 +304,19 @@ def optimize(
                 and (step > 0 or config.image_on_first_step)
             ):
                 logger.info(f"Step {step}: Generating plots...")
-                fig_dict = {}
-                if plot_results_fn is not None:
-                    fig_dict = plot_results_fn(
-                        model=model,
-                        components=components,
-                        gates=gates,
-                        batch_shape=batch.shape,
-                        device=device,
-                    )
 
-                ci_histogram_figs = plot_ci_histograms(causal_importances=causal_importances)
-                fig_dict.update(ci_histogram_figs)
-
-                mean_component_activation_counts = component_activation_statistics(
-                    model=model, dataloader=eval_loader, n_steps=n_eval_steps, device=device
-                )[1]
-                assert mean_component_activation_counts is not None
-                fig_dict["mean_component_activation_counts"] = (
-                    plot_mean_component_activation_counts(
-                        mean_component_activation_counts=mean_component_activation_counts,
-                    )
+                fig_dict = create_figures(
+                    model=model,
+                    components=components,
+                    gates=gates,
+                    causal_importances=causal_importances,
+                    target_out=target_out,
+                    batch=batch,
+                    device=device,
+                    config=config,
+                    step=step,
+                    eval_loader=eval_loader,
+                    n_eval_steps=n_eval_steps,
                 )
 
                 if config.wandb_project:
@@ -296,15 +344,12 @@ def optimize(
         # Skip gradient step if we are at the last step (last step just for plotting and logging)
         if step != config.steps:
             total_loss.backward(retain_graph=True)
-
-            if step % config.print_freq == 0 and config.wandb_project:
+            if config.wandb_project:
                 grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
-                for param in model.parameters():
+                for param in component_params + gate_params:
                     if param.grad is not None:
                         grad_norm += param.grad.data.flatten().pow(2).sum()
-                grad_norm_val = grad_norm.sqrt().item()
-                wandb.log({"grad_norm": grad_norm_val}, step=step)
-
+                wandb.log({"misc/grad_norm": grad_norm.sqrt().item()}, step=step)
             optimizer.step()
 
     logger.info("Finished training loop.")

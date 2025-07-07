@@ -108,7 +108,6 @@ def test_resid_mlp_decomposition_happy_path() -> None:
         eval_loader=eval_loader,
         n_eval_steps=config.n_eval_steps,
         out_dir=None,
-        plot_results_fn=None,
     )
 
     # Basic assertion to ensure the test ran

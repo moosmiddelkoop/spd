@@ -151,7 +151,7 @@ def main(
 
     agent_id = f"{org_name}/{project_name}/{sweep_id}"
     print(f"Agent ID: {agent_id}")
-    command = f"wandb agent {agent_id}"
+    command = f"which wandb && wandb agent {agent_id}"
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)

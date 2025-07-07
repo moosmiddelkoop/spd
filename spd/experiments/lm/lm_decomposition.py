@@ -3,15 +3,11 @@
 from pathlib import Path
 
 import fire
-import matplotlib.pyplot as plt
 import wandb
-from jaxtyping import Float
-from torch import Tensor
 
 from spd.configs import Config, LMTaskConfig
 from spd.data import DatasetConfig, create_data_loader
 from spd.log import logger
-from spd.plotting import plot_mean_component_activation_counts
 from spd.run_spd import get_common_run_name_suffix, optimize
 from spd.run_utils import get_output_dir, save_file
 from spd.utils import get_device, load_config, load_pretrained, set_seed
@@ -33,16 +29,6 @@ def get_run_name(
             run_suffix += f"_pretrained{pretrained_model_name}"
         run_suffix += f"_seq{max_seq_len}"
     return config.wandb_run_name_prefix + "lm_" + run_suffix
-
-
-def plot_lm_results(
-    mean_component_activation_counts: dict[str, Float[Tensor, " C"]],
-) -> plt.Figure:
-    """Plotting function for LM decomposition."""
-
-    return plot_mean_component_activation_counts(
-        mean_component_activation_counts=mean_component_activation_counts,
-    )
 
 
 def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -> None:

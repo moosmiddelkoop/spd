@@ -106,7 +106,6 @@ def test_tms_decomposition_happy_path() -> None:
         eval_loader=eval_loader,
         n_eval_steps=config.n_eval_steps,
         out_dir=None,
-        plot_results_fn=None,
         tied_weights=tied_weights,
     )
 

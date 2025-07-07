@@ -11,6 +11,8 @@ make install-dev  # To install the package, dev requirements and pre-commit hook
 make install  # To just install the package (runs `pip install -e .`)
 ```
 
+Both installation commands will automatically create `spd/user_metrics_and_figs.py` from `spd/user_metrics_and_figs.py.example` if it doesn't already exist. This file allows you to define custom metrics and visualizations for SPD experiments without modifying the core framework code.
+
 ## Usage
 Place your wandb information in a .env file. See .env.example for an example.
 
@@ -80,6 +82,17 @@ report.
 
 Suggested extensions and settings for VSCode/Cursor are provided in `.vscode/`. To use the suggested
 settings, copy `.vscode/settings-example.json` to `.vscode/settings.json`.
+
+### Custom Metrics and Visualizations
+
+The framework supports user-defined metrics and visualizations through `spd/user_metrics_and_figs.py`. This file is automatically created from a template during installation and provides two main functions:
+
+- `compute_user_metrics()` - Define custom metrics logged during SPD optimization
+- `create_user_figures()` - Create custom matplotlib figures during optimization
+
+These metrics will be logged to a local file as well as wandb. You can modify this file to add your own experiment-specific metrics and visualizations without changing the core framework code.
+
+### Development Commands
 
 There are various `make` commands that may be helpful
 

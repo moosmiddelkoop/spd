@@ -6,15 +6,24 @@ import matplotlib.ticker as tkr
 import numpy as np
 import torch
 import wandb
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from matplotlib import pyplot as plt
 from matplotlib.colors import CenteredNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
+from torch.utils.data import DataLoader
 
+from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import calc_causal_importances
+from spd.models.component_utils import calc_causal_importances, component_activation_statistics
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+
+try:
+    from spd.user_metrics_and_figs import (  # pyright: ignore[reportMissingImports]
+        create_user_figures,
+    )
+except ImportError:
+    create_user_figures = None
 
 
 def permute_to_identity(
@@ -97,10 +106,7 @@ def _plot_causal_importances_figure(
         if has_pos_dim:
             assert mask_data.ndim == 3
             mask_data = mask_data[:, 0, :]
-        if orientation == "vertical":
-            ax = axs[j, 0]
-        else:
-            ax = axs[0, j]
+        ax = axs[j, 0] if orientation == "vertical" else axs[0, j]
         im = ax.matshow(mask_data, aspect="auto", cmap=colormap)
         images.append(im)
 
@@ -342,25 +348,22 @@ def plot_UV_matrices(
 
 
 def create_embed_ci_sample_table(
-    causal_importances: dict[str, Float[Tensor, "... C"]],
-) -> wandb.Table | None:
+    causal_importances: dict[str, Float[Tensor, "... C"]], key: str
+) -> wandb.Table:
     """Create a wandb table visualizing embedding mask values.
 
     Args:
         causal_importances: Dictionary of causal importances for each component.
 
     Returns:
-        A wandb Table object or None if transformer.wte not in causal_importances.
+        A wandb Table object.
     """
-    if "transformer.wte" not in causal_importances:
-        return None
-
     # Create a 20x10 table for wandb
     table_data = []
     # Add "Row Name" as the first column
     component_names = ["TokenSample"] + ["CompVal" for _ in range(10)]
 
-    for i, ci in enumerate(causal_importances["transformer.wte"][0, :20]):
+    for i, ci in enumerate(causal_importances[key][0, :20]):
         active_values = ci[ci > 0.1].tolist()
         # Cap at 10 components
         active_values = active_values[:10]
@@ -438,45 +441,78 @@ def plot_ci_histograms(
     return fig_dict
 
 
-def create_toy_model_plot_results(
+def create_figures(
     model: ComponentModel,
     components: dict[str, LinearComponent | EmbeddingComponent],
     gates: dict[str, Gate | GateMLP],
-    batch_shape: tuple[int, ...],
+    causal_importances: dict[str, Float[Tensor, "... C"]],
+    target_out: Float[Tensor, "... d_model_out"],
+    batch: Int[Tensor, "... d_model_in"] | Float[Tensor, "... d_model_in"],
     device: str | torch.device,
-    **_,
+    config: Config,
+    step: int,
+    eval_loader: DataLoader[Int[Tensor, "..."]]
+    | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
+    n_eval_steps: int,
 ) -> dict[str, plt.Figure]:
-    """Create standard plotting results for decomposition experiments.
-
-    This function is used by both resid_mlp and tms experiments to generate
-    mask value plots and UV matrix plots.
+    """Create figures for logging.
 
     Args:
         model: The ComponentModel
         components: Dictionary of components
         gates: Dictionary of gates
-        batch_shape: Shape of the batch
-        device: Device to use
-        **_: Additional keyword arguments (ignored)
+        causal_importances: Current causal importances
+        target_out: Output of target model
+        batch: Current batch tensor
+        device: Current device (cuda/cpu)
+        config: The full configuration object
+        step: Current training step
+        eval_loader: Evaluation loader
+        n_eval_steps: Number of evaluation steps
 
     Returns:
         Dictionary of figures
     """
     fig_dict = {}
 
-    figures, all_perm_indices = plot_causal_importance_vals(
-        model=model,
-        components=components,
-        gates=gates,
-        batch_shape=batch_shape,
-        device=device,
-        input_magnitude=0.75,
+    # Core plots for all experiments
+    ci_histogram_figs = plot_ci_histograms(causal_importances=causal_importances)
+    fig_dict.update(ci_histogram_figs)
+
+    mean_component_activation_counts = component_activation_statistics(
+        model=model, dataloader=eval_loader, n_steps=n_eval_steps, device=str(device)
+    )[1]
+    fig_dict["mean_component_activation_counts"] = plot_mean_component_activation_counts(
+        mean_component_activation_counts=mean_component_activation_counts,
     )
 
-    # Merge the figures dict into fig_dict
-    fig_dict.update(figures)
+    # TMS and ResidMLP experiments get causal importance value plots and UV matrix plots
+    if config.task_config.task_name in ["tms", "residual_mlp"]:
+        figures, all_perm_indices = plot_causal_importance_vals(
+            model=model,
+            components=components,
+            gates=gates,
+            batch_shape=batch.shape,
+            device=device,
+            input_magnitude=0.75,
+        )
+        fig_dict.update(figures)
 
-    fig_dict["UV_matrices"] = plot_UV_matrices(
-        components=components, all_perm_indices=all_perm_indices
-    )
+        fig_dict["UV_matrices"] = plot_UV_matrices(
+            components=components, all_perm_indices=all_perm_indices
+        )
+
+    if create_user_figures is not None:
+        user_figures = create_user_figures(
+            model=model,
+            components=components,
+            gates=gates,
+            causal_importances=causal_importances,
+            target_out=target_out,
+            batch=batch,
+            device=device,
+            config=config,
+            step=step,
+        )
+        fig_dict.update(user_figures)
     return fig_dict

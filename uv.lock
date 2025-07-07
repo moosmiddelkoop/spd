@@ -1980,7 +1980,6 @@ requires-dist = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers" },
-    { name = "wandb" },
     { name = "wandb", specifier = ">=0.20.1" },
     { name = "wandb-workspaces" },
 ]

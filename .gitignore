@@ -1,3 +1,5 @@
+spd/user_metrics_and_figs.py
+
 **/out/
 neuronpedia_outputs/
 .env
@@ -6,6 +8,7 @@ neuronpedia_outputs/
 wandb/
 .data/
 .checkpoints/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

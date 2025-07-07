@@ -246,12 +246,7 @@ class ComponentModel(nn.Module):
         with open(config_path) as f:
             config = Config(**yaml.safe_load(f))
 
-        assert (
-            config.pretrained_model_path is not None and config.pretrained_model_class is not None
-        ), (
-            "pretrained_model_name and pretrained_model_class must be specified in the config to "
-            "reload a ComponentModel."
-        )
+        assert config.pretrained_model_class is not None
 
         base_model_raw = load_pretrained(
             path_to_class=config.pretrained_model_class,

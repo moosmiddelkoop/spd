@@ -1,11 +1,19 @@
 .PHONY: install
 install:
 	uv sync --no-dev
+	@if [ ! -f spd/user_metrics_and_figs.py ]; then \
+		cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py; \
+		echo "Created spd/user_metrics_and_figs.py from template"; \
+	fi
 
 .PHONY: install-dev
 install-dev:
 	uv sync
 	pre-commit install
+	@if [ ! -f spd/user_metrics_and_figs.py ]; then \
+		cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py; \
+		echo "Created spd/user_metrics_and_figs.py from template"; \
+	fi
 
 .PHONY: type
 type:

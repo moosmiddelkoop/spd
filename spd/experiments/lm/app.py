@@ -62,8 +62,7 @@ def initialize(model_path: ModelPath) -> AppData:
     assert isinstance(task_config, LMTaskConfig), "Task config must be LMTaskConfig for this app."
 
     # Derive tokenizer path (adjust if stored differently)
-    tokenizer_path = config.pretrained_model_path
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+    tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
 
     # Create eval dataloader config
     eval_data_config = DatasetConfig(

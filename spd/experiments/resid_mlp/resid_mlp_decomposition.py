@@ -13,7 +13,6 @@ from spd.data_utils import DatasetGeneratedDataLoader
 from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.experiments.resid_mlp.resid_mlp_dataset import ResidualMLPDataset
 from spd.log import logger
-from spd.plotting import create_toy_model_plot_results
 from spd.run_spd import get_common_run_name_suffix, optimize
 from spd.run_utils import get_output_dir, save_file
 from spd.utils import get_device, load_config, set_seed
@@ -131,7 +130,6 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         eval_loader=eval_loader,
         n_eval_steps=config.n_eval_steps,
         out_dir=out_dir,
-        plot_results_fn=create_toy_model_plot_results,
     )
 
     if config.wandb_project:

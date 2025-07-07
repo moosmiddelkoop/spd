@@ -11,6 +11,8 @@ SPD (Stochastic Parameter Decomposition) is a research framework for analyzing n
 - `make install-dev` - Install package with dev dependencies and pre-commit hooks
 - `make install` - Install package only (`pip install -e .`)
 
+Both installation commands automatically create `spd/user_metrics_and_figs.py` from `spd/user_metrics_and_figs.py.example` if it doesn't exist.
+
 **Code Quality:**
 - `make check` - Run full pre-commit suite (pyright, ruff lint, ruff format)
 - `make type` - Run pyright type checking only
@@ -31,6 +33,7 @@ SPD (Stochastic Parameter Decomposition) is a research framework for analyzing n
 - `spd/models/component_model.py` - Core ComponentModel that wraps target models
 - `spd/models/components.py` - Component types (LinearComponent, EmbeddingComponent, etc.)
 - `spd/losses.py` - SPD loss functions (faithfulness, reconstruction, importance minimality)
+- `spd/user_metrics_and_figs.py` - User-defined metrics and visualizations (created from template)
 
 **Experiment Structure:**
 Each experiment (`spd/experiments/{tms,resid_mlp,lm}/`) contains:
@@ -75,6 +78,13 @@ uv run spd/experiments/lm/lm_decomposition.py spd/experiments/lm/ss_emb_config.y
 
 A run will output the important losses and the paths to which important figures are saved. Use these
 to analyse the result of the runs.
+
+**Custom Metrics and Visualizations:**
+The `spd/user_metrics_and_figs.py` file (automatically created from template during installation) allows adding custom metrics and visualizations without modifying core framework code. The file provides:
+- `compute_user_metrics()` - Define metrics logged to WandB during optimization
+- `create_user_figures()` - Create matplotlib figures saved during optimization
+
+Both functions receive the component model, gates, causal importances, and other optimization state, allowing flexible analysis of SPD results.
 
 **Sweeps**
 Run hyperparameter sweeps using WandB on the GPU cluster:
