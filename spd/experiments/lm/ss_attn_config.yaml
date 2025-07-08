@@ -44,7 +44,7 @@ importance_minimality_coeff: 99999
 schatten_coeff: null
 embedding_recon_coeff: null
 is_embed_unembed_recon: false
-pnorm: anneal-1-2
+pnorm: anneal-2-1
 output_loss_type: kl
 
 # --- Training ---

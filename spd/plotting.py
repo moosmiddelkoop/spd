@@ -173,7 +173,7 @@ def plot_causal_importance_vals(
     )[1]
     Vs = {module_name: v.V for module_name, v in components.items()}
 
-    ci_raw, ci_upper_leaky_raw = calc_causal_importances(
+    ci_lower_leaky_raw, ci_upper_leaky_raw, _ = calc_causal_importances(
         pre_weight_acts=pre_weight_acts,
         Vs=Vs,
         gates=gates,
@@ -185,8 +185,8 @@ def plot_causal_importance_vals(
     ci_upper_leaky = {}
     all_perm_indices = {}
 
-    for k in ci_raw:
-        ci[k], _ = permute_to_identity(ci_vals=ci_raw[k])
+    for k in ci_lower_leaky_raw:
+        ci[k], _ = permute_to_identity(ci_vals=ci_lower_leaky_raw[k])
         ci_upper_leaky[k], all_perm_indices[k] = permute_to_identity(ci_vals=ci_upper_leaky_raw[k])
 
     # Create figures dictionary

@@ -1,4 +1,5 @@
-from typing import Literal
+# %%
+from typing import Literal, override
 
 import einops
 import torch
@@ -8,6 +9,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from spd.configs import Config
+from spd.constants import CI_ALIVE_THRESHOLD
 from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_stochastic_masks
 from spd.models.components import EmbeddingComponent, LinearComponent
@@ -106,7 +108,9 @@ def calc_schatten_loss(
 
 
 def calc_importance_minimality_loss(
-    ci_upper_leaky: dict[str, Tensor], pnorm: float
+    ci_upper_leaky: dict[str, Tensor],
+    pnorm: float,
+    eps: float = 1e-12,
 ) -> Float[Tensor, ""]:
     """Calculate the importance minimality loss on the upper leaky relu causal importances.
 
@@ -121,7 +125,7 @@ def calc_importance_minimality_loss(
 
     for layer_ci_upper_leaky in ci_upper_leaky.values():
         # Note, the paper uses an absolute value but our layer_ci_upper_leaky is already > 0
-        total_loss = total_loss + layer_ci_upper_leaky**pnorm
+        total_loss = total_loss + (layer_ci_upper_leaky + eps) ** pnorm
 
     # Sum over the C dimension and mean over the other dimensions
     return total_loss.sum(dim=-1).mean()
@@ -331,6 +335,15 @@ def calc_ce_losses(
     masked_component_logits_BSV = model.forward_with_components(
         batch_BS, components=components, masks=ci_masks_BxM
     )
+    # we use the rounded causal importances as a mask
+    rounded_ci_masks_01_BxM = {k: (v > 0.1).to(v) for k, v in ci_masks_BxM.items()}
+    snap_masked_component_logits_01_BSV = model.forward_with_components(
+        batch_BS, components=components, masks=rounded_ci_masks_01_BxM
+    )
+    rounded_ci_masks_001_BxM = {k: (v > 0.01).to(v) for k, v in ci_masks_BxM.items()}
+    snap_masked_component_logits_001_BSV = model.forward_with_components(
+        batch_BS, components=components, masks=rounded_ci_masks_001_BxM
+    )
     # every component is fully masked out (all-zero masks)
     zero_masked_component_logits_BSV = model.forward_with_components(
         batch_BS,
@@ -345,40 +358,72 @@ def calc_ce_losses(
     )
 
     # CE vs true labels
-    unmasked_ce = ce_vs_labels(unmasked_component_logits_BSV)
-    masked_ce = ce_vs_labels(masked_component_logits_BSV)
-    rand_masked_ce = ce_vs_labels(rand_masked_component_logits_BSV)
+    ce_unmasked = ce_vs_labels(unmasked_component_logits_BSV)
+    ce_masked = ce_vs_labels(masked_component_logits_BSV)
+    ce_snap_masked_01 = ce_vs_labels(snap_masked_component_logits_01_BSV)
+    ce_snap_masked_001 = ce_vs_labels(snap_masked_component_logits_001_BSV)
+    ce_rand_masked = ce_vs_labels(rand_masked_component_logits_BSV)
     # bounds:
-    zero_masked_ce = ce_vs_labels(zero_masked_component_logits_BSV)
-    target_ce = ce_vs_labels(target_logits_BSV)
+    ce_zero_masked = ce_vs_labels(zero_masked_component_logits_BSV)
+    ce_target = ce_vs_labels(target_logits_BSV)
 
     # CE unrecovered: how much worse is some CE compared to zero-ablation?
-    ce_unrecovered_masked = (masked_ce - target_ce) / (zero_masked_ce - target_ce)
-    ce_unrecovered_unmasked = (unmasked_ce - target_ce) / (zero_masked_ce - target_ce)
-    ce_unrecovered_rand_masked = (rand_masked_ce - target_ce) / (zero_masked_ce - target_ce)
+    ce_unrecovered_unmasked = (ce_unmasked - ce_target) / (ce_zero_masked - ce_target)
+    ce_unrecovered_masked = (ce_masked - ce_target) / (ce_zero_masked - ce_target)
+    ce_unrecovered_snap_masked_01 = (ce_snap_masked_01 - ce_target) / (ce_zero_masked - ce_target)
+    ce_unrecovered_snap_masked_001 = (ce_snap_masked_001 - ce_target) / (ce_zero_masked - ce_target)
+    ce_unrecovered_rand_masked = (ce_rand_masked - ce_target) / (ce_zero_masked - ce_target)
 
     # KL
     unmasked_kl_vs_target = calc_kl_divergence_lm(unmasked_component_logits_BSV, target_logits_BSV)
     masked_kl_vs_target = calc_kl_divergence_lm(masked_component_logits_BSV, target_logits_BSV)
+    snap_masked_kl_vs_target_01 = calc_kl_divergence_lm(
+        snap_masked_component_logits_01_BSV, target_logits_BSV
+    )
+    snap_masked_kl_vs_target_001 = calc_kl_divergence_lm(
+        snap_masked_component_logits_001_BSV, target_logits_BSV
+    )
+    rand_masked_kl_vs_target = calc_kl_divergence_lm(
+        rand_masked_component_logits_BSV, target_logits_BSV
+    )
 
     ce_losses = {
         # CE unrecovered (between target and zero-masked)
         f"{WandbSections.CE_UNRECOVERED.value}/unmasked": ce_unrecovered_unmasked.item(),
         f"{WandbSections.CE_UNRECOVERED.value}/masked": ce_unrecovered_masked.item(),
+        f"{WandbSections.CE_UNRECOVERED.value}/snap_masked_01": ce_unrecovered_snap_masked_01.item(),
+        f"{WandbSections.CE_UNRECOVERED.value}/snap_masked_001": ce_unrecovered_snap_masked_001.item(),
         f"{WandbSections.CE_UNRECOVERED.value}/rand_masked": ce_unrecovered_rand_masked.item(),
         # KL
         f"{WandbSections.MISC.value}/unmasked_kl_loss_vs_target": unmasked_kl_vs_target.item(),
         f"{WandbSections.MISC.value}/masked_kl_loss_vs_target": masked_kl_vs_target.item(),
+        f"{WandbSections.MISC.value}/snap_masked_kl_loss_vs_target_01": snap_masked_kl_vs_target_01.item(),
+        f"{WandbSections.MISC.value}/snap_masked_kl_loss_vs_target_001": snap_masked_kl_vs_target_001.item(),
+        f"{WandbSections.MISC.value}/rand_masked_kl_loss_vs_target": rand_masked_kl_vs_target.item(),
         # bounds:
-        f"{WandbSections.MISC.value}/z_ce/target_ce_loss_vs_labels": target_ce.item(),
-        f"{WandbSections.MISC.value}/z_ce/zero_masked_ce_loss_vs_labels": zero_masked_ce.item(),
+        f"{WandbSections.MISC.value}/z_ce/target_ce_loss_vs_labels": ce_target.item(),
+        f"{WandbSections.MISC.value}/z_ce/zero_masked_ce_loss_vs_labels": ce_zero_masked.item(),
         # raw CE
-        f"{WandbSections.MISC.value}/z_ce/unmasked_ce_loss_vs_labels": unmasked_ce.item(),
-        f"{WandbSections.MISC.value}/z_ce/masked_ce_loss_vs_labels": masked_ce.item(),
-        f"{WandbSections.MISC.value}/z_ce/rand_masked_ce_loss_vs_labels": rand_masked_ce.item(),
+        f"{WandbSections.MISC.value}/z_ce/unmasked_ce_loss_vs_labels": ce_unmasked.item(),
+        f"{WandbSections.MISC.value}/z_ce/masked_ce_loss_vs_labels": ce_masked.item(),
+        f"{WandbSections.MISC.value}/z_ce/snap_masked_ce_loss_vs_labels_01": ce_snap_masked_01.item(),
+        f"{WandbSections.MISC.value}/z_ce/snap_masked_ce_loss_vs_labels_001": ce_snap_masked_001.item(),
+        f"{WandbSections.MISC.value}/z_ce/rand_masked_ce_loss_vs_labels": ce_rand_masked.item(),
     }
 
     return ce_losses
+
+
+def _get_pnorm(
+    pnorm: float | Literal["anneal-2-1"] | Literal["anneal-2-0.5"], training_pct: float
+) -> float:
+    if pnorm == "anneal-2-1":
+        return interpolate(2.0, 1.0, training_pct)
+    elif pnorm == "anneal-2-0.5":
+        return interpolate(2.0, 0.5, training_pct)
+    else:
+        return pnorm
+    raise ValueError(f"Invalid pnorm: {pnorm}")
 
 
 def calculate_losses(
@@ -392,7 +437,7 @@ def calculate_losses(
     device: str,
     training_pct: float,
     n_params: int,
-) -> tuple[Float[Tensor, ""], dict[str, float]]:
+) -> tuple[Float[Tensor, ""], dict[str, Tensor]]:
     """Calculate all losses and return total loss and individual loss terms.
 
     Args:
@@ -410,14 +455,15 @@ def calculate_losses(
         Tuple of (total_loss, loss_terms_dict)
     """
     total_loss = torch.tensor(0.0, device=device)
-    loss_terms: dict[str, float] = {}
+    loss_terms: dict[str, Tensor] = {}
 
     # Faithfulness loss
-    faithfulness_loss = calc_faithfulness_loss(
-        components=components, target_model=model.model, n_params=n_params, device=device
-    )
-    total_loss += config.faithfulness_coeff * faithfulness_loss
-    loss_terms[f"{WandbSections.LOSS.value}/faithfulness"] = faithfulness_loss.item()
+    if config.faithfulness_coeff is not None:
+        faithfulness_loss = calc_faithfulness_loss(
+            components=components, target_model=model.model, n_params=n_params, device=device
+        )
+        total_loss += config.faithfulness_coeff * faithfulness_loss
+        loss_terms[f"{WandbSections.LOSS.value}/faithfulness"] = faithfulness_loss.detach()
 
     # Reconstruction loss
     if config.recon_coeff is not None:
@@ -430,12 +476,15 @@ def calculate_losses(
             loss_type=config.output_loss_type,
         )
         total_loss += config.recon_coeff * recon_loss
-        loss_terms[f"{WandbSections.LOSS.value}/recon"] = recon_loss.item()
+        loss_terms[f"{WandbSections.LOSS.value}/recon"] = recon_loss.detach()
 
     # Stochastic reconstruction loss
     if config.stochastic_recon_coeff is not None:
         stochastic_masks = calc_stochastic_masks(
-            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
+            causal_importances=ci_lower_leaky,
+            n_mask_samples=config.n_mask_samples,
+            sample_type=config.sample_type,
+            min_prob=config.min_prob,
         )
         stochastic_recon_loss = torch.tensor(0.0, device=target_out.device)
         for i in range(len(stochastic_masks)):
@@ -449,7 +498,7 @@ def calculate_losses(
             )
         stochastic_recon_loss = stochastic_recon_loss / len(stochastic_masks)
         total_loss += config.stochastic_recon_coeff * stochastic_recon_loss
-        loss_terms[f"{WandbSections.LOSS.value}/stochastic_recon"] = stochastic_recon_loss.item()
+        loss_terms[f"{WandbSections.LOSS.value}/stochastic_recon"] = stochastic_recon_loss.detach()
 
     # Reconstruction layerwise loss
     if config.recon_layerwise_coeff is not None:
@@ -463,12 +512,15 @@ def calculate_losses(
             loss_type=config.output_loss_type,
         )
         total_loss += config.recon_layerwise_coeff * recon_layerwise_loss
-        loss_terms[f"{WandbSections.LOSS.value}/recon_layerwise"] = recon_layerwise_loss.item()
+        loss_terms[f"{WandbSections.LOSS.value}/recon_layerwise"] = recon_layerwise_loss.detach()
 
     # Stochastic reconstruction layerwise loss
     if config.stochastic_recon_layerwise_coeff is not None:
         layerwise_stochastic_masks = calc_stochastic_masks(
-            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
+            causal_importances=ci_lower_leaky,
+            n_mask_samples=config.n_mask_samples,
+            sample_type=config.sample_type,
+            min_prob=config.min_prob,
         )
         stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
             model=model,
@@ -481,113 +533,105 @@ def calculate_losses(
         )
         total_loss += config.stochastic_recon_layerwise_coeff * stochastic_recon_layerwise_loss
         loss_terms[f"{WandbSections.LOSS.value}/stochastic_recon_layerwise"] = (
-            stochastic_recon_layerwise_loss.item()
+            stochastic_recon_layerwise_loss.detach()
         )
 
     # Importance minimality loss
-    pnorm = config.pnorm if config.pnorm != "anneal-1-2" else interpolate(2.0, 1.0, training_pct)
+    pnorm = _get_pnorm(config.pnorm, training_pct)
 
-    loss_terms[f"{WandbSections.MISC.value}/pnorm"] = pnorm
+    loss_terms[f"{WandbSections.MISC.value}/pnorm"] = torch.tensor(pnorm, device=device)
 
     importance_minimality_loss = calc_importance_minimality_loss(ci_upper_leaky, pnorm)
 
     importance_minimality_coeff = (
         (
             training_pct
-            * config.importance_minimality_coeff
             / config.importance_minimality_warmup_pct
+            * config.importance_minimality_coeff
         )
-        if training_pct < config.importance_minimality_warmup_pct
+        if (
+            config.importance_minimality_warmup_pct is not None
+            and training_pct < config.importance_minimality_warmup_pct
+        )
         else config.importance_minimality_coeff
     )
 
-    loss_terms[f"{WandbSections.MISC.value}/importance_minimality_coeff"] = importance_minimality_coeff
+    loss_terms[f"{WandbSections.TRAIN.value}/importance_minimality_coeff"] = torch.tensor(
+        importance_minimality_coeff, device=device
+    )
 
     total_loss += importance_minimality_coeff * importance_minimality_loss
     loss_terms[f"{WandbSections.LOSS.value}/importance_minimality"] = (
-        importance_minimality_loss.item()
+        importance_minimality_loss.detach()
     )
 
-    # Schatten loss
-    # if config.schatten_coeff is not None:
-    #     schatten_loss = calc_schatten_loss(
-    #         ci_upper_leaky=ci_upper_leaky,
-    #         pnorm=config.pnorm,
-    #         components=components,
-    #         device=device,
-    #     )
-    #     total_loss += config.schatten_coeff * schatten_loss
-    #     loss_terms[f"{WandbSections.LOSS.value}/schatten"] = schatten_loss.item()
-
-    # # Output reconstruction loss
-    # if config.out_recon_coeff is not None:
-    #     masks_all_ones = {k: torch.ones_like(v) for k, v in ci_lower_leaky.items()}
-    #     out_recon_loss = calc_masked_recon_loss(
-    #         model=model,
-    #         batch=batch,
-    #         components=components,
-    #         masks=masks_all_ones,
-    #         target_out=target_out,
-    #         loss_type=config.output_loss_type,
-    #     )
-    #     total_loss += config.out_recon_coeff * out_recon_loss
-    #     loss_terms[f"{WandbSections.LOSS.value}/output_recon"] = out_recon_loss.item()
-
-    # # Embedding reconstruction loss
-    # if config.embedding_recon_coeff is not None:
-    #     stochastic_masks = calc_stochastic_masks(
-    #         causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
-    #     )
-    #     assert len(components) == 1, "Only one embedding component is supported"
-    #     component = list(components.values())[0]
-    #     assert isinstance(component, EmbeddingComponent)
-    #     embedding_recon_loss = calc_embedding_recon_loss(
-    #         model=model,
-    #         batch=batch,
-    #         component=component,
-    #         masks=stochastic_masks,
-    #         embed_module_name=next(iter(components.keys())),
-    #         unembed=config.is_embed_unembed_recon,
-    #     )
-    #     total_loss += config.embedding_recon_coeff * embedding_recon_loss
-    #     loss_terms[f"{WandbSections.LOSS.value}/embedding_recon"] = embedding_recon_loss.item()
-
-    # # stochastic layerwise ablation loss
-    # if config.layerwise_random_ablation_coeff is not None:
-    #     layerwise_ablation_masks = calc_stochastic_ablation_masks(
-    #         causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
-    #     )
-    #     layerwise_random_ablation_loss = calc_layerwise_ablation_loss(
-    #         model=model,
-    #         batch=batch,
-    #         device=device,
-    #         components=components,
-    #         masks=layerwise_ablation_masks,
-    #         target_out=target_out,
-    #         loss_type=config.output_loss_type,
-    #     )
-    #     total_loss += config.layerwise_random_ablation_coeff * layerwise_random_ablation_loss
-    #     loss_terms[f"{WandbSections.LOSS.value}/layerwise_random_ablation_loss"] = (
-    #         layerwise_random_ablation_loss.item()
-    #     )
-
-    # stochastic ablation loss
-    if config.stochastic_ablation_coeff is not None:
-        stochastic_ablation_masks = calc_stochastic_ablation_masks(
-            causal_importances=ci_lower_leaky, n_mask_samples=config.n_mask_samples
-        )
-        random_ablation_loss = torch.tensor(0.0, device=target_out.device)
-        for i in range(len(stochastic_ablation_masks)):
-            random_ablation_loss = calc_ablation_loss(
-                model=model,
-                batch=batch,
-                components=components,
-                masks=stochastic_ablation_masks[i],
-                target_out=target_out,
-                loss_type=config.output_loss_type,
-            )
-        random_ablation_loss = random_ablation_loss / len(stochastic_ablation_masks)
-        total_loss += config.stochastic_ablation_coeff * random_ablation_loss
-        loss_terms[f"{WandbSections.LOSS.value}/random_ablation_loss"] = random_ablation_loss.item()
 
     return total_loss, loss_terms
+
+
+def _calc_tensors_fvu(
+    true_params: dict[str, Tensor],
+    pred_params: dict[str, Tensor],
+    device: str,
+) -> Float[Tensor, ""]:
+    """
+    Fraction of variance unexplained (FVU) between two parameter dictionaries.
+
+    FVU = Σ (y_pred - y_true)^2  /  Σ (y_true - mean(y_true))^2
+
+    Here ``y_true``  is every element of ``params1``,
+    ``y_pred``       is the corresponding element of ``params2``,
+    and the mean is computed *per-tensor* in ``params1``.
+
+    Args:
+        params1: baseline / “true" parameters
+        params2: comparison / “predicted" parameters
+        device : torch device to hold the running totals
+
+    Returns:
+        A scalar Tensor on ``device``: 0 → perfect match, 1 → predicts per-tensor mean,
+        >1 → worse than predicting the mean.
+    """
+    sse = torch.tensor(0.0, device=device)  # Σ squared errors
+    tss = torch.tensor(0.0, device=device)  # Σ squared deviations from per-tensor mean
+
+    for name, true_param in true_params.items():
+        pred_param = pred_params[name]
+
+        # Sum of squared errors for this tensor
+        sse += ((pred_param - true_param) ** 2).sum()
+
+        # Total sum of squares around the tensor's own mean
+        mean_true_param = true_param.mean()
+        tss += ((true_param - mean_true_param) ** 2).sum()
+
+    # If tss == 0 (all-constant tensor), define FVU = 0 to avoid NaN/inf.
+    if tss == 0:
+        return torch.tensor(0.0, device=device)
+
+    return sse / tss
+
+
+def calc_faithfulness_fvu(
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    target_model: nn.Module,
+    device: str,
+) -> Float[Tensor, ""]:
+    """Calculate the MSE loss between component parameters (V@U + bias) and target parameters."""
+    target_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
+    component_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
+
+    for comp_name, component in components.items():
+        component_params[comp_name] = component.weight
+        submodule = target_model.get_submodule(comp_name)
+        assert isinstance(submodule, nn.Linear | nn.Embedding)
+        target_params[comp_name] = submodule.weight
+        assert component_params[comp_name].shape == target_params[comp_name].shape
+
+    faithfulness_loss = _calc_tensors_fvu(
+        true_params=target_params,
+        pred_params=component_params,
+        device=device,
+    )
+
+    return faithfulness_loss

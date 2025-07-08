@@ -123,6 +123,14 @@ class Config(BaseModel):
         default="leaky_hard",
         description="Type of sigmoid to use for causal importance calculation",
     )
+    sample_type: Literal["bernoulli", "uniform"] = Field(
+        default="uniform",
+        description="Type of sample to use for stochastic recon losses",
+    )
+    min_prob: Probability = Field(
+        default=0.5,
+        description="Minimum probability for Bernoulli sampling",
+    )
     gate_init_central: bool = Field(
         default=False,
         description="If True, initialize the gate bias to 0.5",
@@ -143,7 +151,7 @@ class Config(BaseModel):
     )
     recon_coeff: NonNegativeFloat | None = Field(
         default=None,
-        description="Coefficient for recon loss with a causal importance mask",
+        description="Coefficient for recon loss with deterministic masks",
     )
     stochastic_recon_coeff: NonNegativeFloat | None = Field(
         default=None,
@@ -161,8 +169,8 @@ class Config(BaseModel):
         ...,
         description="Coefficient for importance minimality loss",
     )
-    importance_minimality_warmup_pct: Probability = Field(
-        default=0.1,
+    importance_minimality_warmup_pct: Probability | None = Field(
+        default=None,
         description="Fraction of total steps to linearly warm up the importance minimality loss",
     )
     schatten_coeff: NonNegativeFloat | None = Field(
@@ -189,7 +197,7 @@ class Config(BaseModel):
         default=False,
         description="If True, apply embedding recon jointly to embed & unembed matrices",
     )
-    pnorm: PositiveFloat | Literal["anneal-1-2"] = Field(
+    pnorm: PositiveFloat | Literal["anneal-2-1"] | Literal["anneal-2-0.5"] = Field(
         ...,
         description="The p-value used for the importance minimality loss",
     )
@@ -253,6 +261,10 @@ class Config(BaseModel):
         default=False,
         description="If True, train in bfloat16 precision with autocasting to float32. Saves memory",
     )
+    n_tokens_till_dead: PositiveInt = Field(
+        default=2_000_000,
+        description="Number of tokens to wait before marking a component as dead",
+    )
 
     # --- Pretrained model info ---
     pretrained_model_class: str = Field(
@@ -303,8 +315,8 @@ class Config(BaseModel):
     def validate_model(self) -> Self:
         # If any of the coeffs are 0, raise a warning
         msg = "is 0, you may wish to instead set it to null to avoid calculating the loss"
-        if self.recon_coeff == 0:
-            logger.warning(f"recon_coeff {msg}")
+        # if self.recon_coeff == 0:
+        #     logger.warning(f"recon_coeff {msg}")
         if self.importance_minimality_coeff == 0:
             logger.warning(f"importance_minimality_coeff {msg}")
         if self.faithfulness_coeff == 0:

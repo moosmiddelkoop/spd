@@ -55,7 +55,7 @@ def collect_embedding_masks(
 
         Vs = {module_name: v.V for module_name, v in components.items()}
 
-        masks, _ = calc_causal_importances(
+        masks, _, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,

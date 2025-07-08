@@ -1,9 +1,11 @@
-from typing import Literal
+from typing import Callable, Literal
 
 import torch
 from torch import Tensor
 
-SigmoidTypes = Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"]
+SigmoidTypes = Literal[
+    "normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard", "bernoulli_ste"
+]
 
 
 def normal_sigmoid(x: Tensor) -> Tensor:
@@ -45,7 +47,7 @@ def swish_hard_sigmoid(
     )
 
 
-SIGMOID_TYPES = {
+SIGMOID_TYPES: dict[SigmoidTypes, Callable[[Tensor], Tensor]] = {
     "normal": normal_sigmoid,
     "hard": hard_sigmoid,
     "leaky_hard": leaky_hard_sigmoid,

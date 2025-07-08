@@ -111,8 +111,6 @@ def init_wandb(
     # Update the config with the hyperparameters for this sweep (if any)
     sweep_cfg = {
         **wandb.config,
-        "recon_layerwise_coeff": wandb.config["recon_coeff"] * 10,
-        "stochastic_recon_layerwise_coeff": wandb.config["stochastic_recon_coeff"] * 10,
     }
 
     config = replace_pydantic_model(config, sweep_cfg)  # pyright: ignore[reportArgumentType]

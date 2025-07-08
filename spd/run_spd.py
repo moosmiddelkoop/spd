@@ -4,9 +4,8 @@ import time
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
 from contextlib import nullcontext
-from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 import matplotlib.pyplot as plt
 import torch
@@ -14,14 +13,21 @@ import torch.nn as nn
 import torch.optim as optim
 import wandb
 from einops import reduce
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Float
 from torch import Tensor
 from torch.utils.data import DataLoader
+from torch.profiler import (
+    profile,
+    record_function,
+    ProfilerActivity,
+    tensorboard_trace_handler,
+)
 from tqdm import tqdm
 
 from spd.configs import Config
+from spd.constants import CI_ALIVE_THRESHOLD
 from spd.log import logger
-from spd.losses import calc_ce_losses, calculate_losses
+from spd.losses import calc_ce_losses, calc_faithfulness_fvu, calculate_losses
 from spd.models.component_model import ComponentModel, init_Vs_and_Us_
 from spd.models.component_utils import calc_causal_importances, calc_ci_l_zero
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
@@ -29,8 +35,6 @@ from spd.models.sigmoids import SigmoidTypes
 from spd.plotting import plot_ci_histograms, plot_mean_component_activation_counts
 from spd.utils import extract_batch_data, get_lr_schedule_fn, get_lr_with_warmup
 from spd.wandb_utils import WandbSections
-
-CI_ALIVE_THRESHOLD = 0.1
 
 
 def get_common_run_name_suffix(config: Config) -> str:
@@ -70,9 +74,9 @@ def eval(
     model: ComponentModel,
     components: dict[str, LinearComponent | EmbeddingComponent],
     gates: dict[str, Gate | GateMLP],
-    device: str | torch.device,
+    device: str,
     sigmoid_type: SigmoidTypes,
-    data_iter: Iterator[dict[str, Any]],
+    eval_iter: Iterator[Tensor],
     n_eval_microbatches: int,
     log_ce_losses: bool,
     Vs: Mapping[str, Tensor],
@@ -82,14 +86,14 @@ def eval(
     all_causal_importance_BxM = defaultdict[str, list[Tensor]](list)
 
     for _ in range(n_eval_microbatches):
-        batch = extract_batch_data(next(data_iter)).to(device)
+        batch = next(eval_iter).to(device)
 
         target_logits, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
             batch, module_names=list(components.keys())
         )
 
         # no upper-leaky needed bc no loss here
-        ci_BxM, _ = calc_causal_importances(
+        ci_BxM, _, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,
@@ -120,17 +124,45 @@ def eval(
     # if embed_ci_table is not None:
     #     log_data["misc/embed_ci_sample"] = embed_ci_table
 
-    ci_l_zero = calc_ci_l_zero(stacked_ci_BxM)
-    for layer_name, layer_ci_l_zero in ci_l_zero.items():
-        log_data[f"{WandbSections.METRICS.value}/ci_l0_{layer_name}"] = layer_ci_l_zero
+    ci_l_zero = calc_ci_l_zero(stacked_ci_BxM, cutoff=0.1)
+    if len(ci_l_zero) == 1:
+        log_data[f"{WandbSections.METRICS.value}/ci_l0_01"] = list(ci_l_zero.values())[0]
+    else:
+        for layer_name, layer_ci_l_zero in ci_l_zero.items():
+            log_data[f"{WandbSections.METRICS.value}/ci_l0_01_{layer_name}"] = layer_ci_l_zero
+
+    ci_l_zero = calc_ci_l_zero(stacked_ci_BxM, cutoff=0.01)
+    if len(ci_l_zero) == 1:
+        log_data[f"{WandbSections.METRICS.value}/ci_l0_001"] = list(ci_l_zero.values())[0]
+    else:
+        for layer_name, layer_ci_l_zero in ci_l_zero.items():
+            log_data[f"{WandbSections.METRICS.value}/ci_l0_001_{layer_name}"] = layer_ci_l_zero
+
+    log_data[f"{WandbSections.METRICS.value}/fvu"] = calc_faithfulness_fvu(
+        components=components,
+        target_model=model.model,
+        device=device,
+    ).item()
 
     return log_data
+
+
+def dl_loop_wrapper(dl: DataLoader[Tensor], name: str) -> Iterator[Tensor]:
+    iterator = iter(dl)
+    while True:
+        try:
+            batch_item = next(iterator)
+        except StopIteration:
+            logger.warning(f"Dataloader '{name}' exhausted, resetting iterator.")
+            iterator = iter(dl)
+            batch_item = next(iterator)
+        yield extract_batch_data(batch_item)
 
 
 def get_target_module_mean_input_norms(
     model: ComponentModel,
     target_module_patterns: list[str],
-    train_iter: Iterator[dict[str, Any]],
+    train_iter: Iterator[Tensor],
     device: str,
     n_tokens: int = 100_000,
 ) -> dict[str, float]:
@@ -138,7 +170,7 @@ def get_target_module_mean_input_norms(
     n_tokens_seen = 0
     pbar = tqdm(total=n_tokens, desc="Computing target module mean input norms")
     while n_tokens_seen < n_tokens:
-        batch = extract_batch_data(next(train_iter)).to(device)
+        batch = next(train_iter).to(device)
         n_tokens_seen += batch.numel()
         pbar.update(batch.numel())
         _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
@@ -151,19 +183,76 @@ def get_target_module_mean_input_norms(
     return {name: sum(norms) / len(norms) for name, norms in target_module_input_norms.items()}
 
 
+class AliveTracker:
+    def __init__(
+        self,
+        module_names: list[str],
+        C: int,
+        device: torch.device,
+        n_batches_until_dead: int,
+        threshold: float,
+    ):
+        self.module_names = module_names
+        self.batches_since_fired_C = {
+            module_name: torch.zeros(C, dtype=torch.int64, device=device)
+            for module_name in module_names
+        }
+        self.n_batches_until_dead = n_batches_until_dead
+        self.threshold = threshold
+
+    @torch.no_grad()
+    def watch_batch(self, importance_vals_dict_BxC: dict[str, Tensor]) -> None:
+        assert set(importance_vals_dict_BxC.keys()) == set(self.module_names), (
+            "importance_vals_BxC must have the same keys as module_names"
+        )
+        for module_name, importance_vals_BxC in importance_vals_dict_BxC.items():
+            component_is_alive_C = reduce(
+                importance_vals_BxC > self.threshold, "... C -> C", torch.any
+            )
+            batches_since_fired_C = torch.where(
+                component_is_alive_C, 0, self.batches_since_fired_C[module_name] + 1
+            )
+            self.batches_since_fired_C[module_name] = batches_since_fired_C
+
+    @torch.no_grad()
+    def n_alive(self) -> dict[str, Tensor]:
+        return {
+            module_name: (self.batches_since_fired_C[module_name] < self.n_batches_until_dead).sum()
+            for module_name in self.module_names
+        }
+
+
+# Profiler schedule:
+# - wait: initial steps to skip before profiling starts (e.g., for warm-up)
+# - warmup: steps where profiler collects data but discards it (to reduce overhead)
+# - active: steps where profiler records events
+# - repeat: number of times to repeat the wait-warmup-active cycle
+
+# Trace handler: saves profiling results for TensorBoard
+from datetime import datetime
+
+logdir = f"./pt_logs/{datetime.now().strftime('%Y%m%d_%H%M%S')}/"
+Path(logdir).mkdir(parents=True, exist_ok=True)
+trace_handler = tensorboard_trace_handler(logdir)
+
+# record_function = lambda *args, **kwargs: nullcontext()
+
+
 def optimize(
     target_model: nn.Module,
     config: Config,
     device: str,
-    train_loader: DataLoader[Tensor] | DataLoader[tuple[Tensor, Tensor]],
-    # eval_loader: DataLoader[Tensor, "..."]]
-    # | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
+    train_loader: DataLoader[Tensor],
+    eval_loader: DataLoader[Tensor],
     n_eval_steps: int,
     out_dir: Path | None,
-    # plot_results_fn: PlotResultsFn | None = None,
+    plot_results_fn: PlotResultsFn | None = None,
     tied_weights: list[tuple[str, str]] | None = None,
 ) -> None:
     """Run the optimization loop for LM decomposition."""
+    train_iter = dl_loop_wrapper(train_loader, "train")
+    eval_iter = dl_loop_wrapper(eval_loader, "eval")
+
     model = ComponentModel(
         base_model=target_model,
         target_module_patterns=config.target_module_patterns,
@@ -172,23 +261,41 @@ def optimize(
         n_ci_mlp_neurons=config.n_ci_mlp_neurons,
         init_central=config.gate_init_central,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
-        dtype=torch.float32,  # torch.bfloat16 if config.autocast_bfloat16 else torch.float32,
+        dtype=torch.float32,
     )
     model.to(device)
 
-    data_iter = iter(train_loader)
+    alive_tracker_01 = AliveTracker(
+        module_names=config.target_module_patterns,
+        C=config.C,
+        device=torch.device(device),
+        n_batches_until_dead=(
+            config.n_tokens_till_dead // (config.batch_size * config.task_config.max_seq_len)  # pyright: ignore [reportAttributeAccessIssue]
+        ),
+        threshold=0.1,
+    )
+
+    alive_tracker_001 = AliveTracker(
+        module_names=config.target_module_patterns,
+        C=config.C,
+        device=torch.device(device),
+        n_batches_until_dead=(
+            config.n_tokens_till_dead // (config.batch_size * config.task_config.max_seq_len)  # pyright: ignore [reportAttributeAccessIssue]
+        ),
+        threshold=0.01,
+    )
 
     target_module_mean_input_norms = get_target_module_mean_input_norms(
         model=model,
         target_module_patterns=config.target_module_patterns,
-        train_iter=data_iter,
+        train_iter=train_iter,
         device=device,
     )
-
     model.init_gates_from_mean_input_norms_(target_module_mean_input_norms)
 
     for param in target_model.parameters():
         param.requires_grad = False
+
     logger.info("Target model parameters frozen.")
 
     # We used "-" instead of "." as module names can't have "." in them
@@ -230,11 +337,6 @@ def optimize(
 
     n_params = sum(model.model.get_parameter(n + ".weight").numel() for n in components)
 
-
-    alive_components_M: dict[str, Bool[Tensor, " C"]] = {
-        layer_name: torch.zeros(config.C, device=device).bool() for layer_name in components
-    }
-
     def get_lr(step: int) -> float:
         return get_lr_with_warmup(
             step=step,
@@ -251,8 +353,8 @@ def optimize(
 
     loop_start_time = time.perf_counter()
 
-    total_loss = 0.0
-    loss_terms = defaultdict[str, float](float)
+    total_loss = torch.tensor(0.0, device=device)
+    loss_terms = defaultdict[str, Tensor](lambda: torch.tensor(0.0, device=device))
 
     for step in tqdm(range(config.steps + 1), ncols=0):
         step_lr = get_lr(step)
@@ -264,20 +366,13 @@ def optimize(
 
         for _microbatch_idx in range(config.gradient_accumulation_steps):
             with autocast_ctx():
-                try:
-                    batch_item = next(data_iter)
-                except StopIteration:
-                    logger.warning("Dataloader exhausted, resetting iterator.")
-                    data_iter = iter(train_loader)
-                    batch_item = next(data_iter)
-
-                batch = extract_batch_data(batch_item).to(device)
+                batch = next(train_iter).to(device)
 
                 target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
                     batch, module_names=list(components.keys())
                 )
 
-                ci_lower_leaky_BxM, ci_upper_leaky_BxM = calc_causal_importances(
+                ci_lower_leaky_BxM, ci_upper_leaky_BxM, _ = calc_causal_importances(
                     pre_weight_acts=pre_weight_acts,
                     Vs=Vs,
                     gates=gates,
@@ -285,10 +380,8 @@ def optimize(
                     detach_inputs=False,
                 )
 
-                for layer_name, ci_BxM in ci_upper_leaky_BxM.items():
-                    alive_this_step_BxM = ci_BxM > CI_ALIVE_THRESHOLD
-                    alive_this_step_M = reduce(alive_this_step_BxM, "... m -> m", torch.any)
-                    alive_components_M[layer_name] |= alive_this_step_M
+                alive_tracker_01.watch_batch(ci_upper_leaky_BxM)
+                alive_tracker_001.watch_batch(ci_upper_leaky_BxM)
 
                 microbatch_total_loss, microbatch_loss_terms = calculate_losses(
                     model=model,
@@ -310,9 +403,9 @@ def optimize(
             # optimizer step is down after eval so we eval on the same exact model params as loss above
 
             # Bookkeeping
-            total_loss += microbatch_total_loss.item()
+            total_loss += microbatch_total_loss.detach()
             for name, value in microbatch_loss_terms.items():
-                loss_terms[name] += value
+                loss_terms[name] += value.detach()
 
         if step % config.print_freq == 0:
             avg_loss = total_loss / config.gradient_accumulation_steps / config.print_freq
@@ -320,7 +413,7 @@ def optimize(
                 k: v / config.gradient_accumulation_steps / config.print_freq
                 for k, v in loss_terms.items()
             }
-            total_loss = 0.0
+            total_loss = torch.tensor(0.0, device=device)
             loss_terms.clear()
 
             tqdm.write(f"--- Step {step} ---")
@@ -334,8 +427,8 @@ def optimize(
 
             if config.wandb_project:
                 log_data: dict[str, float | wandb.Table] = {
-                    f"{WandbSections.LOSS.value}/total": avg_loss,
-                    **avg_loss_terms,
+                    f"{WandbSections.LOSS.value}/total": float(avg_loss.item()),
+                    **{k: float(v.item()) for k, v in avg_loss_terms.items()},
                     f"{WandbSections.TRAIN.value}/lr": step_lr,
                     f"{WandbSections.TRAIN.value}/tps": n_tokens
                     / (time.perf_counter() - loop_start_time),
@@ -343,20 +436,17 @@ def optimize(
                 }
 
                 if step > 0:
-                    # TODO: investigate whether this is wrong due to only running every n steps,
-                    # i.e. off by a constant factor
-                    for layer_name, layer_alive_components_M in alive_components_M.items():
-                        log_data[f"metrics/n_alive_01/{layer_name}"] = (
-                            layer_alive_components_M.sum().item()
-                        )
-                        alive_components_M[layer_name] = torch.zeros(config.C, device=device).bool()
+                    for module_name, n_alive in alive_tracker_01.n_alive().items():
+                        log_data[f"metrics/n_alive_01/{module_name}"] = n_alive.item()
+                    for module_name, n_alive in alive_tracker_001.n_alive().items():
+                        log_data[f"metrics/n_alive_001/{module_name}"] = n_alive.item()
 
                 with torch.inference_mode():
                     eval_results = eval(
                         model=model,
                         components=components,
                         gates=gates,
-                        data_iter=data_iter,
+                        eval_iter=eval_iter,
                         device=device,
                         sigmoid_type=config.sigmoid_type,
                         n_eval_microbatches=10,  # TODO configure
@@ -384,11 +474,11 @@ def optimize(
             }
 
             for _ in range(n_eval_steps):
-                batch = extract_batch_data(next(data_iter)).to(device)
+                batch = next(eval_iter).to(device)
                 _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
                     batch, module_names=list(components.keys())
                 )
-                causal_importances, _ = calc_causal_importances(
+                causal_importances, _, _ = calc_causal_importances(
                     pre_weight_acts=pre_weight_acts,
                     Vs=Vs,
                     gates=gates,
@@ -397,15 +487,17 @@ def optimize(
                 )
 
                 for module_name, ci in causal_importances.items():
-                    # mask (batch, pos, C) or (batch, C)
                     n_tokens[module_name] += ci.shape[:-1].numel()
 
-                    n_active_components_C = reduce(ci > CI_ALIVE_THRESHOLD, "... C -> C", torch.sum)
+                    n_active_components_C = reduce(
+                        ci > CI_ALIVE_THRESHOLD, "... C -> C", torch.sum
+                    )
                     component_activation_counts[module_name] += n_active_components_C
 
             mean_component_activation_counts_plot = plot_mean_component_activation_counts(
                 mean_component_activation_counts={
-                    module_name: component_activation_counts[module_name] / n_tokens[module_name]
+                    module_name: component_activation_counts[module_name]
+                    / n_tokens[module_name]
                     for module_name in components
                 }
             )
@@ -414,8 +506,11 @@ def optimize(
             ci_histogram_figs = plot_ci_histograms(causal_importances)  # pyright: ignore [reportPossiblyUnboundVariable]
 
             figs_dict = {
-                **ci_histogram_figs,
-                "mean_component_activation_counts": mean_component_activation_counts_plot,
+                **{
+                    f"{WandbSections.MISC.value}/{k}": v
+                    for k, v in ci_histogram_figs.items()
+                },
+                f"{WandbSections.MISC.value}/mean_component_activation_counts": mean_component_activation_counts_plot,
             }
             fig_imgs_dict = {k: wandb.Image(v) for k, v in figs_dict.items()}
 
@@ -423,8 +518,9 @@ def optimize(
 
             if out_dir is not None:
                 for k, v in figs_dict.items():
-                    v.savefig(out_dir / f"{k}_{step}.png")
-                    tqdm.write(f"Saved plot to {out_dir / f'{k}_{step}.png'}")
+                    name = k.split("/")[-1]
+                    v.savefig(out_dir / f"{name}_{step}.png")
+                    tqdm.write(f"Saved plot to {out_dir / f'{name}_{step}.png'}")
 
         # --- Saving Checkpoint --- #
         if (
@@ -434,7 +530,9 @@ def optimize(
             torch.save(model.state_dict(), out_dir / f"model_{step}.pth")
             logger.info(f"Saved model, optimizer, and out_dir to {out_dir}")
             if config.wandb_project:
-                wandb.save(str(out_dir / f"model_{step}.pth"), base_path=str(out_dir), policy="now")
+                wandb.save(
+                    str(out_dir / f"model_{step}.pth"), base_path=str(out_dir), policy="now"
+                )
                 wandb.save(
                     str(out_dir / f"optimizer_{step}.pth"), base_path=str(out_dir), policy="now"
                 )
@@ -447,12 +545,12 @@ def optimize(
                     for param in model.parameters():
                         if param.grad is not None:
                             grad_norm += param.grad.data.flatten().pow(2).sum()
-                    grad_norm_val = grad_norm.sqrt().item()
-                    wandb.log({"grad_norm": grad_norm_val}, step=step)
+                    grad_norm_val = grad_norm.sqrt()
+                    wandb.log(
+                        {f"{WandbSections.TRAIN.value}/grad_norm": grad_norm_val.item()}, step=step
+                    )
 
-                # norm_torch = torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
-                # wandb.log({"grad_norm_torch": norm_torch}, step=step)
-
+            torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
             optimizer.step()
-
+        # prof.step()
     logger.info("Finished training loop.")

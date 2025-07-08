@@ -100,9 +100,8 @@ def main(
     # Construct the full agent ID for the sweep
     wandb_url = f"https://wandb.ai/{WANDB_ORG}/{WANDB_PROJECT}/sweeps/{sweep_id}"
 
-    print(f"Deploying {n_agents} agents for experiment {experiment}...")
-
     # Create single git snapshot for all agents
+    print("Creating git snapshot...")
     snapshot_branch = create_git_snapshot(branch_name_prefix="sweep")
     print(f"Using git snapshot: {snapshot_branch}")
 
@@ -123,6 +122,8 @@ def main(
             snapshot_branch=snapshot_branch,
         )
 
+        print(f"Deploying {n_agents} agents for experiment {experiment}...")
+
         # Submit the job n times to create n parallel agents
         script_paths = [run_agent_script] * n_agents
         job_ids = submit_slurm_jobs(script_paths)
@@ -135,8 +136,8 @@ def main(
 
 if __name__ == "__main__":
     main(
-        experiment="ss_attn",
-        n_agents=4,
-        sweep_params_path=REPO_ROOT / "spd/sweeps/sweep_params_ml.yaml",
-        job_suffix="oli-4h",
+        experiment="ss_mlp",
+        n_agents=24,
+        sweep_params_path=REPO_ROOT / "spd/sweeps/sweep_params.yaml",
+        job_suffix="oli-10h",
     )

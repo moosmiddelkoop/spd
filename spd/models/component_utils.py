@@ -1,5 +1,5 @@
 from collections.abc import Iterator, Mapping
-from typing import Any
+from typing import Any, Literal
 
 import einops
 import torch
@@ -12,9 +12,38 @@ from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
 from spd.utils import extract_batch_data
 
 
+class BernoulliSTE(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        sigma: Tensor,
+        stochastic: bool,
+    ) -> Tensor:
+        ctx.save_for_backward(sigma)
+        z = torch.bernoulli(sigma) if stochastic else (sigma >= 0.5).to(sigma.dtype)
+
+        x + (1 - x) * 0.5
+
+        return z
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_outputs: Tensor,
+    ) -> tuple[Tensor, None]:
+        return grad_outputs.clone(), None
+
+
+def bernoulli_ste(x: Tensor, min: float = 0.5) -> Tensor:
+    input = x * (1 - min) + min  # pyright: ignore[reportOptionalOperand]
+    return BernoulliSTE.apply(input, True)
+
+
 def calc_stochastic_masks(
     causal_importances: dict[str, Float[Tensor, "... C"]],
     n_mask_samples: int,
+    sample_type: Literal["bernoulli", "uniform"],
+    min_prob: float | None,
 ) -> list[dict[str, Float[Tensor, "... C"]]]:
     """Calculate n_mask_samples stochastic masks with the formula `ci + (1 - ci) * rand_unif(0,1)`.
 
@@ -25,11 +54,24 @@ def calc_stochastic_masks(
     Return:
         A list of n_mask_samples dictionaries, each containing the stochastic masks for each layer.
     """
+
     stochastic_masks = []
     for _ in range(n_mask_samples):
-        stochastic_masks.append(
-            {layer: ci + (1 - ci) * torch.rand_like(ci) for layer, ci in causal_importances.items()}
-        )
+        if sample_type == "bernoulli":
+            assert min_prob is not None
+            stochastic_masks.append(
+                {
+                    layer: bernoulli_ste(ci, min=min_prob)
+                    for layer, ci in causal_importances.items()
+                }
+            )
+        else:
+            stochastic_masks.append(
+                {
+                    layer: ci + (1 - ci) * torch.rand_like(ci)
+                    for layer, ci in causal_importances.items()
+                }
+            )
     return stochastic_masks
 
 
@@ -72,7 +114,7 @@ def component_activation_statistics(
             batch, module_names=list(components.keys())
         )
 
-        causal_importances, _ = calc_causal_importances(
+        causal_importances, _, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             Vs=Vs,
             gates=gates,
@@ -113,6 +155,7 @@ def calc_causal_importances(
 ) -> tuple[
     dict[str, Float[Tensor, "... C"]],
     dict[str, Float[Tensor, "... C"]],
+    dict[str, Float[Tensor, "... C"]],
 ]:
     """Calculate component activations and causal importances in one pass to save memory.
 
@@ -126,7 +169,8 @@ def calc_causal_importances(
     Returns:
         Tuple of (causal_importances, causal_importances_upper_leaky) dictionaries for each layer.
     """
-    causal_importances = {}
+    preact = {}
+    causal_importances_lower_leaky = {}
     causal_importances_upper_leaky = {}
 
     for param_name in pre_weight_acts:
@@ -141,14 +185,17 @@ def calc_causal_importances(
             gate_output = gate(acts.detach() if detach_inputs else acts)
 
         if sigmoid_type == "leaky_hard":
-            causal_importances[param_name] = SIGMOID_TYPES["leaky_hard"](gate_output)
+            preact[param_name] = gate_output
+            causal_importances_lower_leaky[param_name] = SIGMOID_TYPES["leaky_hard"](gate_output)
             causal_importances_upper_leaky[param_name] = SIGMOID_TYPES["upper_leaky_hard"](
                 gate_output
             )
         else:
             # For other sigmoid types, use the same function for both
+            preact[param_name] = gate_output
+
             sigmoid_fn = SIGMOID_TYPES[sigmoid_type]
-            causal_importances[param_name] = sigmoid_fn(gate_output)
+            causal_importances_lower_leaky[param_name] = sigmoid_fn(gate_output)
             causal_importances_upper_leaky[param_name] = sigmoid_fn(gate_output)
 
-    return causal_importances, causal_importances_upper_leaky
+    return causal_importances_lower_leaky, causal_importances_upper_leaky, preact

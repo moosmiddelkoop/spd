@@ -1,36 +1,41 @@
 # --- WandB ---
-wandb_project: oli-spd
+wandb_project: oli-spd-STE
 # wandb_project: null
 wandb_run_name: null
 wandb_run_name_prefix: ""
 
 # --- General ---
 seed: 0
+autocast_bfloat16: false # <--------------
 C: 4096
 n_mask_samples: 1
 n_ci_mlp_neurons: 16
 gate_type: resid_mlp
-sigmoid_type: leaky_hard
+sigmoid_type: normal
 target_module_patterns: ["model.layers.2.mlp.up_proj"]
+gate_init_central: true
 
 # --- Loss Coefficients ---
 faithfulness_coeff: 1.0
-recon_coeff: 99999
+recon_coeff: null
 recon_layerwise_coeff: null
 stochastic_recon_coeff: 99999
+min_prob: 0.5
 stochastic_recon_layerwise_coeff: null
 stochastic_ablation_coeff: null
 importance_minimality_coeff: 99999
 schatten_coeff: null
 embedding_recon_coeff: null
 is_embed_unembed_recon: false
-pnorm: 1.5
+pnorm: 2.0
 output_loss_type: kl
 
 # --- Training ---
-batch_size: 16 # <------------------|==|
-steps: 100_000
-lr: 6e-5 # <------------------------|==|
+batch_size: 48
+# batch_size: 256
+# gradient_accumulation_steps: 4
+steps: 20_000
+lr: 99999
 lr_schedule: cosine
 lr_warmup_pct: 0.01
 lr_exponential_halflife: null
@@ -39,13 +44,13 @@ n_eval_steps: 100
 # --- Logging & Saving ---
 image_freq: 2000
 image_on_first_step: true
-print_freq: 20
+print_freq: 50
 save_freq: 5000
 log_ce_losses: true
 
 # --- Pretrained model info ---
 pretrained_model_class: transformers.LlamaForCausalLM
-pretrained_model_name_hf: SimpleStories/SimpleStories-1.25M
+pretrained_model_name_hf: "SimpleStories/SimpleStories-1.25M"
 pretrained_model_output_attr: logits
 
 # --- Task Specific ---
