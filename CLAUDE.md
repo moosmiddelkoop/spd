@@ -144,3 +144,4 @@ spd-evals tms_5-2,resid_mlp1 --job-suffix my_suffix        # Add job suffix
 
 ## Coding Guidelines
 - Always use the PEP 604 typing format of unions everywhere and no "Optional".
+- To view github issues and PRs, use the github cli (e.g. `gh issue view 28` or `gh pr view 30`)
