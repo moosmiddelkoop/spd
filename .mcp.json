@@ -3,16 +3,23 @@
     "scribe": {
       "command": "uv",
       "args": [
-        "--directory",
-        "/mnt/polished-lake/home/oli/spd-gf/.venv/lib/python3.12/site-packages",
         "run",
         "python",
         "-m",
         "scribe.local_mcp"
       ],
       "env": {
-        "SCRIBE_PORT": "27344"
+        "SCRIBE_PORT": "20376"
       }
+    },
+    "experiment": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "scribe.experiment_mcp"
+      ]
     }
   }
 }

@@ -2,12 +2,12 @@
 name = "spd"
 version = "0.0.1"
 description = "Sparse Parameter Decomposition"
-requires-python = "==3.12"
+requires-python = ">=3.12"
 urls = { "Homepage" = "https://github.com/goodfire-ai/spd" }
 license = { text = "MIT" }
 readme = "README.md"
 dependencies = [
-    "torch==2.5",
+    "torch>=2.7",
     "torchvision",
     "pydantic",
     "wandb",
@@ -35,6 +35,8 @@ dependencies = [
     "py-spy>=0.4.0",
     "tensorboard>=2.19.0",
     "torch-tb-profiler>=0.4.3",
+    "plotly>=6.2.0",
+    "scribe",
 ]
 
 [project.optional-dependencies]
@@ -131,3 +133,6 @@ filterwarnings = [
     # https://github.com/google/python-fire/pull/447
     "ignore::DeprecationWarning:fire:59",
 ]
+
+[tool.uv.sources]
+scribe = { path = "../scribe" }
