@@ -1,9 +1,39 @@
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 from torch import Tensor
+from torch.autograd import Function
 
-SigmoidTypes = Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"]
+SigmoidTypes = Literal[
+    "normal",
+    "hard",
+    "leaky_hard",
+    "upper_leaky_hard",
+    "lower_leaky_hard",
+    "swish_hard",
+]
+
+
+class LowerLeakyHardSigmoidFunction(Function):
+    @staticmethod
+    def forward(ctx: Any, x: Tensor, alpha: float = 0.01) -> Tensor:
+        ctx.save_for_backward(x)
+        ctx.alpha = alpha
+        return torch.clamp(x, min=0, max=1)
+
+    @staticmethod
+    def backward(ctx: Any, grad_outputs: Tensor) -> tuple[Tensor, None]:
+        (x,) = ctx.saved_tensors
+        alpha = ctx.alpha
+
+        # Gradient as if forward pass was alpha * x for x<=0
+        grad_input = torch.where(
+            x <= 0,
+            alpha * grad_outputs,
+            torch.where(x <= 1, grad_outputs, torch.zeros_like(grad_outputs)),
+        )
+
+        return grad_input, None  # None for alpha gradient since it's not a tensor
 
 
 def normal_sigmoid(x: Tensor) -> Tensor:
@@ -20,6 +50,10 @@ def leaky_hard_sigmoid(x: Tensor, alpha: float = 0.01) -> Tensor:
 
 def upper_leaky_hard_sigmoid(x: Tensor, alpha: float = 0.01) -> Tensor:
     return torch.where(x > 1, 1 + alpha * (x - 1), torch.clamp(x, min=0, max=1))
+
+
+def lower_leaky_hard_sigmoid(x: Tensor, alpha: float = 0.01) -> Tensor:
+    return LowerLeakyHardSigmoidFunction.apply(x, alpha)  # type: ignore
 
 
 def swish(x: Tensor, beta: float = 1.0) -> Tensor:
@@ -50,5 +84,6 @@ SIGMOID_TYPES = {
     "hard": hard_sigmoid,
     "leaky_hard": leaky_hard_sigmoid,
     "upper_leaky_hard": upper_leaky_hard_sigmoid,
+    "lower_leaky_hard": lower_leaky_hard_sigmoid,
     "swish_hard": swish_hard_sigmoid,
 }
