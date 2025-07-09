@@ -14,6 +14,19 @@
             }
         },
         {
+            "name": "spd-tms_5-2-sweep",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/spd/scripts/run.py",
+            "args": ["--experiments", "tms_5-2", "--sweep", "--n_agents", "2"],
+            "python": "${command:python.interpreterPath}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
+        },
+        {
             "name": "analyze_evals",
             "type": "debugpy",
             "request": "launch",

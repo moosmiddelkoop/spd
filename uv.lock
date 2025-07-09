@@ -1981,7 +1981,7 @@ requires-dist = [
     { name = "tqdm" },
     { name = "transformers" },
     { name = "wandb", specifier = ">=0.20.1" },
-    { name = "wandb-workspaces" },
+    { name = "wandb-workspaces", specifier = "==0.1.12" },
 ]
 
 [package.metadata.requires-dev]
@@ -2329,15 +2329,15 @@ wheels = [
 
 [[package]]
 name = "wandb-workspaces"
-version = "0.1.16"
+version = "0.1.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "wandb" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/96/30277fc7bb53fe48fb95fe10f3ab9a8009e98fa53c111ceeccf837717dbb/wandb_workspaces-0.1.16.tar.gz", hash = "sha256:baccc857c7b20c325a8d4ead15d8846b55d840fe4de1735fb68bd0326f4caf3a", size = 75812, upload-time = "2025-06-17T15:02:06.962Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/2d/ca96d36a7f8a416e1a962ee96d22922accd742ecc9074073217e7d0feede/wandb_workspaces-0.1.12.tar.gz", hash = "sha256:1e983afd4a758319a8b3acb83b43067b61bebc3db61e2dc09f087ea4e5434468", size = 73555, upload-time = "2025-02-17T16:11:26.928Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/25/35a2321f638dad059ec5e5c1d0132d54153fcf8949ff1323f726244c0407/wandb_workspaces-0.1.16-py3-none-any.whl", hash = "sha256:f3ae1030f9157588619064bb9da0f8af0cd85a68fc60bb4679a21191ce9586ff", size = 86291, upload-time = "2025-06-17T15:02:05.449Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/f0/9811ad9c52bdb33e36e61e162277fa1b9a60f143b4d534731816c0438a7d/wandb_workspaces-0.1.12-py3-none-any.whl", hash = "sha256:a59767794ab13ea3d5cbbc7cef5ca55c370497c7c81834b30ab6005ebe318e1c", size = 84034, upload-time = "2025-02-17T16:11:22.724Z" },
 ]
 
 [[package]]

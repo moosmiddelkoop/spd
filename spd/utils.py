@@ -1,3 +1,4 @@
+import copy
 import importlib
 import json
 import random
@@ -286,3 +287,28 @@ def calc_kl_divergence_lm(
     p = torch.softmax(target, dim=-1)  # P
     kl = F.kl_div(log_q, p, reduction="none")  # P · (log P − log Q)
     return kl.sum(dim=-1).mean()  # Σ_vocab / (batch·seq)
+
+
+def apply_nested_updates(base_dict: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    """Apply nested updates to a dictionary."""
+    result = copy.deepcopy(base_dict)
+
+    for key, value in updates.items():
+        if "." in key:
+            # Handle nested keys
+            keys = key.split(".")
+            current = result
+
+            # Navigate to the parent of the final key
+            for k in keys[:-1]:
+                if k not in current:
+                    current[k] = {}
+                current = current[k]
+
+            # Set the final value
+            current[keys[-1]] = value
+        else:
+            # Simple key
+            result[key] = value
+
+    return result

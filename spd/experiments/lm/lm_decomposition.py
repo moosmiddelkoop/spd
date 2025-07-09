@@ -1,5 +1,6 @@
 """Language Model decomposition script."""
 
+import json
 from pathlib import Path
 
 import fire
@@ -35,8 +36,12 @@ def main(
     config_path_or_obj: Path | str | Config,
     evals_id: str | None = None,
     sweep_id: str | None = None,
-    sweep_params: str | None = None,
+    sweep_params_json: str | None = None,
 ) -> None:
+    sweep_params = (
+        None if sweep_params_json is None else json.loads(sweep_params_json.removeprefix("json:"))
+    )
+
     config = load_config(config_path_or_obj, config_model=Config)
 
     if config.wandb_project:

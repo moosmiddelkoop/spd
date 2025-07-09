@@ -4,6 +4,7 @@ Note that the first instance index is fixed to the identity matrix. This is done
 the losses of the "correct" solution during training.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +56,12 @@ def main(
     config_path_or_obj: Path | str | Config,
     evals_id: str | None = None,
     sweep_id: str | None = None,
-    sweep_params: str | None = None,
+    sweep_params_json: str | None = None,
 ) -> None:
+    sweep_params = (
+        None if sweep_params_json is None else json.loads(sweep_params_json.removeprefix("json:"))
+    )
+
     device = get_device()
     logger.info(f"Using device: {device}")
 

@@ -113,3 +113,16 @@ def init_wandb(
     # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))
     return config
+
+
+def ensure_project_exists(project: str) -> None:
+    """Ensure the W&B project exists by creating a dummy run if needed."""
+    api = wandb.Api()
+
+    # Check if project exists in the list of projects
+    if project not in [p.name for p in api.projects()]:
+        # Project doesn't exist, create it with a dummy run
+        print(f"Creating W&B project '{project}'...")
+        run = wandb.init(project=project, name="project_init", tags=["init"])
+        run.finish()
+        print(f"Project '{project}' created successfully")

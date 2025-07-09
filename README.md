@@ -7,8 +7,8 @@ Weights and Bias [report](https://wandb.ai/goodfire/spd-tms/reports/SPD-paper-re
 From the root of the repository, run one of
 
 ```bash
-make install-dev  # To install the package, dev requirements and pre-commit hooks
-make install  # To just install the package (runs `pip install -e .`)
+make install-dev  # To install the package, dev requirements, pre-commit hooks, and create user files
+make install  # To install the package (runs `pip install -e .`) and create user files
 ```
 
 Both installation commands will automatically create `spd/user_metrics_and_figs.py` from `spd/user_metrics_and_figs.py.example` if it doesn't already exist. This file allows you to define custom metrics and visualizations for SPD experiments without modifying the core framework code.
@@ -29,14 +29,23 @@ supported, though these should cover most parameters).
 
 ### Run SPD
 
+The unified `spd-run` command provides a single entry point for running SPD experiments, supporting
+fixed configurations, parameter sweeps, and evaluation runs. All runs are tracked in W&B with
+workspace views created for each experiment.
+
 #### Individual Experiments
-SPD can be run by executing any of the `*_decomposition.py` scripts defined in the experiment
+SPD can either be run by executing any of the `*_decomposition.py` scripts defined in the experiment
 subdirectories, along with a corresponding config file. E.g.
 ```bash
 uv run spd/experiments/tms/tms_decomposition.py spd/experiments/tms/tms_5-2_config.yaml
 ```
 
-Each experiment is also saved in a registry which is used for sweeps and evals.
+Or by using the unified runner:
+```bash
+spd-run --experiments tms_5-2                    # Run a specific experiment
+spd-run --experiments tms_5-2,resid_mlp1         # Run multiple experiments
+spd-run                                          # Run all experiments
+```
 
 **Available experiments** (defined in `spd/registry.py`):
 - `tms_5-2` - TMS with 5 features, 2 hidden dimensions
@@ -48,35 +57,41 @@ Each experiment is also saved in a registry which is used for sweeps and evals.
 - `resid_mlp3` - ResidMLP with 3 layers
 
 #### Sweeps
-For running sweeps on a SLURM cluster, set your desired sweep parameters in
-`spd/sweeps/sweep_params.yaml` and then call:
+For running parameter sweeps on a SLURM cluster:
 
 ```bash
-spd-sweep <experiment_name> <n_agents> [--cpu] [--job_suffix <suffix>]
+spd-run --experiments <experiment_name> --sweep --n_agents <n_agents> [--cpu] [--job_suffix <suffix>]
 ```
-where <experiment_name> comes from a key in the registry (only experiments registered here
-can be run in sweeps).
 
 **Examples:**
 ```bash
-spd-sweep tms_5-2 4 --job_suffix 5m             # Run TMS 5-2 sweep with 4 GPU agents
-spd-sweep resid_mlp2 3 --cpu                    # Run ResidMLP2 sweep with 3 CPU agents
-spd-sweep tms_5_2-id 2 --job_suffix 1h              # Run with custom job suffix
+spd-run --experiments tms_5-2 --sweep --n_agents 4            # Run TMS 5-2 sweep with 4 GPU agents
+spd-run --experiments resid_mlp2 --sweep --n_agents 3 --cpu   # Run ResidMLP2 sweep with 3 CPU agents
+spd-run --sweep --n_agents 10                                 # Sweep all experiments with 10 agents
+spd-run --experiments tms_5-2 --sweep custom.yaml --n_agents 2 # Use custom sweep params file
 ```
 
-(Note, the `spd-sweep` command will call `spd/sweeps/sweep.py`).
+**Sweep parameters:**
+- Default sweep parameters are loaded from `spd/scripts/sweep_params.yaml`
+- You can specify a custom sweep parameters file by passing its path to `--sweep`
+- Sweep parameters support both experiment-specific and global configurations
 
-#### Evals
-To test your changes on all experiments in the registry, run:
+#### Evaluation Runs
+To run SPD with just the default hyperparameters for each experiment, use:
 ```bash
-spd-evals                                                    # Run all experiments
-spd-evals --experiments tms_5-2-id,resid_mlp2,resid_mlp3     # Run only the experiments listed
+spd-run                                                    # Run all experiments
+spd-run --experiments tms_5-2-id,resid_mlp2,resid_mlp3     # Run specific experiments
 ```
-This will deploy a slurm job for each experiment and create a wandb report for viewing each run.
-It will also create a job which will analyze the results of the eval afterwards and update the
-report.
 
-(Note, the `spd-evals` command will call `spd/evals/run_evals.py`).
+When multiple experiments are run without `--sweep`, it creates a W&B report with aggregated
+visualizations across all experiments.
+
+#### Additional Options
+```bash
+spd-run --project my-project                 # Use custom W&B project
+spd-run --job_suffix test                    # Add suffix to SLURM job names
+spd-run --no-create_report                   # Skip W&B report creation
+```
 
 ## Development
 
@@ -94,7 +109,7 @@ These metrics will be logged to a local file as well as wandb. You can modify th
 
 ### Development Commands
 
-There are various `make` commands that may be helpful
+There are various `make` commands that may be helpful.
 
 ```bash
 make check  # Run pre-commit on all files (i.e. basedpyright, ruff linter, and ruff formatter)

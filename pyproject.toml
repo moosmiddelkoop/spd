@@ -36,8 +36,7 @@ dev = [
 ]
 
 [project.scripts]
-spd-sweep = "spd.sweeps.run_grid_search:cli"
-spd-evals = "spd.evals.run_evals:cli"
+spd-run = "spd.scripts.run:cli"
 
 [build-system]
 requires = ["setuptools", "wheel"]
@@ -121,4 +120,6 @@ reportUnknownLambdaType = false
 filterwarnings = [
     # https://github.com/google/python-fire/pull/447
     "ignore::DeprecationWarning:fire:59",
+    # Ignore Pydantic V1 deprecation warnings from wandb_workspaces
+    "ignore:Pydantic V1 style.*:DeprecationWarning:wandb_workspaces",
 ]
