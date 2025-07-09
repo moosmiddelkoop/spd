@@ -15,6 +15,7 @@ from torch import Tensor
 from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.sigmoids import SigmoidTypes
 
 
 def permute_to_identity(
@@ -136,6 +137,7 @@ def plot_causal_importance_vals(
     plot_raw_cis: bool = True,
     orientation: Literal["vertical", "horizontal"] = "vertical",
     title_formatter: Callable[[str], str] | None = None,
+    sigmoid_type: SigmoidTypes = "leaky_hard",
 ) -> tuple[dict[str, plt.Figure], dict[str, Float[Tensor, " C"]]]:
     """Plot the values of the causal importances for a batch of inputs with single active features.
 
@@ -149,6 +151,7 @@ def plot_causal_importance_vals(
         plot_raw_cis: Whether to plot the raw causal importances (blue plots)
         orientation: The orientation of the subplots
         title_formatter: Optional callable to format subplot titles. Takes mask_name as input.
+        sigmoid_type: Type of sigmoid to use for causal importance calculation.
 
     Returns:
         Tuple of:
@@ -169,7 +172,11 @@ def plot_causal_importance_vals(
     Vs = {module_name: v.V for module_name, v in components.items()}
 
     ci_raw, ci_upper_leaky_raw = calc_causal_importances(
-        pre_weight_acts=pre_weight_acts, Vs=Vs, gates=gates, detach_inputs=False
+        pre_weight_acts=pre_weight_acts,
+        Vs=Vs,
+        gates=gates,
+        detach_inputs=False,
+        sigmoid_type=sigmoid_type,
     )
 
     ci = {}

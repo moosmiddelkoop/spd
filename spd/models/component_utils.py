@@ -150,7 +150,7 @@ def calc_causal_importances(
         gate_output = gates[param_name](gate_input)
 
         if sigmoid_type == "leaky_hard":
-            causal_importances[param_name] = SIGMOID_TYPES["leaky_hard"](gate_output)
+            causal_importances[param_name] = SIGMOID_TYPES["lower_leaky_hard"](gate_output)
             causal_importances_upper_leaky[param_name] = SIGMOID_TYPES["upper_leaky_hard"](
                 gate_output
             )
