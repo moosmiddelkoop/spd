@@ -20,7 +20,7 @@ dependencies = [
     "matplotlib==3.9.1", # Avoid frequent pyright errors with new matplotlib versions
     "numpy",
     "python-dotenv",
-    "wandb-workspaces",
+    "wandb-workspaces==0.1.12", # Need older version for workspace.from_url to work properly
     "sympy",
     "streamlit",
     "streamlit-antd-components",
@@ -36,7 +36,7 @@ dev = [
 ]
 
 [project.scripts]
-spd-sweep = "spd.sweeps.sweep:cli"
+spd-sweep = "spd.sweeps.run_grid_search:cli"
 spd-evals = "spd.evals.run_evals:cli"
 
 [build-system]

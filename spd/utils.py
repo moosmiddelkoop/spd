@@ -1,6 +1,8 @@
 import importlib
+import json
 import random
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
@@ -48,19 +50,37 @@ def set_seed(seed: int | None) -> None:
         random.seed(seed)
 
 
-def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:
-    """Load the config of class `config_model`, either from YAML file or existing config object.
+def generate_sweep_id() -> str:
+    """Generate a unique sweep ID based on timestamp."""
+    return f"sweep_id-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+
+def load_config(config_path_or_obj: Path | str | dict[str, Any] | T, config_model: type[T]) -> T:
+    """Load the config of class `config_model`, from various sources.
 
     Args:
-        config_path_or_obj (Union[Path, str, `config_model`]): if config object, must be instance
-            of `config_model`. If str or Path, this must be the path to a .yaml.
+        config_path_or_obj (Union[Path, str, dict, `config_model`]): Can be:
+            - config object: must be instance of `config_model`
+            - dict: config dictionary
+            - str starting with 'json:': JSON string with prefix
+            - other str: treated as path to a .yaml file
+            - Path: path to a .yaml file
         config_model: the class of the config that we are loading
     """
     if isinstance(config_path_or_obj, config_model):
         return config_path_or_obj
 
+    if isinstance(config_path_or_obj, dict):
+        return config_model(**config_path_or_obj)
+
     if isinstance(config_path_or_obj, str):
-        config_path_or_obj = Path(config_path_or_obj)
+        # Check if it's a prefixed JSON string
+        if config_path_or_obj.startswith("json:"):
+            config_dict = json.loads(config_path_or_obj[5:])
+            return config_model(**config_dict)
+        else:
+            # Treat as file path
+            config_path_or_obj = Path(config_path_or_obj)
 
     assert isinstance(config_path_or_obj, Path), (
         f"passed config is of invalid type {type(config_path_or_obj)}"

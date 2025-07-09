@@ -32,7 +32,7 @@ from spd.slurm_utils import (
 
 def generate_evals_id() -> str:
     """Generate a unique evaluation ID based on timestamp."""
-    return f"eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    return f"eval_id-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 
 def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
@@ -50,9 +50,7 @@ def create_wandb_report(evals_id: str, experiments_list: list[str]) -> str:
     # Create separate panel grids for each experiment type
     for exp_type in unique_experiment_types:
         # Use experiment type tag for filtering
-        combined_filter = (
-            f'(Metric("tags") in ["evals_id-{evals_id}"]) and (Metric("tags") in ["{exp_type}"])'
-        )
+        combined_filter = f'(Tags("tags") in ["{evals_id}"]) and (Tags("tags") in ["{exp_type}"])'
 
         # Create runset for this experiment type
         runset = wr.Runset(

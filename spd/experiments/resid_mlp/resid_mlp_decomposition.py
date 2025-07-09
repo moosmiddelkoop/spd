@@ -53,13 +53,20 @@ def save_target_model_info(
         wandb.save(str(out_dir / "label_coeffs.json"), base_path=out_dir, policy="now")
 
 
-def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -> None:
+def main(
+    config_path_or_obj: Path | str | Config,
+    evals_id: str | None = None,
+    sweep_id: str | None = None,
+    sweep_params: str | None = None,
+) -> None:
     config = load_config(config_path_or_obj, config_model=Config)
 
     if config.wandb_project:
         tags = ["resid_mlp"]
         if evals_id:
-            tags.append(f"evals_id-{evals_id}")
+            tags.append(evals_id)
+        if sweep_id:
+            tags.append(sweep_id)
         config = init_wandb(config, config.wandb_project, tags=tags)
 
     # Get output directory (automatically uses wandb run ID if available)
@@ -90,10 +97,13 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None) -
         assert wandb.run, "wandb.run must be initialized before training"
         wandb.run.name = run_name
 
-    # Save config
     save_file(config.model_dump(mode="json"), out_dir / "final_config.yaml")
+    if sweep_params:
+        save_file(sweep_params, out_dir / "sweep_params.yaml")
     if config.wandb_project:
         wandb.save(str(out_dir / "final_config.yaml"), base_path=out_dir, policy="now")
+        if sweep_params:
+            wandb.save(str(out_dir / "sweep_params.yaml"), base_path=out_dir, policy="now")
 
     save_target_model_info(
         save_to_wandb=config.wandb_project is not None,

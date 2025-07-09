@@ -29,6 +29,7 @@ def create_slurm_array_script(
     cpu: bool = False,
     time_limit: str = "24:00:00",
     snapshot_branch: str | None = None,
+    max_concurrent_tasks: int | None = None,
 ) -> None:
     """Create a SLURM job array script with git snapshot for consistent code.
 
@@ -39,6 +40,7 @@ def create_slurm_array_script(
         cpu: If True, use CPU only, otherwise use GPU
         time_limit: Time limit for each job (default: 24:00:00)
         snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
+        max_concurrent_tasks: Maximum number of array tasks to run concurrently. If None, no limit.
     """
     if snapshot_branch is None:
         snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
@@ -48,7 +50,10 @@ def create_slurm_array_script(
     slurm_logs_dir.mkdir(exist_ok=True)
 
     # Create array range (SLURM arrays are 1-indexed)
-    array_range = f"1-{len(commands)}"
+    if max_concurrent_tasks is not None:
+        array_range = f"1-{len(commands)}%{max_concurrent_tasks}"
+    else:
+        array_range = f"1-{len(commands)}"
 
     # Create case statement for commands
     case_statements = []
