@@ -180,6 +180,11 @@ spd-run --no-create_report                   # Skip W&B report creation
 - This includes not setting off multiple sweeps/evals that total >8 GPUs
 - Monitor jobs with: `squeue --format="%.18i %.9P %.15j %.12u %.12T %.10M %.9l %.6D %b %R" --me`
 
+## github
+- To view github issues and PRs, use the github cli (e.g. `gh issue view 28` or `gh pr view 30`).
+- When making PRs, use the github template defined in `.github/pull_request_template.md`.
+- Only commit the files that include the relevant changes, don't commit all files.
+- Use branch names `refactor/X` or `feature/Y` or `fix/Z`.
+
 ## Coding Guidelines
 - Always use the PEP 604 typing format of unions everywhere and no "Optional".
-- To view github issues and PRs, use the github cli (e.g. `gh issue view 28` or `gh pr view 30`)
