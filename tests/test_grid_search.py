@@ -30,7 +30,7 @@ class TestGenerateGridCombinations:
         """Test generation with single level of nesting."""
         parameters = {
             "seed": {"values": [0, 1]},
-            "task_config": {"parameters": {"feature_probability": {"values": [0.05, 0.1]}}},
+            "task_config": {"feature_probability": {"values": [0.05, 0.1]}},
         }
 
         combinations = generate_grid_combinations(parameters)
@@ -46,10 +46,8 @@ class TestGenerateGridCombinations:
         parameters = {
             "seed": {"values": [0]},
             "task_config": {
-                "parameters": {
-                    "max_seq_len": {"values": [128, 256]},
-                    "buffer_size": {"values": [1000, 2000]},
-                }
+                "max_seq_len": {"values": [128, 256]},
+                "buffer_size": {"values": [1000, 2000]},
             },
         }
 
@@ -67,9 +65,7 @@ class TestGenerateGridCombinations:
 
     def test_deep_nesting(self):
         """Test generation with multiple levels of nesting."""
-        parameters = {
-            "level1": {"parameters": {"level2": {"parameters": {"level3": {"values": [1, 2]}}}}}
-        }
+        parameters = {"level1": {"level2": {"level3": {"values": [1, 2]}}}}
 
         combinations = generate_grid_combinations(parameters)
 
@@ -81,7 +77,7 @@ class TestGenerateGridCombinations:
         """Test generation with mixed nesting styles."""
         parameters = {
             "simple": {"values": [1]},
-            "nested_with_params": {"parameters": {"param1": {"values": [2]}}},
+            "nested_param": {"param1": {"values": [2]}},
             "direct_nested": {"sub_param": {"values": [3]}},
         }
 
@@ -90,7 +86,7 @@ class TestGenerateGridCombinations:
         assert len(combinations) == 1
         assert combinations[0] == {
             "simple": 1,
-            "nested_with_params.param1": 2,
+            "nested_param.param1": 2,
             "direct_nested.sub_param": 3,
         }
 
@@ -256,7 +252,7 @@ class TestConfigIntegration:
         parameters = {
             "seed": {"values": [0, 1]},
             "lr": {"values": [0.001]},
-            "task_config": {"parameters": {"feature_probability": {"values": [0.05, 0.1]}}},
+            "task_config": {"feature_probability": {"values": [0.05, 0.1]}},
         }
 
         base_config_dict = {

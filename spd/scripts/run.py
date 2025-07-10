@@ -75,9 +75,6 @@ def generate_grid_combinations(parameters: dict[str, Any]) -> list[dict[str, Any
                 if "values" in value:
                     # This is a parameter specification
                     flattened_params[full_key] = value["values"]
-                elif "parameters" in value:
-                    # This is a nested parameter group
-                    flatten_params(value["parameters"], full_key)
                 else:
                     # This might be a direct nested structure
                     flatten_params(value, full_key)
@@ -103,13 +100,12 @@ def load_sweep_params(experiment_name: str, sweep_params_path: Path) -> dict[str
     Supports YAML file with global parameters and experiment-specific overrides:
 
     ```yaml
-    parameters:
+    global:
       seed:
         values: [0, 1, 2]
       loss:
-        parameters:
-          faithfulness_weight:
-            values: [0.1, 0.5]
+        faithfulness_weight:
+          values: [0.1, 0.5]
 
     tms_5-2:
       seed:
@@ -119,9 +115,8 @@ def load_sweep_params(experiment_name: str, sweep_params_path: Path) -> dict[str
 
     resid_mlp1:
       loss:
-        parameters:
-          faithfulness_weight:
-            values: [1.0, 2.0]  # Overrides nested global parameter
+        faithfulness_weight:
+          values: [1.0, 2.0]  # Overrides nested global parameter
     ```
 
     Experiment-specific parameters override global parameters at any nesting level.
@@ -130,10 +125,10 @@ def load_sweep_params(experiment_name: str, sweep_params_path: Path) -> dict[str
         all_params = yaml.safe_load(f)
 
     # Start with global parameters if they exist
-    params = copy.deepcopy(all_params["parameters"]) if "parameters" in all_params else {}
+    params = copy.deepcopy(all_params["global"]) if "global" in all_params else {}
 
     # Merge experiment-specific parameters if they exist
-    if experiment_name in all_params and experiment_name != "parameters":
+    if experiment_name in all_params and experiment_name != "global":
         experiment_params = all_params[experiment_name]
         _merge_sweep_params(params, experiment_params)
 
@@ -151,11 +146,7 @@ def _merge_sweep_params(base: dict[str, Any], override: dict[str, Any]) -> None:
     for key, value in override.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
             # Both are dicts, merge recursively
-            if "parameters" in base[key] and "parameters" in value:
-                # Handle nested parameters structure
-                _merge_sweep_params(base[key]["parameters"], value["parameters"])
-            else:
-                _merge_sweep_params(base[key], value)
+            _merge_sweep_params(base[key], value)
         else:
             # Override the value
             base[key] = value

@@ -25,24 +25,20 @@ class TestMergeSweepParams:
         _merge_sweep_params(base, override)
         assert base == {"a": {"x": 1, "y": 3, "z": 4}, "b": 3, "c": 5}
 
-    def test_merge_with_parameters_structure(self):
-        """Test merging with nested 'parameters' structure."""
+    def test_merge_nested_sweep_values(self):
+        """Test merging with nested sweep values."""
         base = {
             "loss": {
-                "parameters": {
-                    "faithfulness_weight": {"values": [0.1, 0.5]},
-                    "reconstruction_weight": {"values": [1.0]},
-                }
+                "faithfulness_weight": {"values": [0.1, 0.5]},
+                "reconstruction_weight": {"values": [1.0]},
             }
         }
-        override = {"loss": {"parameters": {"faithfulness_weight": {"values": [1.0, 2.0]}}}}
+        override = {"loss": {"faithfulness_weight": {"values": [1.0, 2.0]}}}
         _merge_sweep_params(base, override)
         assert base == {
             "loss": {
-                "parameters": {
-                    "faithfulness_weight": {"values": [1.0, 2.0]},
-                    "reconstruction_weight": {"values": [1.0]},
-                }
+                "faithfulness_weight": {"values": [1.0, 2.0]},
+                "reconstruction_weight": {"values": [1.0]},
             }
         }
 
@@ -67,7 +63,7 @@ class TestLoadSweepParams:
     def test_global_params_only(self):
         """Test loading with only global parameters."""
         params_yaml = """
-parameters:
+global:
   seed:
     values: [0, 1, 2]
   learning_rate:
@@ -88,7 +84,7 @@ parameters:
     def test_experiment_specific_override(self):
         """Test experiment-specific parameters overriding global ones."""
         params_yaml = """
-parameters:
+global:
   seed:
     values: [0, 1, 2]
   learning_rate:
@@ -116,19 +112,17 @@ tms_5-2:
     def test_nested_parameter_override(self):
         """Test overriding nested parameters."""
         params_yaml = """
-parameters:
+global:
   loss:
-    parameters:
-      faithfulness_weight:
-        values: [0.1, 0.5]
-      reconstruction_weight:
-        values: [1.0, 2.0]
+    faithfulness_weight:
+      values: [0.1, 0.5]
+    reconstruction_weight:
+      values: [1.0, 2.0]
 
 resid_mlp1:
   loss:
-    parameters:
-      faithfulness_weight:
-        values: [1.0, 2.0]
+    faithfulness_weight:
+      values: [1.0, 2.0]
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(params_yaml)
@@ -137,10 +131,8 @@ resid_mlp1:
             result = load_sweep_params("resid_mlp1", Path(f.name))
             assert result == {
                 "loss": {
-                    "parameters": {
-                        "faithfulness_weight": {"values": [1.0, 2.0]},  # Overridden
-                        "reconstruction_weight": {"values": [1.0, 2.0]},  # From global
-                    }
+                    "faithfulness_weight": {"values": [1.0, 2.0]},  # Overridden
+                    "reconstruction_weight": {"values": [1.0, 2.0]},  # From global
                 }
             }
 
@@ -185,41 +177,35 @@ tms_5-2:
     def test_complex_merge_scenario(self):
         """Test a complex scenario with multiple levels of nesting and overrides."""
         params_yaml = """
-parameters:
+global:
   seed:
     values: [0, 1, 2]
   optimizer:
-    parameters:
-      learning_rate:
-        values: [0.001, 0.01]
-      momentum:
-        values: [0.9]
+    learning_rate:
+      values: [0.001, 0.01]
+    momentum:
+      values: [0.9]
   loss:
-    parameters:
-      faithfulness_weight:
-        values: [0.1, 0.5]
-      reconstruction_weight:
-        values: [1.0]
-      sparsity:
-        parameters:
-          lambda:
-            values: [0.01]
+    faithfulness_weight:
+      values: [0.1, 0.5]
+    reconstruction_weight:
+      values: [1.0]
+    sparsity:
+      lambda:
+        values: [0.01]
 
 tms_5-2:
   seed:
     values: [100]
   optimizer:
-    parameters:
-      learning_rate:
-        values: [0.1]
-      weight_decay:
-        values: [0.0001]
+    learning_rate:
+      values: [0.1]
+    weight_decay:
+      values: [0.0001]
   loss:
-    parameters:
-      sparsity:
-        parameters:
-          lambda:
-            values: [0.1, 0.2]
+    sparsity:
+      lambda:
+        values: [0.1, 0.2]
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(params_yaml)
@@ -229,28 +215,24 @@ tms_5-2:
             expected = {
                 "seed": {"values": [100]},
                 "optimizer": {
-                    "parameters": {
-                        "learning_rate": {"values": [0.1]},
-                        "momentum": {"values": [0.9]},
-                        "weight_decay": {"values": [0.0001]},
-                    }
+                    "learning_rate": {"values": [0.1]},
+                    "momentum": {"values": [0.9]},
+                    "weight_decay": {"values": [0.0001]},
                 },
                 "loss": {
-                    "parameters": {
-                        "faithfulness_weight": {"values": [0.1, 0.5]},
-                        "reconstruction_weight": {"values": [1.0]},
-                        "sparsity": {"parameters": {"lambda": {"values": [0.1, 0.2]}}},
-                    }
+                    "faithfulness_weight": {"values": [0.1, 0.5]},
+                    "reconstruction_weight": {"values": [1.0]},
+                    "sparsity": {"lambda": {"values": [0.1, 0.2]}},
                 },
             }
             assert result == expected
 
             Path(f.name).unlink()
 
-    def test_parameters_key_not_treated_as_experiment(self):
-        """Test that 'parameters' key itself is not treated as an experiment name."""
+    def test_global_key_not_treated_as_experiment(self):
+        """Test that 'global' key itself is not treated as an experiment name."""
         params_yaml = """
-parameters:
+global:
   seed:
     values: [0, 1, 2]
 """
@@ -258,8 +240,8 @@ parameters:
             f.write(params_yaml)
             f.flush()
 
-            # Should use global parameters, not look for experiment named "parameters"
-            result = load_sweep_params("parameters", Path(f.name))
+            # Should use global parameters, not look for experiment named "global"
+            result = load_sweep_params("global", Path(f.name))
             assert result == {"seed": {"values": [0, 1, 2]}}
 
             Path(f.name).unlink()

@@ -1,5 +1,5 @@
 # Params used for all experiments
-parameters:
+global:
   seed:
     values: [0, 1]
 
@@ -12,6 +12,5 @@ resid_mlp1:
   seed:
     values: [2, 3]
   task_config:
-    parameters:
-      feature_probability:
-        values: [0.1]
+    feature_probability:
+      values: [0.1]

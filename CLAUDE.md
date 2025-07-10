@@ -138,7 +138,23 @@ spd-run --experiments tms_5-2 --sweep custom.yaml --n_agents 2 # Use custom swee
 **Sweep parameters:**
 - Default sweep parameters are loaded from `spd/scripts/sweep_params.yaml`
 - You can specify a custom sweep parameters file by passing its path to `--sweep`
-- Sweep parameters support both experiment-specific and global configurations
+- Sweep parameters support both experiment-specific and global configurations:
+  ```yaml
+  # Global parameters applied to all experiments
+  global:
+    seed:
+      values: [0, 1, 2]
+    lr:
+      values: [0.001, 0.01]
+  
+  # Experiment-specific parameters (override global)
+  tms_5-2:
+    seed:
+      values: [100, 200]  # Overrides global seed
+    task_config:
+      feature_probability:
+        values: [0.05, 0.1]
+  ```
 
 **Logs:** Agent logs are found in `~/slurm_logs/slurm-<job_id>_<task_id>.out`
 
