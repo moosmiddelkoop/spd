@@ -158,6 +158,7 @@ def calc_causal_importances(
             # For other sigmoid types, use the same function for both
             sigmoid_fn = SIGMOID_TYPES[sigmoid_type]
             causal_importances[param_name] = sigmoid_fn(gate_output)
-            causal_importances_upper_leaky[param_name] = sigmoid_fn(gate_output)
+            # Use absolute value to ensure upper_leaky values are non-negative for importance minimality loss
+            causal_importances_upper_leaky[param_name] = sigmoid_fn(gate_output).abs()
 
     return causal_importances, causal_importances_upper_leaky
