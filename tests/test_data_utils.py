@@ -5,8 +5,8 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
-from spd.data_utils import SparseFeatureDataset
-from spd.utils import compute_feature_importances, resolve_class
+from spd.utils.data_utils import SparseFeatureDataset
+from spd.utils.general_utils import compute_feature_importances, resolve_class
 
 
 def test_dataset_at_least_zero_active():

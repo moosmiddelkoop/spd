@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
-from spd.utils import extract_batch_data
+from spd.utils.general_utils import extract_batch_data
 
 
 def calc_stochastic_masks(

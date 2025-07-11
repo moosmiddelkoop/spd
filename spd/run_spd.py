@@ -18,14 +18,14 @@ from spd.core_metrics_and_figs import create_figures, create_metrics
 from spd.log import logger
 from spd.losses import calculate_losses
 from spd.models.component_model import ComponentModel, init_Vs_and_Us_
-from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
-from spd.run_utils import save_file
-from spd.utils import (
+from spd.utils.component_utils import calc_causal_importances
+from spd.utils.general_utils import (
     extract_batch_data,
     get_lr_schedule_fn,
     get_lr_with_warmup,
 )
+from spd.utils.run_utils import save_file
 
 
 def get_common_run_name_suffix(config: Config) -> str:

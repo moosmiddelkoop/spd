@@ -9,9 +9,9 @@ from torch import Tensor
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import calc_stochastic_masks
 from spd.models.components import EmbeddingComponent, LinearComponent
-from spd.utils import calc_kl_divergence_lm
+from spd.utils.component_utils import calc_stochastic_masks
+from spd.utils.general_utils import calc_kl_divergence_lm
 
 
 def calc_embedding_recon_loss(

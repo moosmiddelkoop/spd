@@ -6,7 +6,7 @@ from jaxtyping import Float
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from spd.module_utils import init_param_
+from spd.utils.module_utils import init_param_
 
 
 class Gate(nn.Module):

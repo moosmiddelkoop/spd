@@ -1,9 +1,9 @@
 from spd.configs import Config, ResidualMLPTaskConfig
-from spd.data_utils import DatasetGeneratedDataLoader
 from spd.experiments.resid_mlp.models import ResidualMLP, ResidualMLPConfig
 from spd.experiments.resid_mlp.resid_mlp_dataset import ResidualMLPDataset
 from spd.run_spd import optimize
-from spd.utils import set_seed
+from spd.utils.data_utils import DatasetGeneratedDataLoader
+from spd.utils.general_utils import set_seed
 
 
 def test_resid_mlp_decomposition_happy_path() -> None:

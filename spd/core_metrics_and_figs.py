@@ -15,7 +15,6 @@ from torch.utils.data import DataLoader
 from spd.configs import Config
 from spd.losses import calc_ce_losses
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import calc_ci_l_zero, component_activation_statistics
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.plotting import (
     create_embed_ci_sample_table,
@@ -24,7 +23,8 @@ from spd.plotting import (
     plot_mean_component_activation_counts,
     plot_UV_matrices,
 )
-from spd.utils import calc_kl_divergence_lm
+from spd.utils.component_utils import calc_ci_l_zero, component_activation_statistics
+from spd.utils.general_utils import calc_kl_divergence_lm
 
 try:
     from spd.user_metrics_and_figs import compute_user_metrics, create_user_figures

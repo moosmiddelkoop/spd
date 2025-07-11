@@ -16,8 +16,12 @@ from wandb.apis.public import Run
 from spd.configs import Config
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
-from spd.utils import load_pretrained
-from spd.wandb_utils import download_wandb_file, fetch_latest_wandb_checkpoint, fetch_wandb_run_dir
+from spd.utils.general_utils import load_pretrained
+from spd.utils.wandb_utils import (
+    download_wandb_file,
+    fetch_latest_wandb_checkpoint,
+    fetch_wandb_run_dir,
+)
 
 
 class ComponentModel(nn.Module):

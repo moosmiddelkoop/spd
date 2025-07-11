@@ -15,8 +15,8 @@ from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.plotting import plot_causal_importance_vals
-from spd.run_utils import get_output_dir
-from spd.utils import get_device, set_seed
+from spd.utils.general_utils import get_device, set_seed
+from spd.utils.run_utils import get_output_dir
 
 
 def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[str, Any]:

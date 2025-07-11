@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from wandb.apis.public import File, Run
 
 from spd.settings import REPO_ROOT
-from spd.utils import replace_pydantic_model
+from spd.utils.general_utils import replace_pydantic_model
 
 T = TypeVar("T", bound=BaseModel)
 

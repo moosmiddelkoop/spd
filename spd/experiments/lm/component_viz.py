@@ -8,9 +8,9 @@ from spd.configs import LMTaskConfig
 from spd.data import DatasetConfig, create_data_loader
 from spd.log import logger
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import component_activation_statistics
 from spd.plotting import plot_mean_component_activation_counts
 from spd.spd_types import ModelPath
+from spd.utils.component_utils import component_activation_statistics
 
 
 def main(path: ModelPath) -> None:

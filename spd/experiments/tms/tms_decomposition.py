@@ -12,13 +12,13 @@ import fire
 import wandb
 
 from spd.configs import Config, TMSTaskConfig
-from spd.data_utils import DatasetGeneratedDataLoader, SparseFeatureDataset
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
 from spd.log import logger
 from spd.run_spd import get_common_run_name_suffix, optimize
-from spd.run_utils import get_output_dir, save_file
-from spd.utils import get_device, load_config, set_seed
-from spd.wandb_utils import init_wandb
+from spd.utils.data_utils import DatasetGeneratedDataLoader, SparseFeatureDataset
+from spd.utils.general_utils import get_device, load_config, set_seed
+from spd.utils.run_utils import get_output_dir, save_file
+from spd.utils.wandb_utils import init_wandb
 
 
 def get_run_name(config: Config, tms_model_config: TMSModelConfig) -> str:

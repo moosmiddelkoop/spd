@@ -23,9 +23,9 @@ from spd.configs import Config, LMTaskConfig
 from spd.data import DatasetConfig
 from spd.log import logger
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.spd_types import ModelPath
+from spd.utils.component_utils import calc_causal_importances
 
 DEFAULT_MODEL_PATH: ModelPath = "wandb:spd-gf-lm/runs/151bsctx"
 

@@ -14,11 +14,11 @@ from matplotlib import collections as mc
 from pydantic import BaseModel, ConfigDict, PositiveInt, model_validator
 from tqdm import tqdm, trange
 
-from spd.data_utils import DatasetGeneratedDataLoader, SparseFeatureDataset
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
 from spd.log import logger
-from spd.run_utils import get_output_dir, save_file
-from spd.utils import set_seed
+from spd.utils.data_utils import DatasetGeneratedDataLoader, SparseFeatureDataset
+from spd.utils.general_utils import set_seed
+from spd.utils.run_utils import get_output_dir, save_file
 
 
 class TMSTrainConfig(BaseModel):

@@ -10,9 +10,9 @@ from spd.configs import Config, LMTaskConfig
 from spd.data import DatasetConfig, create_data_loader
 from spd.log import logger
 from spd.run_spd import get_common_run_name_suffix, optimize
-from spd.run_utils import get_output_dir, save_file
-from spd.utils import get_device, load_config, load_pretrained, set_seed
-from spd.wandb_utils import init_wandb
+from spd.utils.general_utils import get_device, load_config, load_pretrained, set_seed
+from spd.utils.run_utils import get_output_dir, save_file
+from spd.utils.wandb_utils import init_wandb
 
 
 def get_run_name(

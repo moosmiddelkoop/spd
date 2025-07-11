@@ -11,8 +11,8 @@ from torch import Tensor
 from tqdm import tqdm
 
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP
+from spd.utils.component_utils import calc_causal_importances
 
 
 def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor, "vocab C"]:

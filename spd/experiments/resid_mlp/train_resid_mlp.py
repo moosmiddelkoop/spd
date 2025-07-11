@@ -11,15 +11,15 @@ from pydantic import BaseModel, ConfigDict, PositiveFloat, PositiveInt, model_va
 from torch import Tensor, nn
 from tqdm import tqdm
 
-from spd.data_utils import DatasetGeneratedDataLoader
 from spd.experiments.resid_mlp.models import ResidualMLP, ResidualMLPConfig
 from spd.experiments.resid_mlp.resid_mlp_dataset import (
     ResidualMLPDataset,
 )
 from spd.log import logger
-from spd.run_utils import get_output_dir, save_file
-from spd.utils import compute_feature_importances, get_lr_schedule_fn, set_seed
-from spd.wandb_utils import init_wandb
+from spd.utils.data_utils import DatasetGeneratedDataLoader
+from spd.utils.general_utils import compute_feature_importances, get_lr_schedule_fn, set_seed
+from spd.utils.run_utils import get_output_dir, save_file
+from spd.utils.wandb_utils import init_wandb
 
 
 class ResidMLPTrainConfig(BaseModel):

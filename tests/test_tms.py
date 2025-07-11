@@ -1,11 +1,11 @@
 import torch
 
 from spd.configs import Config, TMSTaskConfig
-from spd.data_utils import DatasetGeneratedDataLoader, SparseFeatureDataset
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
 from spd.experiments.tms.train_tms import TMSTrainConfig, get_model_and_dataloader, train
 from spd.run_spd import optimize
-from spd.utils import set_seed
+from spd.utils.data_utils import DatasetGeneratedDataLoader, SparseFeatureDataset
+from spd.utils.general_utils import set_seed
 
 
 def test_tms_decomposition_happy_path() -> None:

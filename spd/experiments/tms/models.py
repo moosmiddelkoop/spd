@@ -10,9 +10,13 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from wandb.apis.public import Run
 
-from spd.run_utils import check_run_exists
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
-from spd.wandb_utils import download_wandb_file, fetch_latest_wandb_checkpoint, fetch_wandb_run_dir
+from spd.utils.run_utils import check_run_exists
+from spd.utils.wandb_utils import (
+    download_wandb_file,
+    fetch_latest_wandb_checkpoint,
+    fetch_wandb_run_dir,
+)
 
 
 class TMSModelPaths(BaseModel):

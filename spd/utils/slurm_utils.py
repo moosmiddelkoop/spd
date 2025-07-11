@@ -4,8 +4,8 @@ import subprocess
 import textwrap
 from pathlib import Path
 
-from spd.git_utils import create_git_snapshot
 from spd.settings import REPO_ROOT
+from spd.utils.git_utils import create_git_snapshot
 
 
 def format_runtime_str(runtime_minutes: int) -> str:

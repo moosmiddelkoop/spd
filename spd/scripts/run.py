@@ -28,12 +28,12 @@ import wandb_workspaces.workspaces as ws
 import yaml
 
 from spd.configs import Config
-from spd.git_utils import create_git_snapshot
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
-from spd.slurm_utils import create_slurm_array_script, submit_slurm_array
-from spd.utils import apply_nested_updates, load_config
-from spd.wandb_utils import ensure_project_exists
+from spd.utils.general_utils import apply_nested_updates, load_config
+from spd.utils.git_utils import create_git_snapshot
+from spd.utils.slurm_utils import create_slurm_array_script, submit_slurm_array
+from spd.utils.wandb_utils import ensure_project_exists
 
 WORKSPACE_TEMPLATES = {
     "default": "https://wandb.ai/goodfire/spd?nw=css034maye",
