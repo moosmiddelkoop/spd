@@ -7,11 +7,12 @@ views created for each experiment.
 Usage:
     spd-run                                                    # Run all experiments
     spd-run --experiments tms_5-2,resid_mlp1                   # Run specific experiments
-    spd-run --experiments tms_5-2 --sweep                      # Run with default sweep params
+    spd-run --experiments tms_5-2 --local                      # Run locally instead of SLURM
+    spd-run --experiments tms_5-2 --sweep                      # Run with parameter sweep
+    spd-run --experiments tms_5-2 --sweep --local              # Run sweep locally
     spd-run --experiments tms_5-2 --sweep custom.yaml          # Run with custom sweep params
-    spd-run --sweep --n_agents 10                              # Sweep all experiments
+    spd-run --sweep --n_agents 10                              # Sweep with 10 concurrent agents
     spd-run --project my-project                               # Use custom W&B project
-    spd-run --experiments tms_5-2 --project test-spd           # Run in test project
 """
 
 import copy
