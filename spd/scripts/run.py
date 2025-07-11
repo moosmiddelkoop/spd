@@ -17,6 +17,7 @@ Usage:
 import copy
 import itertools
 import json
+import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -331,9 +332,43 @@ def generate_commands(
                 # Print first combination as example
                 if i == 0:
                     print(f"  {experiment}: {len(combinations)} tasks")
-                    print(f"    Example params: {param_combo}")
+                    print(f"    Example param overrides: {param_combo}")
 
     return commands
+
+
+def run_commands_locally(commands: list[str]) -> None:
+    """Execute commands locally in sequence.
+
+    Args:
+        commands: List of shell commands to execute
+    """
+    import shlex
+
+    print(f"LOCAL EXECUTION: Running {len(commands)} tasks", flush=True)
+    print(f"{'=' * 50}", flush=True)
+
+    for i, command in enumerate(commands, 1):
+        # Parse command into arguments
+        args = shlex.split(command)
+
+        # Extract experiment name from script path for cleaner output
+        script_name = args[1].split("/")[-1]
+        print(f"\n[{i}/{len(commands)}] Executing: {script_name}...", flush=True)
+        print(f"{'=' * 50}", flush=True)
+
+        result = subprocess.run(args)
+
+        if result.returncode != 0:
+            print(
+                f"\n[{i}/{len(commands)}] ⚠️  Warning: Command failed with exit code {result.returncode}"
+            )
+        else:
+            print(f"\n[{i}/{len(commands)}] ✓ Completed successfully")
+
+    print(f"\n{'=' * 50}")
+    print("LOCAL EXECUTION COMPLETE")
+    print(f"{'=' * 50}")
 
 
 def main(
@@ -344,6 +379,7 @@ def main(
     job_suffix: str | None = None,
     cpu: bool = False,
     project: str = "spd",
+    local: bool = False,
 ) -> None:
     """SPD runner for experiments with optional parameter sweeps.
 
@@ -352,13 +388,21 @@ def main(
         sweep: Enable parameter sweep. If True, uses default sweep_params.yaml.
             If a string, uses that as the sweep parameters file path.
         n_agents: Maximum number of concurrent SLURM tasks. If None and sweep is enabled,
-            raise an error. If None and sweep is not enabled, use the number of experiments.
+            raise an error (unless running with --local). If None and sweep is not enabled,
+            use the number of experiments. Not used for local execution.
         create_report: Create W&B report for aggregated view (default: True)
         job_suffix: Optional suffix for SLURM job names
         cpu: Use CPU instead of GPU (default: False)
         project: W&B project name (default: "spd"). Will be created if it doesn't exist.
+        local: Run locally instead of submitting to SLURM (default: False)
 
     Examples:
+        # Run subset of experiments locally
+        spd-run --experiments tms_5-2,resid_mlp1 --local
+
+        # Run parameter sweep locally
+        spd-run --experiments tms_5-2 --sweep --local
+
         # Run subset of experiments (no sweep)
         spd-run --experiments tms_5-2,resid_mlp1
 
@@ -389,7 +433,10 @@ def main(
         if sweep_params_file is None:
             n_agents = len(experiments_list)
         else:
-            raise ValueError("n_agents must be provided if sweep is enabled")
+            if not local:
+                raise ValueError(
+                    "n_agents must be provided if sweep is enabled (unless running with --local)"
+                )
 
     # Validate experiment names
     invalid_experiments = [exp for exp in experiments_list if exp not in EXPERIMENT_REGISTRY]
@@ -410,9 +457,6 @@ def main(
         sweep_params_file=sweep_params_file,
         project=project,
     )
-
-    snapshot_branch = create_git_snapshot(branch_name_prefix="run")
-    print(f"\nUsing git snapshot: {snapshot_branch}")
 
     # Ensure the W&B project exists
     ensure_project_exists(project)
@@ -443,29 +487,35 @@ def main(
     # Determine job name
     job_name = f"spd-{job_suffix}" if job_suffix else "spd"
 
-    # Submit to SLURM
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        array_script = temp_path / f"run_array_{run_id}.sh"
+    if local:
+        run_commands_locally(commands)
+    else:
+        snapshot_branch = create_git_snapshot(branch_name_prefix="run")
+        print(f"\nUsing git snapshot: {snapshot_branch}")
 
-        create_slurm_array_script(
-            script_path=array_script,
-            job_name=job_name,
-            commands=commands,
-            cpu=cpu,
-            snapshot_branch=snapshot_branch,
-            max_concurrent_tasks=n_agents,
-        )
+        # Submit to SLURM
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            array_script = temp_path / f"run_array_{run_id}.sh"
 
-        array_job_id = submit_slurm_array(array_script)
+            create_slurm_array_script(
+                script_path=array_script,
+                job_name=job_name,
+                commands=commands,
+                cpu=cpu,
+                snapshot_branch=snapshot_branch,
+                max_concurrent_tasks=n_agents,
+            )
 
-        print(f"\n{'=' * 50}")
-        print("Job submitted successfully!")
-        print(f"{'=' * 50}")
-        print(f"Array Job ID: {array_job_id}")
-        print(f"Total tasks: {len(commands)}")
-        print(f"Max concurrent tasks: {n_agents}")
-        print(f"View logs in: ~/slurm_logs/slurm-{array_job_id}_*.out")
+            array_job_id = submit_slurm_array(array_script)
+
+            print(f"\n{'=' * 50}")
+            print("Job submitted successfully!")
+            print(f"{'=' * 50}")
+            print(f"Array Job ID: {array_job_id}")
+            print(f"Total tasks: {len(commands)}")
+            print(f"Max concurrent tasks: {n_agents}")
+            print(f"View logs in: ~/slurm_logs/slurm-{array_job_id}_*.out")
 
 
 def cli():
