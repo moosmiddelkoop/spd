@@ -3,6 +3,7 @@
 This file contains the default metrics and visualizations that are logged during SPD optimization.
 These are separate from user-defined metrics/figures to allow for easier comparison and extension.
 """
+# pyright: reportMissingImports=false
 
 import torch
 import wandb
@@ -26,10 +27,7 @@ from spd.plotting import (
 from spd.utils import calc_kl_divergence_lm
 
 try:
-    from spd.user_metrics_and_figs import (  # pyright: ignore[reportMissingImports]
-        compute_user_metrics,
-        create_user_figures,
-    )
+    from spd.user_metrics_and_figs import compute_user_metrics, create_user_figures
 except ImportError:
     compute_user_metrics = None
     create_user_figures = None
@@ -158,6 +156,7 @@ def create_figures(
             batch_shape=batch.shape,
             device=device,
             input_magnitude=0.75,
+            sigmoid_type=config.sigmoid_type,
         )
         fig_dict.update(figures)
 
