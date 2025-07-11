@@ -21,6 +21,21 @@ SPD (Stochastic Parameter Decomposition) is a research framework for analyzing n
 - `resid_mlp3` - ResidMLP with 3 layers
 - `ss_emb` - Language model experiments (loaded from HuggingFace)
 
+## Research Papers
+
+This repository implements methods from two key research papers on parameter decomposition:
+
+**Stochastic Parameter Decomposition (SPD)** - [`papers/Stochastic_Parameter_Decomposition/spd_paper.md`](papers/Stochastic_Parameter_Decomposition/spd_paper.md)
+- A version of this repository was used to run the experiments in this paper. But we continue to develop on the code, so it no longer is limited to the implementation used for this paper. 
+- Introduces the core SPD framework
+- Details the stochastic masking approach and optimization techniques used throughout the codebase
+- Useful reading for understanding the implementation details, though may be outdated.
+
+**Attribution-based Parameter Decomposition (APD)** - [`papers/Attribution_based_Parameter_Decomposition/apd_paper.md`](papers/Attribution_based_Parameter_Decomposition/apd_paper.md)
+- Contains **high-level conceptual insights** of parameter decompositions
+- Provides theoretical foundations and broader context for parameter decomposition approaches
+- Useful for understanding the conceptual framework and motivation behind SPD
+
 ## Development Commands
 
 **Setup:**
