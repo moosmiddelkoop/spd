@@ -25,6 +25,7 @@ dependencies = [
     "streamlit",
     "streamlit-antd-components",
     "datasets",
+    "scipy",
 ]
 
 [dependency-groups]

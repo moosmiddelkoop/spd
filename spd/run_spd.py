@@ -60,6 +60,7 @@ def optimize(
     n_eval_steps: int,
     out_dir: Path | None,
     tied_weights: list[tuple[str, str]] | None = None,
+    evals_id: str | None = None,
 ) -> None:
     """Run the optimization loop for LM decomposition."""
 
@@ -202,6 +203,7 @@ def optimize(
                     device=device,
                     config=config,
                     step=step,
+                    evals_id=evals_id,
                 )
                 log_data.update(metrics)
 
@@ -236,6 +238,7 @@ def optimize(
                     step=step,
                     eval_loader=eval_loader,
                     n_eval_steps=n_eval_steps,
+                    evals_id=evals_id,
                 )
 
                 if config.wandb_project:

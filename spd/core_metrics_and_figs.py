@@ -18,13 +18,16 @@ from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.plotting import (
     create_embed_ci_sample_table,
-    plot_causal_importance_vals,
+    get_single_feature_causal_importances,
     plot_ci_histograms,
     plot_mean_component_activation_counts,
+    plot_single_feature_causal_importances,
     plot_UV_matrices,
 )
+from spd.registry import SOLUTION_REGISTRY
 from spd.utils.component_utils import calc_ci_l_zero, component_activation_statistics
 from spd.utils.general_utils import calc_kl_divergence_lm
+from spd.utils.target_solutions import compute_target_metrics
 
 try:
     from spd.user_metrics_and_figs import compute_user_metrics, create_user_figures
@@ -43,6 +46,7 @@ def create_metrics(
     device: str,
     config: Config,
     step: int,
+    evals_id: str | None = None,
 ) -> dict[str, float | int | wandb.Table]:
     """Create metrics for logging."""
     metrics: dict[str, float | int | wandb.Table] = {"misc/step": step}
@@ -83,6 +87,27 @@ def create_metrics(
     for layer_name, layer_ci_l_zero in ci_l_zero.items():
         metrics[f"{layer_name}/ci_l0"] = layer_ci_l_zero
 
+    # Canonical solution metrics
+    if evals_id is not None and config.task_config.task_name in ["tms", "residual_mlp"]:
+        if evals_id in SOLUTION_REGISTRY:
+            # Get causal importance arrays using single active features
+            ci_arrays, _ = get_single_feature_causal_importances(
+                model=model,
+                components=components,
+                gates=gates,
+                batch_shape=batch.shape,
+                device=device,
+                input_magnitude=0.75,
+                sigmoid_type=config.sigmoid_type,
+            )
+
+            target_solution = SOLUTION_REGISTRY[evals_id]
+            target_metrics = compute_target_metrics(
+                causal_importances=ci_arrays,
+                target_solution=target_solution,
+            )
+            metrics.update(target_metrics)
+
     if compute_user_metrics is not None:
         user_metrics = compute_user_metrics(
             model=model,
@@ -115,6 +140,7 @@ def create_figures(
     eval_loader: DataLoader[Int[Tensor, "..."]]
     | DataLoader[tuple[Float[Tensor, "..."], Float[Tensor, "..."]]],
     n_eval_steps: int,
+    evals_id: str | None = None,
 ) -> dict[str, plt.Figure]:
     """Create figures for logging.
 
@@ -130,6 +156,7 @@ def create_figures(
         step: Current training step
         eval_loader: Evaluation loader
         n_eval_steps: Number of evaluation steps
+        evals_id: Optional experiment ID for target-aware permutation
 
     Returns:
         Dictionary of figures
@@ -149,7 +176,7 @@ def create_figures(
 
     # TMS and ResidMLP experiments get causal importance value plots and UV matrix plots
     if config.task_config.task_name in ["tms", "residual_mlp"]:
-        figures, all_perm_indices = plot_causal_importance_vals(
+        figures, all_perm_indices = plot_single_feature_causal_importances(
             model=model,
             components=components,
             gates=gates,
@@ -157,6 +184,7 @@ def create_figures(
             device=device,
             input_magnitude=0.75,
             sigmoid_type=config.sigmoid_type,
+            experiment_id=evals_id,
         )
         fig_dict.update(figures)
 

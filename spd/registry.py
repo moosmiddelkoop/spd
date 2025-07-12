@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from spd.utils.target_solutions import DenseColumnsPattern, IdentityPattern, TargetSolution
+
 
 @dataclass
 class ExperimentConfig:
@@ -70,4 +72,52 @@ EXPERIMENT_REGISTRY: dict[str, ExperimentConfig] = {
     #     config_path=Path("spd/experiments/lm/ss_emb_config.yaml"),
     #     expected_runtime=60,
     # ),
+}
+
+
+SOLUTION_REGISTRY = {
+    "tms_5-2": TargetSolution(
+        {"linear1": IdentityPattern(n_features=5), "linear2": IdentityPattern(n_features=5)}
+    ),
+    "tms_5-2-id": TargetSolution(
+        {
+            "linear1": IdentityPattern(n_features=5),
+            "linear2": IdentityPattern(n_features=5),
+            "hidden_layers.0": DenseColumnsPattern(k=2),
+        }
+    ),
+    "tms_40-10": TargetSolution(
+        {"linear1": IdentityPattern(n_features=40), "linear2": IdentityPattern(n_features=40)}
+    ),
+    "tms_40-10-id": TargetSolution(
+        {
+            "linear1": IdentityPattern(n_features=40),
+            "linear2": IdentityPattern(n_features=40),
+            "hidden_layers.0": DenseColumnsPattern(k=10),
+        }
+    ),
+    "resid_mlp1": TargetSolution(
+        {
+            "layers.0.mlp_in": IdentityPattern(n_features=100),
+            "layers.0.mlp_out": DenseColumnsPattern(k=50),
+        }
+    ),
+    "resid_mlp2": TargetSolution(
+        {
+            "layers.0.mlp_in": IdentityPattern(n_features=100),
+            "layers.0.mlp_out": DenseColumnsPattern(k=25),
+            "layers.1.mlp_in": IdentityPattern(n_features=100),
+            "layers.1.mlp_out": DenseColumnsPattern(k=25),
+        }
+    ),
+    "resid_mlp3": TargetSolution(
+        {
+            "layers.0.mlp_in": IdentityPattern(n_features=102),
+            "layers.0.mlp_out": DenseColumnsPattern(k=17),
+            "layers.1.mlp_in": IdentityPattern(n_features=102),
+            "layers.1.mlp_out": DenseColumnsPattern(k=17),
+            "layers.2.mlp_in": IdentityPattern(n_features=102),
+            "layers.2.mlp_out": DenseColumnsPattern(k=17),
+        }
+    ),
 }
