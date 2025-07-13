@@ -1,29 +1,24 @@
 RUN = uv run
 
 .PHONY: install
-install:
+install: copy-templates
 	uv sync --no-dev
-	@if [ ! -f spd/user_metrics_and_figs.py ]; then \
-		cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py; \
-		echo "Created spd/user_metrics_and_figs.py from template"; \
-	fi
-	@if [ ! -f spd/scripts/sweep_params.yaml ]; then \
-		cp spd/scripts/sweep_params.yaml.example spd/scripts/sweep_params.yaml; \
-		echo "Created spd/scripts/sweep_params.yaml from template"; \
-	fi
 
 .PHONY: install-dev
-install-dev:
+install-dev: copy-templates
 	uv sync
 	$(RUN) pre-commit install
-	@if [ ! -f spd/user_metrics_and_figs.py ]; then \
-		cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py; \
-		echo "Created spd/user_metrics_and_figs.py from template"; \
-	fi
-	@if [ ! -f spd/scripts/sweep_params.yaml ]; then \
-		cp spd/scripts/sweep_params.yaml.example spd/scripts/sweep_params.yaml; \
-		echo "Created spd/scripts/sweep_params.yaml from template"; \
-	fi
+
+spd/user_metrics_and_figs.py:
+	@cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py
+	@echo "Created spd/user_metrics_and_figs.py from template"
+
+spd/scripts/sweep_params.yaml:
+	@cp spd/scripts/sweep_params.yaml.example spd/scripts/sweep_params.yaml
+	@echo "Created spd/scripts/sweep_params.yaml from template"
+
+.PHONY: copy-templates
+copy-templates: spd/user_metrics_and_figs.py spd/scripts/sweep_params.yaml
 
 .PHONY: type
 type:
