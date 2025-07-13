@@ -1,3 +1,5 @@
+RUN = uv run
+
 .PHONY: install
 install:
 	uv sync --no-dev
@@ -13,7 +15,7 @@ install:
 .PHONY: install-dev
 install-dev:
 	uv sync
-	pre-commit install
+	$(RUN) pre-commit install
 	@if [ ! -f spd/user_metrics_and_figs.py ]; then \
 		cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py; \
 		echo "Created spd/user_metrics_and_figs.py from template"; \
@@ -25,22 +27,22 @@ install-dev:
 
 .PHONY: type
 type:
-	SKIP=no-commit-to-branch pre-commit run -a basedpyright
+	SKIP=no-commit-to-branch $(RUN) pre-commit run -a basedpyright
 
 .PHONY: format
 format:
 	# Fix all autofixable problems (which sorts imports) then format errors
-	SKIP=no-commit-to-branch pre-commit run -a ruff-lint
-	SKIP=no-commit-to-branch pre-commit run -a ruff-format
+	SKIP=no-commit-to-branch $(RUN) pre-commit run -a ruff-lint
+	SKIP=no-commit-to-branch $(RUN) pre-commit run -a ruff-format
 
 .PHONY: check
 check:
-	SKIP=no-commit-to-branch pre-commit run -a --hook-stage commit
+	SKIP=no-commit-to-branch $(RUN) pre-commit run -a --hook-stage commit
 
 .PHONY: test
 test:
-	uv run pytest tests/
+	$(RUN) pytest tests/
 
 .PHONY: test-all
 test-all:
-	uv run pytest tests/ --runslow
+	$(RUN) pytest tests/ --runslow
