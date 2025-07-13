@@ -30,6 +30,7 @@ import wandb_workspaces.workspaces as ws
 import yaml
 
 from spd.configs import Config
+from spd.log import LogFormat, logger
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
 from spd.utils.general_utils import apply_nested_updates, load_config
@@ -270,11 +271,14 @@ def generate_commands(
     we add a prefix to prevent Fire parsing with ast.literal_eval
     (https://github.com/google/python-fire/issues/332)
     """
-    commands = []
+    commands: list[str] = []
 
-    print("\nTask breakdown by experiment:")
+    logger.info("Task breakdown by experiment:")
+    task_breakdown: dict[str, str] = {}
 
-    sweep_params_path = resolve_sweep_params_path(sweep_params_file) if sweep_params_file else None
+    sweep_params_path: Path | None = (
+        resolve_sweep_params_path(sweep_params_file) if sweep_params_file else None
+    )
 
     for experiment in experiments_list:
         config_entry = EXPERIMENT_REGISTRY[experiment]
@@ -289,18 +293,18 @@ def generate_commands(
             base_config_dict = base_config.model_dump(mode="json")
             # Override the wandb project
             base_config_dict["wandb_project"] = project
-            config_with_overrides = Config(**base_config_dict)
+            config_with_overrides: Config = Config(**base_config_dict)
 
             # Convert to JSON string
-            config_json = f"json:{json.dumps(config_with_overrides.model_dump(mode='json'))}"
+            config_json: str = f"json:{json.dumps(config_with_overrides.model_dump(mode='json'))}"
 
             # Use run_id for sweep_id and experiment name for evals_id
-            command = (
+            command: str = (
                 f"python {decomp_script} '{config_json}' "
                 f"--sweep_id {run_id} --evals_id {experiment}"
             )
             commands.append(command)
-            print(f"  {experiment}: 1 task")
+            task_breakdown[experiment] = "1 task"
 
         else:
             # Parameter sweep run
@@ -332,8 +336,11 @@ def generate_commands(
 
                 # Print first combination as example
                 if i == 0:
-                    print(f"  {experiment}: {len(combinations)} tasks")
-                    print(f"    Example param overrides: {param_combo}")
+                    logger.info(f"  {experiment}: {len(combinations)} tasks")
+                    logger.info(f"    Example param overrides: {param_combo}")
+
+    if task_breakdown:
+        logger.values(task_breakdown)
 
     return commands
 
@@ -346,8 +353,7 @@ def run_commands_locally(commands: list[str]) -> None:
     """
     import shlex
 
-    print(f"LOCAL EXECUTION: Running {len(commands)} tasks", flush=True)
-    print(f"{'=' * 50}", flush=True)
+    logger.section(f"LOCAL EXECUTION: Running {len(commands)} tasks")
 
     for i, command in enumerate(commands, 1):
         # Parse command into arguments
@@ -355,21 +361,18 @@ def run_commands_locally(commands: list[str]) -> None:
 
         # Extract experiment name from script path for cleaner output
         script_name = args[1].split("/")[-1]
-        print(f"\n[{i}/{len(commands)}] Executing: {script_name}...", flush=True)
-        print(f"{'=' * 50}", flush=True)
+        logger.section(f"[{i}/{len(commands)}] Executing: {script_name}...")
 
         result = subprocess.run(args)
 
         if result.returncode != 0:
-            print(
-                f"\n[{i}/{len(commands)}] ⚠️  Warning: Command failed with exit code {result.returncode}"
+            logger.warning(
+                f"[{i}/{len(commands)}] ⚠️  Warning: Command failed with exit code {result.returncode}"
             )
         else:
-            print(f"\n[{i}/{len(commands)}] ✓ Completed successfully")
+            logger.info(f"[{i}/{len(commands)}] ✓ Completed successfully")
 
-    print(f"\n{'=' * 50}")
-    print("LOCAL EXECUTION COMPLETE")
-    print(f"{'=' * 50}")
+    logger.section("LOCAL EXECUTION COMPLETE")
 
 
 def main(
@@ -381,6 +384,7 @@ def main(
     cpu: bool = False,
     project: str = "spd",
     local: bool = False,
+    log_format: LogFormat = "default",
 ) -> None:
     """SPD runner for experiments with optional parameter sweeps.
 
@@ -396,6 +400,8 @@ def main(
         cpu: Use CPU instead of GPU (default: False)
         project: W&B project name (default: "spd"). Will be created if it doesn't exist.
         local: Run locally instead of submitting to SLURM (default: False)
+        log_format: Logging format for the script output.
+            Options are "terse" (no timestamps/level) or "default".
 
     Examples:
         # Run subset of experiments locally
@@ -419,12 +425,16 @@ def main(
         # Use custom W&B project
         spd-run --experiments tms_5-2 --project my-spd-project
     """
+    # Set logger format
+    logger.set_format("console", log_format)
+
     # Determine the sweep parameters file
     sweep_params_file = None
     if sweep:
         sweep_params_file = "sweep_params.yaml" if isinstance(sweep, bool) else sweep
 
     # Determine experiment list
+    experiments_list: list[str]
     if experiments is None:
         experiments_list = list(EXPERIMENT_REGISTRY.keys())
     else:
@@ -449,8 +459,8 @@ def main(
 
     run_id = generate_run_id()
 
-    print(f"Run ID: {run_id}")
-    print(f"Experiments: {', '.join(experiments_list)}")
+    logger.info(f"Run ID: {run_id}")
+    logger.info(f"Experiments: {', '.join(experiments_list)}")
 
     commands = generate_commands(
         experiments_list=experiments_list,
@@ -463,36 +473,34 @@ def main(
     ensure_project_exists(project)
 
     # Create workspace views for each experiment
-    print("\nCreating workspace views...")
-    workspace_urls = {}
+    logger.section("Creating workspace views...")
+    workspace_urls: dict[str, str] = {}
     for experiment in experiments_list:
         workspace_url = create_workspace_view(run_id, experiment, project)
         workspace_urls[experiment] = workspace_url
 
     # Create report if requested
-    report_url = None
+    report_url: str | None = None
     if create_report and len(experiments_list) > 1:
         report_url = create_wandb_report(run_id, experiments_list, project)
 
     # Print clean summary after wandb messages
-    print("\n" + "=" * 60)
-    print("WORKSPACE VIEWS CREATED:")
-    print("=" * 60)
-    for experiment, workspace_url in workspace_urls.items():
-        print(f"  {experiment}: {workspace_url}")
-
-    if report_url:
-        print(f"\n  Aggregated Report: {report_url}")
-    print("=" * 60)
+    logger.values(
+        msg="workspace urls per experiment:",
+        data={
+            **workspace_urls,
+            **({"Aggregated Report": report_url} if report_url else {}),
+        },
+    )
 
     # Determine job name
-    job_name = f"spd-{job_suffix}" if job_suffix else "spd"
+    job_name: str = f"spd-{job_suffix}" if job_suffix else "spd"
 
     if local:
         run_commands_locally(commands)
     else:
         snapshot_branch = create_git_snapshot(branch_name_prefix="run")
-        print(f"\nUsing git snapshot: {snapshot_branch}")
+        logger.info(f"Using git snapshot: {snapshot_branch}")
 
         # Submit to SLURM
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -510,13 +518,15 @@ def main(
 
             array_job_id = submit_slurm_array(array_script)
 
-            print(f"\n{'=' * 50}")
-            print("Job submitted successfully!")
-            print(f"{'=' * 50}")
-            print(f"Array Job ID: {array_job_id}")
-            print(f"Total tasks: {len(commands)}")
-            print(f"Max concurrent tasks: {n_agents}")
-            print(f"View logs in: ~/slurm_logs/slurm-{array_job_id}_*.out")
+            logger.section("Job submitted successfully!")
+            logger.values(
+                {
+                    "Array Job ID": array_job_id,
+                    "Total tasks": len(commands),
+                    "Max concurrent tasks": n_agents,
+                    "View logs in": f"~/slurm_logs/slurm-{array_job_id}_*.out",
+                }
+            )
 
 
 def cli():
