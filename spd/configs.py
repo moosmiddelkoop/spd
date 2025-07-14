@@ -114,7 +114,7 @@ class Config(BaseModel):
         description="Number of hidden neurons in the MLP used to calculate the causal importance."
         "If 0, use a single-layer gate.",
     )
-    sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"] = Field(
+    sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard", "scaled"] = Field(
         default="leaky_hard",
         description="Type of sigmoid to use for causal importance calculation",
     )
