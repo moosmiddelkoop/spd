@@ -81,7 +81,7 @@ def optimize(
 
     # We used "-" instead of "." as module names can't have "." in them
     gates: dict[str, GateMLP | VectorGateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): v
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {

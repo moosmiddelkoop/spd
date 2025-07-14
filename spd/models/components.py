@@ -12,48 +12,44 @@ from spd.utils.module_utils import init_param_
 GateType = Literal["mlp", "vector_mlp"]
 
 
+class ParallelLinear(nn.Module):
+    """C parallel linear layers"""
+
+    def __init__(self, C: int, input_dim: int, output_dim: int):
+        super().__init__()
+        self.W_CDiDo = nn.Parameter(torch.empty(C, input_dim, output_dim))
+        self.bias_Do = nn.Parameter(torch.zeros(C, output_dim))
+        init_param_(self.W_CDiDo, fan_val=input_dim, nonlinearity="relu")
+
+    def forward(self, x_BxCDi: Tensor) -> Tensor:
+        x_BxCDo = einops.einsum(x_BxCDi, self.W_CDiDo, "... C d_in, C d_in d_out -> ... C d_out")
+        x_BxCDo = F.gelu(x_BxCDo + self.bias_Do)
+        return x_BxCDo
+
+
 class GateMLP(nn.Module):
-    """A gate with a hidden layer that maps a single input to a single output."""
+    """A gate with a hidden layer that maps a scalar input to a scalar output."""
 
     def __init__(self, C: int, hidden_dims: list[int]):
         super().__init__()
 
         self.hidden_dims = hidden_dims
         dim_pairs = list(zip([1] + hidden_dims, hidden_dims + [1], strict=True))
-
-        self.weights_CDiDo: nn.ParameterList = nn.ParameterList(
-            [nn.Parameter(torch.empty((C, in_dim, out_dim))) for in_dim, out_dim in dim_pairs]
+        self.parallel_linears = nn.Sequential(
+            *[ParallelLinear(C, in_dim, out_dim) for in_dim, out_dim in dim_pairs]
         )
 
-        self.biases_CDo: nn.ParameterList = nn.ParameterList(
-            [nn.Parameter(torch.zeros((C, out_dim))) for _in_dim, out_dim in dim_pairs]
-        )
-
-        for weight_CDiDo, (in_dim, _out_dim) in zip(
-            cast(Iterable[nn.Parameter], self.weights_CDiDo), dim_pairs, strict=True
-        ):
-            init_param_(weight_CDiDo, fan_val=in_dim, nonlinearity="relu")
-
+    @override
     def forward(self, x_BxC: Tensor) -> Tensor:
         hidden_BxCDi = einops.rearrange(x_BxC, "... C -> ... C 1")
-        for weight_CDiDo, bias_CDo in zip(self.weights_CDiDo, self.biases_CDo, strict=True):
-            hidden_BxCDo = (
-                einops.einsum(
-                    hidden_BxCDi, weight_CDiDo, "... C d_in, C in_dim out_dim -> ... C out_dim"
-                )
-                + bias_CDo
-            )
-            hidden_BxCDi = F.gelu(hidden_BxCDo)
-
+        hidden_BxCDi = self.parallel_linears(hidden_BxCDi)
         assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
         hidden_BxC = hidden_BxCDi[..., 0]
-
         return hidden_BxC
 
 
 class VectorGateMLP(nn.Module):
-    """An MLP based gate that maps a vector valued input (residual stream,
-    MLP hidden activations, etc.) to a single output."""
+    """An MLP based gate that maps a vector valued input to a single output."""
 
     def __init__(self, C: int, input_dim: int, hidden_dims: list[int]):
         super().__init__()
@@ -61,35 +57,18 @@ class VectorGateMLP(nn.Module):
         self.hidden_dims = hidden_dims
         dim_pairs = list(zip([input_dim] + hidden_dims, hidden_dims + [1], strict=True))
 
-        self.weights_CDiDo: nn.ParameterList = nn.ParameterList(
-            [nn.Parameter(torch.empty((C, in_dim, out_dim))) for in_dim, out_dim in dim_pairs]
+        self.parallel_linears = nn.Sequential(
+            *[ParallelLinear(C, in_dim, out_dim) for in_dim, out_dim in dim_pairs]
         )
 
-        self.biases_CDo: nn.ParameterList = nn.ParameterList(
-            [nn.Parameter(torch.zeros((C, out_dim))) for _in_dim, out_dim in dim_pairs]
-        )
-
-        for weight_CDiDo, (in_dim, _out_dim) in zip(
-            cast(Iterable[nn.Parameter], self.weights_CDiDo), dim_pairs, strict=True
-        ):
-            init_param_(weight_CDiDo, fan_val=in_dim, nonlinearity="relu")
-
+    @override
     def forward(self, x_BxD: Tensor) -> Tensor:
         hidden_BxCDi = einops.rearrange(
             x_BxD, "... d_in -> ... C d_in", C=1
         )  # this C=1 will broadcast out to actual C size, but no need to expand out yet
-        for weight_CDiDo, bias_CDo in zip(self.weights_CDiDo, self.biases_CDo, strict=True):
-            hidden_BxCDo = (
-                einops.einsum(
-                    hidden_BxCDi, weight_CDiDo, "... C d_in, C in_dim out_dim -> ... C out_dim"
-                )
-                + bias_CDo
-            )
-            hidden_BxCDi = F.gelu(hidden_BxCDo)
-
+        hidden_BxCDi = self.parallel_linears(hidden_BxCDi)
         assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
         hidden_BxC = hidden_BxCDi[..., 0]
-
         return hidden_BxC
 
 
