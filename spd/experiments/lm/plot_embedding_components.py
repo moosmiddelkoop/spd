@@ -27,7 +27,8 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
     """
     # We used "-" instead ofGateMLP module names can't have "." in them
     gates: dict[str, GateMLP | VectorGateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
+        for k, v in model.gates.items()
     }
     components: dict[str, EmbeddingComponent] = {
         k.removeprefix("components.").replace("-", "."): cast(EmbeddingComponent, v)
