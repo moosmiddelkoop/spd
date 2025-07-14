@@ -65,7 +65,7 @@ class TMSAnalyzer:
 
     def extract_subnets(self) -> Float[Tensor, "n_subnets n_features n_hidden"]:
         """Extract subnet weights from the component model."""
-        linear1_component = self.comp_model.components["linear1"]
+        linear1_component = self.comp_model.replaced_components["linear1"]
 
         assert isinstance(linear1_component, LinearComponent)
         Vs = linear1_component.V.detach().cpu()  # (n_features, C)
@@ -405,7 +405,7 @@ class FullNetworkDiagramPlotter:
         # analyzer = TMSAnalyzer(comp_model, target_model, self.config)
 
         # Get subnet decompositions for linear1
-        linear1_component = comp_model.components["linear1"]
+        linear1_component = comp_model.replaced_components["linear1"]
         assert isinstance(linear1_component, LinearComponent)
         Vs = linear1_component.V.detach().cpu()
         Us = linear1_component.U.detach().cpu()
@@ -417,7 +417,7 @@ class FullNetworkDiagramPlotter:
             hidden_layer_components = []
             for i in range(target_model.config.n_hidden_layers):
                 hidden_comp_name = f"hidden_layers-{i}"
-                hidden_comp = comp_model.components[hidden_comp_name]
+                hidden_comp = comp_model.replaced_components[hidden_comp_name]
                 assert isinstance(hidden_comp, LinearComponent)
                 hidden_V = hidden_comp.V.detach().cpu()
                 hidden_U = hidden_comp.U.detach().cpu()
@@ -759,7 +759,7 @@ class HiddenLayerPlotter:
             raise ValueError("Target model must have hidden layers")
 
         hidden_comp_name = "hidden_layers-0"
-        hidden_component = comp_model.components[hidden_comp_name]
+        hidden_component = comp_model.replaced_components[hidden_comp_name]
         assert isinstance(hidden_component, LinearComponent)
 
         hidden_V = hidden_component.V.detach().cpu()

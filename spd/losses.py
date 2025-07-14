@@ -9,7 +9,7 @@ from torch import Tensor
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, LinearComponent, ReplacedComponent
+from spd.models.components import EmbeddingComponent, ReplacedComponent
 from spd.utils.component_utils import calc_stochastic_masks
 from spd.utils.general_utils import calc_kl_divergence_lm
 
@@ -47,8 +47,8 @@ def calc_embedding_recon_loss(
 
         if unembed:
             assert hasattr(model.model, "lm_head"), "Only supports unembedding named lm_head"
-            target_out_unembed = model.model.lm_head(target_out)  # pyright: ignore [reportCallIssue]
-            masked_out_unembed = model.model.lm_head(masked_out)  # pyright: ignore [reportCallIssue]
+            target_out_unembed = model.model.lm_head(target_out)  # pyright: ignore[reportCallIssue]
+            masked_out_unembed = model.model.lm_head(masked_out)  # pyright: ignore[reportCallIssue]
             loss += calc_kl_divergence_lm(pred=masked_out_unembed, target=target_out_unembed)
         else:
             loss += ((masked_out - target_out) ** 2).sum(dim=-1).mean()

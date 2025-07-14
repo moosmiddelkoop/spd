@@ -134,16 +134,6 @@ class ComponentModel(nn.Module):
         return components
 
     @override
-    def to(self, *args: Any, **kwargs: Any) -> "ComponentModel":
-        """Move the model and components to a device."""
-        self.model.to(*args, **kwargs)
-        for component in self.components.values():
-            component.to(*args, **kwargs)
-        for gate in self.gates.values():
-            gate.to(*args, **kwargs)
-        return self
-
-    @override
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Regular forward pass of the (target) model.
 
