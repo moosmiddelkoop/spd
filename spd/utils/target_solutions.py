@@ -14,8 +14,9 @@ from typing import Literal, override
 
 import torch
 from jaxtyping import Float, Int
-from scipy.optimize import linear_sum_assignment
 from torch import Tensor
+
+from .linear_sum_assignment import linear_sum_assignment
 
 
 def permute_to_identity_greedy(
@@ -73,7 +74,7 @@ def permute_to_identity_hungarian(
     _, col_indices = linear_sum_assignment(cost_matrix)
 
     # Build complete permutation
-    assigned_cols = set(col_indices)
+    assigned_cols = set(col_indices.tolist())
     unassigned_cols = sorted(set(range(C)) - assigned_cols)
 
     perm_list = list(col_indices) + unassigned_cols

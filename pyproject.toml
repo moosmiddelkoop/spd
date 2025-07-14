@@ -2,7 +2,7 @@
 name = "spd"
 version = "0.0.1"
 description = "Sparse Parameter Decomposition"
-requires-python = ">=3.12"
+requires-python = "==3.12"
 urls = { "Homepage" = "https://github.com/goodfire-ai/spd" }
 license = { text = "MIT" }
 readme = "README.md"
@@ -25,7 +25,6 @@ dependencies = [
     "streamlit",
     "streamlit-antd-components",
     "datasets",
-    "scipy",
 ]
 
 [dependency-groups]
@@ -54,6 +53,9 @@ ignore = [
     "F722", # Incompatible with jaxtyping
     "E731" # I think lambda functions are fine in several places
 ]
+exclude = [
+    "spd/utils/linear_sum_assignment.py",  # Vendored code from scipy
+]
 
 [tool.ruff.lint]
 select = [
@@ -80,7 +82,7 @@ known-third-party = ["wandb"]
 
 [tool.pyright]
 include = ["spd", "tests"]
-exclude = ["**/wandb/**"]
+exclude = ["**/wandb/**", "spd/utils/linear_sum_assignment.py"]
 
 strictListInference = true
 strictDictionaryInference = true
