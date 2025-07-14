@@ -22,8 +22,6 @@ class BernoulliSTE(torch.autograd.Function):
         ctx.save_for_backward(sigma)
         z = torch.bernoulli(sigma) if stochastic else (sigma >= 0.5).to(sigma.dtype)
 
-        x + (1 - x) * 0.5
-
         return z
 
     @staticmethod
@@ -34,7 +32,7 @@ class BernoulliSTE(torch.autograd.Function):
         return grad_outputs.clone(), None
 
 
-def bernoulli_ste(x: Tensor, min: float = 0.5) -> Tensor:
+def bernoulli_ste(x: Tensor, min: float) -> Tensor:
     input = x * (1 - min) + min  # pyright: ignore[reportOptionalOperand]
     return BernoulliSTE.apply(input, True)
 

@@ -344,6 +344,10 @@ def calc_ce_losses(
     snap_masked_component_logits_001_BSV = model.forward_with_components(
         batch_BS, components=components, masks=rounded_ci_masks_001_BxM
     )
+    rounded_ci_masks_05_BxM = {k: (v > 0.5).to(v) for k, v in ci_masks_BxM.items()}
+    snap_masked_component_logits_05_BSV = model.forward_with_components(
+        batch_BS, components=components, masks=rounded_ci_masks_05_BxM
+    )
     # every component is fully masked out (all-zero masks)
     zero_masked_component_logits_BSV = model.forward_with_components(
         batch_BS,
@@ -362,6 +366,7 @@ def calc_ce_losses(
     ce_masked = ce_vs_labels(masked_component_logits_BSV)
     ce_snap_masked_01 = ce_vs_labels(snap_masked_component_logits_01_BSV)
     ce_snap_masked_001 = ce_vs_labels(snap_masked_component_logits_001_BSV)
+    ce_snap_masked_05 = ce_vs_labels(snap_masked_component_logits_05_BSV)
     ce_rand_masked = ce_vs_labels(rand_masked_component_logits_BSV)
     # bounds:
     ce_zero_masked = ce_vs_labels(zero_masked_component_logits_BSV)
@@ -372,6 +377,7 @@ def calc_ce_losses(
     ce_unrecovered_masked = (ce_masked - ce_target) / (ce_zero_masked - ce_target)
     ce_unrecovered_snap_masked_01 = (ce_snap_masked_01 - ce_target) / (ce_zero_masked - ce_target)
     ce_unrecovered_snap_masked_001 = (ce_snap_masked_001 - ce_target) / (ce_zero_masked - ce_target)
+    ce_unrecovered_snap_masked_05 = (ce_snap_masked_05 - ce_target) / (ce_zero_masked - ce_target)
     ce_unrecovered_rand_masked = (ce_rand_masked - ce_target) / (ce_zero_masked - ce_target)
 
     # KL
@@ -383,6 +389,9 @@ def calc_ce_losses(
     snap_masked_kl_vs_target_001 = calc_kl_divergence_lm(
         snap_masked_component_logits_001_BSV, target_logits_BSV
     )
+    snap_masked_kl_vs_target_05 = calc_kl_divergence_lm(
+        snap_masked_component_logits_05_BSV, target_logits_BSV
+    )
     rand_masked_kl_vs_target = calc_kl_divergence_lm(
         rand_masked_component_logits_BSV, target_logits_BSV
     )
@@ -393,12 +402,14 @@ def calc_ce_losses(
         f"{WandbSections.CE_UNRECOVERED.value}/masked": ce_unrecovered_masked.item(),
         f"{WandbSections.CE_UNRECOVERED.value}/snap_masked_01": ce_unrecovered_snap_masked_01.item(),
         f"{WandbSections.CE_UNRECOVERED.value}/snap_masked_001": ce_unrecovered_snap_masked_001.item(),
+        f"{WandbSections.CE_UNRECOVERED.value}/snap_masked_05": ce_unrecovered_snap_masked_05.item(),
         f"{WandbSections.CE_UNRECOVERED.value}/rand_masked": ce_unrecovered_rand_masked.item(),
         # KL
         f"{WandbSections.MISC.value}/unmasked_kl_loss_vs_target": unmasked_kl_vs_target.item(),
         f"{WandbSections.MISC.value}/masked_kl_loss_vs_target": masked_kl_vs_target.item(),
         f"{WandbSections.MISC.value}/snap_masked_kl_loss_vs_target_01": snap_masked_kl_vs_target_01.item(),
         f"{WandbSections.MISC.value}/snap_masked_kl_loss_vs_target_001": snap_masked_kl_vs_target_001.item(),
+        f"{WandbSections.MISC.value}/snap_masked_kl_loss_vs_target_05": snap_masked_kl_vs_target_05.item(),
         f"{WandbSections.MISC.value}/rand_masked_kl_loss_vs_target": rand_masked_kl_vs_target.item(),
         # bounds:
         f"{WandbSections.MISC.value}/z_ce/target_ce_loss_vs_labels": ce_target.item(),
@@ -408,6 +419,7 @@ def calc_ce_losses(
         f"{WandbSections.MISC.value}/z_ce/masked_ce_loss_vs_labels": ce_masked.item(),
         f"{WandbSections.MISC.value}/z_ce/snap_masked_ce_loss_vs_labels_01": ce_snap_masked_01.item(),
         f"{WandbSections.MISC.value}/z_ce/snap_masked_ce_loss_vs_labels_001": ce_snap_masked_001.item(),
+        f"{WandbSections.MISC.value}/z_ce/snap_masked_ce_loss_vs_labels_05": ce_snap_masked_05.item(),
         f"{WandbSections.MISC.value}/z_ce/rand_masked_ce_loss_vs_labels": ce_rand_masked.item(),
     }
 

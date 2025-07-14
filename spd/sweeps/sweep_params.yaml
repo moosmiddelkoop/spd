@@ -10,8 +10,8 @@ parameters:
     max: 0.1
   importance_minimality_coeff:
     distribution: log_uniform_values
-    min: 3.1e-7
-    max: 3.1e-6
+    min: 3.1e-6
+    max: 3.1e-5
   lr:
     distribution: log_uniform_values
     min: 1.e-3

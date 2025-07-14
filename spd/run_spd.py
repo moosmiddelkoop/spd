@@ -5,7 +5,7 @@ from collections import defaultdict
 from collections.abc import Iterator, Mapping
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import matplotlib.pyplot as plt
 import torch
@@ -138,6 +138,13 @@ def eval(
         for layer_name, layer_ci_l_zero in ci_l_zero.items():
             log_data[f"{WandbSections.METRICS.value}/ci_l0_001_{layer_name}"] = layer_ci_l_zero
 
+    ci_l_zero = calc_ci_l_zero(stacked_ci_BxM, cutoff=0.5)
+    if len(ci_l_zero) == 1:
+        log_data[f"{WandbSections.METRICS.value}/ci_l0_05"] = list(ci_l_zero.values())[0]
+    else:
+        for layer_name, layer_ci_l_zero in ci_l_zero.items():
+            log_data[f"{WandbSections.METRICS.value}/ci_l0_05_{layer_name}"] = layer_ci_l_zero
+
     log_data[f"{WandbSections.METRICS.value}/fvu"] = calc_faithfulness_fvu(
         components=components,
         target_model=model.model,
@@ -147,7 +154,9 @@ def eval(
     return log_data
 
 
-def dl_loop_wrapper(dl: DataLoader[Tensor], name: str) -> Iterator[Tensor]:
+def dl_loop_wrapper(
+    dl: DataLoader[dict[str, Any] | tuple[torch.Tensor, ...] | torch.Tensor], name: str
+) -> Iterator[Tensor]:
     iterator = iter(dl)
     while True:
         try:
@@ -242,8 +251,8 @@ def optimize(
     target_model: nn.Module,
     config: Config,
     device: str,
-    train_loader: DataLoader[Tensor],
-    eval_loader: DataLoader[Tensor],
+    train_loader: DataLoader[dict[str, Any] | tuple[torch.Tensor, ...] | torch.Tensor],
+    eval_loader: DataLoader[dict[str, Any] | tuple[torch.Tensor, ...] | torch.Tensor],
     n_eval_steps: int,
     out_dir: Path | None,
     plot_results_fn: PlotResultsFn | None = None,
@@ -283,6 +292,16 @@ def optimize(
             config.n_tokens_till_dead // (config.batch_size * config.task_config.max_seq_len)  # pyright: ignore [reportAttributeAccessIssue]
         ),
         threshold=0.01,
+    )
+
+    alive_tracker_05 = AliveTracker(
+        module_names=config.target_module_patterns,
+        C=config.C,
+        device=torch.device(device),
+        n_batches_until_dead=(
+            config.n_tokens_till_dead // (config.batch_size * config.task_config.max_seq_len)  # pyright: ignore [reportAttributeAccessIssue]
+        ),
+        threshold=0.5,
     )
 
     target_module_mean_input_norms = get_target_module_mean_input_norms(
@@ -382,6 +401,7 @@ def optimize(
 
                 alive_tracker_01.watch_batch(ci_upper_leaky_BxM)
                 alive_tracker_001.watch_batch(ci_upper_leaky_BxM)
+                alive_tracker_05.watch_batch(ci_upper_leaky_BxM)
 
                 microbatch_total_loss, microbatch_loss_terms = calculate_losses(
                     model=model,
@@ -440,6 +460,8 @@ def optimize(
                         log_data[f"metrics/n_alive_01/{module_name}"] = n_alive.item()
                     for module_name, n_alive in alive_tracker_001.n_alive().items():
                         log_data[f"metrics/n_alive_001/{module_name}"] = n_alive.item()
+                    for module_name, n_alive in alive_tracker_05.n_alive().items():
+                        log_data[f"metrics/n_alive_05/{module_name}"] = n_alive.item()
 
                 with torch.inference_mode():
                     eval_results = eval(
@@ -489,15 +511,12 @@ def optimize(
                 for module_name, ci in causal_importances.items():
                     n_tokens[module_name] += ci.shape[:-1].numel()
 
-                    n_active_components_C = reduce(
-                        ci > CI_ALIVE_THRESHOLD, "... C -> C", torch.sum
-                    )
+                    n_active_components_C = reduce(ci > CI_ALIVE_THRESHOLD, "... C -> C", torch.sum)
                     component_activation_counts[module_name] += n_active_components_C
 
             mean_component_activation_counts_plot = plot_mean_component_activation_counts(
                 mean_component_activation_counts={
-                    module_name: component_activation_counts[module_name]
-                    / n_tokens[module_name]
+                    module_name: component_activation_counts[module_name] / n_tokens[module_name]
                     for module_name in components
                 }
             )
@@ -506,12 +525,21 @@ def optimize(
             ci_histogram_figs = plot_ci_histograms(causal_importances)  # pyright: ignore [reportPossiblyUnboundVariable]
 
             figs_dict = {
-                **{
-                    f"{WandbSections.MISC.value}/{k}": v
-                    for k, v in ci_histogram_figs.items()
-                },
+                **{f"{WandbSections.MISC.value}/{k}": v for k, v in ci_histogram_figs.items()},
                 f"{WandbSections.MISC.value}/mean_component_activation_counts": mean_component_activation_counts_plot,
             }
+            if plot_results_fn is not None:
+                figs_dict.update(
+                    plot_results_fn(
+                        model=model,
+                        components=components,
+                        gates=gates,
+                        batch_shape=batch.shape,  # pyright: ignore [reportPossiblyUnboundVariable]
+                        device=device,
+                        sigmoid_type=config.sigmoid_type,
+                    )
+                )
+
             fig_imgs_dict = {k: wandb.Image(v) for k, v in figs_dict.items()}
 
             wandb.log(fig_imgs_dict, step=step)
@@ -530,9 +558,7 @@ def optimize(
             torch.save(model.state_dict(), out_dir / f"model_{step}.pth")
             logger.info(f"Saved model, optimizer, and out_dir to {out_dir}")
             if config.wandb_project:
-                wandb.save(
-                    str(out_dir / f"model_{step}.pth"), base_path=str(out_dir), policy="now"
-                )
+                wandb.save(str(out_dir / f"model_{step}.pth"), base_path=str(out_dir), policy="now")
                 wandb.save(
                     str(out_dir / f"optimizer_{step}.pth"), base_path=str(out_dir), policy="now"
                 )
@@ -550,7 +576,7 @@ def optimize(
                         {f"{WandbSections.TRAIN.value}/grad_norm": grad_norm_val.item()}, step=step
                     )
 
-            torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(parameters, max_norm=0.015)
             optimizer.step()
         # prof.step()
     logger.info("Finished training loop.")
