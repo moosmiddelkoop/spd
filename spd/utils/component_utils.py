@@ -1,3 +1,6 @@
+from functools import partial
+from typing import override
+
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
