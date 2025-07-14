@@ -154,5 +154,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main('spd/experiments/lm/ts_config.yaml')
-    # fire.Fire(main)
+    fire.Fire(main)
