@@ -114,6 +114,10 @@ spd-run --no-create_report                   # Skip W&B report creation
 Suggested extensions and settings for VSCode/Cursor are provided in `.vscode/`. To use the suggested
 settings, copy `.vscode/settings-example.json` to `.vscode/settings.json`.
 
+### Contributing
+
+Please read our [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute to this project, including pull request requirements and review processes.
+
 ### Custom Metrics and Visualizations
 
 The framework supports user-defined metrics and visualizations through `spd/user_metrics_and_figs.py`. This file is automatically created from a template during installation and provides two main functions:
