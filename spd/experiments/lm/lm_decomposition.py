@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import fire
 import wandb
 
 from spd.configs import Config, LMTaskConfig

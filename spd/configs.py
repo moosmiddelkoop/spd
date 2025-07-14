@@ -84,6 +84,31 @@ class LMTaskConfig(BaseModel):
     )
 
 
+class SampleConfig(BaseModel):
+    sample_type: Literal["uniform", "bernoulli"] = Field(
+        default="uniform",
+        description="Type of sample to use for stochastic reconstruction",
+    )
+
+
+class UniformSampleConfig(BaseModel):
+    sample_type: Literal["uniform"] = Field(
+        default="uniform",
+        description="Type of sample to use for stochastic reconstruction",
+    )
+
+
+class BernoulliSampleConfig(BaseModel):
+    sample_type: Literal["bernoulli"] = Field(
+        default="bernoulli",
+        description="Type of sample to use for stochastic reconstruction",
+    )
+    min: float = Field(
+        default=0.0,
+        description="Minimum value for stochastic reconstruction",
+    )
+
+
 class Config(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     # --- WandB
@@ -105,6 +130,10 @@ class Config(BaseModel):
     C: PositiveInt = Field(
         ...,
         description="The number of subcomponents per layer",
+    )
+    sample_cfg: UniformSampleConfig | BernoulliSampleConfig = Field(
+        discriminator="sample_type",
+        description="Configuration for the sample function used for stochastic reconstruction",
     )
     n_mask_samples: PositiveInt = Field(
         ...,

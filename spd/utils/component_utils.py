@@ -3,13 +3,46 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from torch.utils.data import DataLoader
 
+from spd.configs import BernoulliSampleConfig, UniformSampleConfig
 from spd.models.component_model import ComponentModel
 from spd.utils.general_utils import extract_batch_data
+
+
+def sample_uniform_to_1(min: Tensor) -> Tensor:
+    return min + (1 - min) * torch.rand_like(min)
+
+
+class BernoulliSTE(torch.autograd.Function):
+    @override
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        sigma: Tensor,
+        stochastic: bool,
+    ) -> Tensor:
+        ctx.save_for_backward(sigma)
+        z = torch.bernoulli(sigma) if stochastic else (sigma >= 0.5).to(sigma.dtype)
+
+        return z
+
+    @override
+    @staticmethod
+    def backward(  # pyright: ignore [reportIncompatibleMethodOverride]
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_outputs: Tensor,
+    ) -> tuple[Tensor, None]:
+        return grad_outputs.clone(), None
+
+
+def bernoulli_ste(x: Tensor, min: float) -> Tensor:
+    input = x * (1 - min) + min
+    return BernoulliSTE.apply(input, True)  # pyright: ignore [reportReturnType]
 
 
 def calc_stochastic_masks(
     causal_importances: dict[str, Float[Tensor, "... C"]],
     n_mask_samples: int,
+    sample_config: UniformSampleConfig | BernoulliSampleConfig,
 ) -> list[dict[str, Float[Tensor, "... C"]]]:
     """Calculate n_mask_samples stochastic masks with the formula `ci + (1 - ci) * rand_unif(0,1)`.
 
@@ -20,11 +53,14 @@ def calc_stochastic_masks(
     Return:
         A list of n_mask_samples dictionaries, each containing the stochastic masks for each layer.
     """
+    sample = (
+        sample_uniform_to_1
+        if sample_config.sample_type == "uniform"
+        else partial(bernoulli_ste, min=sample_config.min)
+    )
     stochastic_masks = []
     for _ in range(n_mask_samples):
-        stochastic_masks.append(
-            {layer: ci + (1 - ci) * torch.rand_like(ci) for layer, ci in causal_importances.items()}
-        )
+        stochastic_masks.append({layer: sample(ci) for layer, ci in causal_importances.items()})
     return stochastic_masks
 
 

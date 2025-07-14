@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Literal
 
 import einops
@@ -10,7 +11,12 @@ from torch import Tensor
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, ReplacedComponent
-from spd.utils.component_utils import calc_stochastic_masks
+from spd.utils.component_utils import (
+    SampleFn,
+    bernoulli_ste,
+    calc_stochastic_masks,
+    sample_uniform_to_1,
+)
 from spd.utils.general_utils import calc_kl_divergence_lm
 
 
@@ -295,6 +301,7 @@ def calculate_losses(
     Returns:
         Tuple of (total_loss, loss_terms_dict)
     """
+
     total_loss = torch.tensor(0.0, device=device)
     loss_terms: dict[str, float] = {}
 
@@ -319,7 +326,8 @@ def calculate_losses(
     # Stochastic reconstruction loss
     if config.stochastic_recon_coeff is not None:
         stochastic_masks = calc_stochastic_masks(
-            causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            causal_importances=causal_importances,
+            n_mask_samples=config.n_mask_samples,
         )
         stochastic_recon_loss = torch.tensor(0.0, device=target_out.device)
         for i in range(len(stochastic_masks)):
@@ -350,7 +358,8 @@ def calculate_losses(
     # Stochastic reconstruction layerwise loss
     if config.stochastic_recon_layerwise_coeff is not None:
         layerwise_stochastic_masks = calc_stochastic_masks(
-            causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            causal_importances=causal_importances,
+            n_mask_samples=config.n_mask_samples,
         )
         stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
             model=model,
@@ -397,7 +406,8 @@ def calculate_losses(
     # Embedding reconstruction loss
     if config.embedding_recon_coeff is not None:
         stochastic_masks = calc_stochastic_masks(
-            causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
+            causal_importances=causal_importances,
+            n_mask_samples=config.n_mask_samples,
         )
         assert len(model.replaced_components) == 1, "Only one embedding component is supported"
         component_name, component = next(iter(model.replaced_components.items()))
