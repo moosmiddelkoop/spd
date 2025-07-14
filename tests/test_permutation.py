@@ -1,6 +1,10 @@
 import torch
 
-from spd.utils.target_solutions import permute_to_dense, permute_to_identity
+from spd.utils.target_solutions import (
+    permute_to_dense,
+    permute_to_identity_greedy,
+    permute_to_identity_hungarian,
+)
 
 
 class TestPermutationFunctions:
@@ -16,7 +20,7 @@ class TestPermutationFunctions:
         )
 
         # Test Hungarian
-        permuted_hungarian, indices_hungarian = permute_to_identity(tensor, method="hungarian")
+        permuted_hungarian, indices_hungarian = permute_to_identity_hungarian(tensor)
         expected = torch.tensor(
             [
                 [1.0, 0.0, 0.0],
@@ -28,7 +32,7 @@ class TestPermutationFunctions:
         assert torch.equal(indices_hungarian, torch.tensor([1, 0, 2]))
 
         # Test Greedy
-        permuted_greedy, indices_greedy = permute_to_identity(tensor, method="greedy")
+        permuted_greedy, indices_greedy = permute_to_identity_greedy(tensor)
         assert torch.allclose(permuted_greedy, expected)
         assert torch.equal(indices_greedy, torch.tensor([1, 0, 2]))
 
@@ -41,11 +45,11 @@ class TestPermutationFunctions:
         hungarian_expected = torch.tensor([[0.9, 1.0, 0.0], [0.5, 0.9, 0.0]])
 
         # Test greedy
-        permuted_greedy, _ = permute_to_identity(tensor, method="greedy")
+        permuted_greedy, _ = permute_to_identity_greedy(tensor)
         assert torch.allclose(permuted_greedy, greedy_expected)
 
         # Test Hungarian
-        permuted_hungarian, _ = permute_to_identity(tensor, method="hungarian")
+        permuted_hungarian, _ = permute_to_identity_hungarian(tensor)
         assert torch.allclose(permuted_hungarian, hungarian_expected)
 
     def test_permute_to_dense(self):

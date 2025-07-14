@@ -17,7 +17,7 @@ from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearCompo
 from spd.models.sigmoids import SigmoidTypes
 from spd.registry import SOLUTION_REGISTRY
 from spd.utils.component_utils import calc_causal_importances
-from spd.utils.target_solutions import permute_to_identity
+from spd.utils.target_solutions import permute_to_identity_greedy
 
 
 def _plot_causal_importances_figure(
@@ -200,9 +200,9 @@ def plot_single_feature_causal_importances(
         ci_upper_leaky = {}
         all_perm_indices = {}
         for k in ci_raw:
-            ci[k], _ = permute_to_identity(ci_vals=ci_raw[k], method="greedy")
-            ci_upper_leaky[k], all_perm_indices[k] = permute_to_identity(
-                ci_vals=ci_upper_leaky_raw[k], method="greedy"
+            ci[k], _ = permute_to_identity_greedy(ci_vals=ci_raw[k])
+            ci_upper_leaky[k], all_perm_indices[k] = permute_to_identity_greedy(
+                ci_vals=ci_upper_leaky_raw[k]
             )
 
     # Create figures dictionary

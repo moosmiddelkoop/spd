@@ -83,28 +83,6 @@ def permute_to_identity_hungarian(
     return ci_vals[:, perm_indices], perm_indices
 
 
-def permute_to_identity(
-    ci_vals: Float[Tensor, "batch C"],
-    method: str = "hungarian",
-) -> tuple[Float[Tensor, "batch C"], Int[Tensor, " C"]]:
-    """Permute matrix to make it as close to identity as possible.
-
-    Args:
-        ci_vals: The causal importance values matrix
-        method: The algorithm to use ("hungarian" or "greedy")
-
-    Returns:
-        - Permuted mask
-        - Permutation indices
-    """
-    if method == "hungarian":
-        return permute_to_identity_hungarian(ci_vals)
-    elif method == "greedy":
-        return permute_to_identity_greedy(ci_vals)
-    else:
-        raise ValueError(f"Unknown method: {method}. Use 'hungarian' or 'greedy'.")
-
-
 def permute_to_dense(
     ci_vals: Float[Tensor, "batch C"],
 ) -> tuple[Float[Tensor, "batch C"], Int[Tensor, " C"]]:
@@ -189,7 +167,10 @@ class IdentityPattern(TargetPattern):
     def distance_from(self, ci_array: torch.Tensor, tolerance: float = 0.1) -> int:
         self._verify_inputs(ci_array)
         if self.apply_permutation:
-            ci_array = permute_to_identity(ci_array, self.method)[0]
+            if self.method == "hungarian":
+                ci_array = permute_to_identity_hungarian(ci_array)[0]
+            else:
+                ci_array = permute_to_identity_greedy(ci_array)[0]
         n, c = ci_array.shape
         size = min(n, c)
 
@@ -203,7 +184,10 @@ class IdentityPattern(TargetPattern):
     @override
     def permute_for_display(self, ci_array: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Permute to show identity pattern."""
-        return permute_to_identity(ci_array, self.method)
+        if self.method == "hungarian":
+            return permute_to_identity_hungarian(ci_array)
+        else:
+            return permute_to_identity_greedy(ci_array)
 
 
 class DenseColumnsPattern(TargetPattern):
@@ -281,7 +265,9 @@ class TargetSolution:
                 )
             else:
                 # Default for modules not in target
-                permuted_ci[module_name], perm_indices[module_name] = permute_to_identity(ci_matrix)
+                permuted_ci[module_name], perm_indices[module_name] = permute_to_identity_greedy(
+                    ci_matrix
+                )
 
         return permuted_ci, perm_indices
 
