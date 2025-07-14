@@ -147,7 +147,9 @@ def calc_causal_importances(
                 inner_acts_BxC = Vs[param_name][acts_BxD]
             else:
                 # Linear layer
-                inner_acts_BxC = einops.einsum(acts_BxD, Vs[param_name], "... d_in, d_in C -> ... C")
+                inner_acts_BxC = einops.einsum(
+                    acts_BxD, Vs[param_name], "... d_in, d_in C -> ... C"
+                )
             gate_input = inner_acts_BxC
         else:
             gate_input = acts_BxD
