@@ -94,15 +94,15 @@ class LinearComponent(nn.Module):
         init_param_(self.V, fan_val=d_out, nonlinearity="linear")
         init_param_(self.U, fan_val=C, nonlinearity="linear")
 
-        self.mask: Float[Tensor, "... C"] | None = None  # Gets set on sparse forward passes
-
     @property
     def weight(self) -> Float[Tensor, "d_out d_in"]:
         """U^T @ V^T"""
         return einops.einsum(self.V, self.U, "d_in C, C d_out -> d_out d_in")
 
     @override
-    def forward(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
+    def forward(
+        self, x: Float[Tensor, "... d_in"], mask_BxD: Tensor | None = None
+    ) -> Float[Tensor, "... d_out"]:
         """Forward pass through V and U matrices.
 
         Args:
@@ -113,8 +113,8 @@ class LinearComponent(nn.Module):
         """
         component_acts = einops.einsum(x, self.V, "... d_in, d_in C -> ... C")
 
-        if self.mask is not None:
-            component_acts *= self.mask
+        if mask_BxD is not None:
+            component_acts *= mask_BxD
 
         out = einops.einsum(component_acts, self.U, "... C, C d_out -> ... d_out")
 
@@ -144,9 +144,6 @@ class EmbeddingComponent(nn.Module):
         init_param_(self.V, fan_val=embedding_dim, nonlinearity="linear")
         init_param_(self.U, fan_val=C, nonlinearity="linear")
 
-        # For masked forward passes
-        self.mask: Float[Tensor, "batch pos C"] | None = None
-
     @property
     def weight(self) -> Float[Tensor, "vocab_size embedding_dim"]:
         """V @ U"""
@@ -155,7 +152,9 @@ class EmbeddingComponent(nn.Module):
         )
 
     @override
-    def forward(self, x: Float[Tensor, "batch pos"]) -> Float[Tensor, "batch pos embedding_dim"]:
+    def forward(
+        self, x: Float[Tensor, "batch pos"], mask_BxC: Tensor | None
+    ) -> Float[Tensor, "batch pos embedding_dim"]:
         """Forward through the embedding component using nn.Embedding for efficient lookup
 
         NOTE: Unlike a LinearComponent, here we alter the mask with an instance attribute rather
@@ -169,10 +168,68 @@ class EmbeddingComponent(nn.Module):
         # From https://github.com/pytorch/pytorch/blob/main/torch/_decomp/decompositions.py#L1211
         component_acts = self.V[x]  # (batch pos C)
 
-        if self.mask is not None:
-            component_acts *= self.mask
+        if mask_BxC is not None:
+            component_acts *= mask_BxC
 
         out = einops.einsum(
             component_acts, self.U, "batch pos C, ... C embedding_dim -> batch pos embedding_dim"
         )
         return out
+
+
+# TODO(oli) make this the only public class here
+class ReplacedComponent(nn.Module):
+    def __init__(
+        self,
+        original: nn.Linear | nn.Embedding,
+        replacement: LinearComponent | EmbeddingComponent,
+    ):
+        super().__init__()
+        assert isinstance(original, nn.Linear) == isinstance(replacement, LinearComponent)
+        self.original = original
+        self.replacement = replacement
+
+        self.forward_mode: Literal["original"] | Literal["replacement"] | None = None
+        self.mask_BxC: Tensor | None = None
+        self.init_weights_()
+
+    def init_weights_(self) -> None:
+        """Initialize the V and U matrices.
+        1. Normalize every component to 1.
+        2. Take inner product with original model
+        3. This gives you roughly how much overlap there is with the target model.
+        4. Scale the Us by this value (we can choose either matrix)
+        """
+
+        V = self.replacement.V
+        U = self.replacement.U
+        target_weight = self.original.weight
+        if isinstance(self.replacement, EmbeddingComponent):
+            target_weight = target_weight.T  # (d_out d_in)
+
+        # Make V and U have unit norm in the d_in and d_out dimensions
+        V.data[:] = torch.randn_like(V.data)
+        U.data[:] = torch.randn_like(U.data)
+        V.data[:] = V.data / V.data.norm(dim=-2, keepdim=True)
+        U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
+
+        # Calculate inner products
+        inner = einops.einsum(U, target_weight, "C d_out, d_out d_in -> C d_in")
+        C_norms = einops.einsum(inner, V, "C d_in, d_in C -> C")
+
+        # Scale U by the inner product.
+        U.data[:] = U.data * C_norms.unsqueeze(-1)
+
+    @override
+    def forward(self, x: Tensor) -> Tensor:
+        if self.forward_mode is None:
+            raise ValueError("Forward mode not set")
+
+        if self.forward_mode == "original":
+            assert self.mask_BxC is None, "Mask should not be present in original mode"
+            return self.original(x)
+        elif self.forward_mode == "replacement":
+            # mask *can* but doesn't *need to* be present here
+            return self.replacement(x, self.mask_BxC)
+
+        raise ValueError(f"Invalid forward mode: {self.forward_mode}")
