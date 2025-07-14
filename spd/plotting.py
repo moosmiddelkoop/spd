@@ -13,7 +13,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import ReplacedComponent
+from spd.models.components import EmbeddingComponent, LinearComponent, ReplacedComponent
 from spd.models.sigmoids import SigmoidTypes
 
 
@@ -280,12 +280,12 @@ def plot_matrix(
 
 
 def plot_UV_matrices(
-    components: dict[str, ReplacedComponent],
+    components: dict[str, LinearComponent | EmbeddingComponent],
     all_perm_indices: dict[str, Float[Tensor, " C"]] | None = None,
 ) -> plt.Figure:
     """Plot V and U matrices for each instance, grouped by layer."""
-    Vs = {k: v.replacement.V for k, v in components.items()}
-    Us = {k: v.replacement.U for k, v in components.items()}
+    Vs = {k: v.V for k, v in components.items()}
+    Us = {k: v.U for k, v in components.items()}
 
     n_layers = len(Vs)
 
