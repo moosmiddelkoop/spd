@@ -21,6 +21,7 @@ class ParallelLinear(nn.Module):
         self.bias_Do = nn.Parameter(torch.zeros(C, output_dim))
         init_param_(self.W_CDiDo, fan_val=input_dim, nonlinearity="relu")
 
+    @override
     def forward(self, x_BxCDi: Tensor) -> Tensor:
         x_BxCDo = einops.einsum(x_BxCDi, self.W_CDiDo, "... C d_in, C d_in d_out -> ... C d_out")
         x_BxCDo = F.gelu(x_BxCDo + self.bias_Do)
@@ -63,9 +64,8 @@ class VectorGateMLP(nn.Module):
 
     @override
     def forward(self, x_BxD: Tensor) -> Tensor:
-        hidden_BxCDi = einops.rearrange(
-            x_BxD, "... d_in -> ... C d_in", C=1
-        )  # this C=1 will broadcast out to actual C size, but no need to expand out yet
+        # this 1 will broadcast out to actual C size, but no need to expand out yet
+        hidden_BxCDi = einops.rearrange(x_BxD, "... d_in -> ... 1 d_in")
         hidden_BxCDi = self.parallel_linears(hidden_BxCDi)
         assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
         hidden_BxC = hidden_BxCDi[..., 0]
