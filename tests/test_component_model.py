@@ -1,3 +1,5 @@
+from typing import override
+
 import pytest
 import torch
 from jaxtyping import Float
@@ -17,6 +19,7 @@ class SimpleTestModel(nn.Module):
         self.embedding = nn.Embedding(100, 8)
         self.other_layer = nn.ReLU()  # Non‑target layer (should never be wrapped)
 
+    @override
     def forward(self, x: Float[torch.Tensor, "... 10"]):  # noqa: D401,E501
         return self.linear2(self.linear1(x))
 
