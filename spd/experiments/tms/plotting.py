@@ -954,7 +954,8 @@ class TMSPlotter:
         print(f"Mean L2 ratio: {l2_ratio.mean():.4f}")
         print(f"Std L2 ratio: {l2_ratio.std():.4f}")
         if hasattr(self.analyzer.target_model, "b_final"):
-            print(f"Mean bias: {self.analyzer.target_model.b_final.mean():.4f}")
+            raise NotImplementedError("(Oli) I think this is broke")
+            # print(f"Mean bias: {self.analyzer.target_model.b_final.mean():.4f}")
 
 
 def main():
