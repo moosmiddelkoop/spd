@@ -137,29 +137,25 @@ def calc_causal_importances(
     causal_importances_upper_leaky = {}
 
     for param_name in pre_weight_acts:
-        acts = pre_weight_acts[param_name]
+        acts_BxD = pre_weight_acts[param_name]
         gate = gates[param_name]
 
         if isinstance(gate, GateMLP):
-            inner_acts = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
-            gate_input = inner_acts
+            # need to get the inner activation for GateMLP
+            if not acts_BxD.dtype.is_floating_point:
+                # Embedding layer
+                inner_acts_BxC = Vs[param_name][acts_BxD]
+            else:
+                # Linear layer
+                inner_acts_BxC = einops.einsum(acts_BxD, Vs[param_name], "... d_in, d_in C -> ... C")
+            gate_input = inner_acts_BxC
         else:
-            gate_input = acts
+            gate_input = acts_BxD
 
         if detach_inputs:
             gate_input = gate_input.detach()
 
         gate_output = gate(gate_input)
-
-        if not acts.dtype.is_floating_point:
-            # Embedding layer
-            component_act = Vs[param_name][acts]
-        else:
-            # Linear layer
-            component_act = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
-
-        gate_input = component_act.detach() if detach_inputs else component_act
-        gate_output = gates[param_name](gate_input)
 
         if sigmoid_type == "leaky_hard":
             causal_importances[param_name] = SIGMOID_TYPES["lower_leaky_hard"](gate_output)
