@@ -13,7 +13,7 @@ from spd.configs import Config
 from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.plotting import plot_causal_importance_vals
 from spd.utils.general_utils import get_device, set_seed
 from spd.utils.run_utils import get_output_dir
@@ -38,8 +38,8 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
 
     # Get components and gates from model
     # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
@@ -694,9 +694,8 @@ def main():
             return mask_name  # Fallback to original if pattern doesn't match
 
         # Generate and save causal importance plots
-        gates: dict[str, Gate | GateMLP] = {
-            k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
-            for k, v in model.gates.items()
+        gates: dict[str, GateMLP | VectorGateMLP] = {
+            k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
         }
         batch_shape = (1, target_model.config.n_features)
         figs_causal = plot_causal_importance_vals(

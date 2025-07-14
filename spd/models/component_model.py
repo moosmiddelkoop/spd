@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any, override
+from typing import Any, cast, override
 
 import einops
 import torch
@@ -14,7 +14,14 @@ from torch import Tensor, nn
 from wandb.apis.public import Run
 
 from spd.configs import Config
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import (
+    EmbeddingComponent,
+    Gate,
+    GateMLP,
+    GateType,
+    LinearComponent,
+    VectorGateMLP,
+)
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
 from spd.utils.general_utils import load_pretrained
 from spd.utils.wandb_utils import (
@@ -37,7 +44,8 @@ class ComponentModel(nn.Module):
         base_model: nn.Module,
         target_module_patterns: list[str],
         C: int,
-        n_ci_mlp_neurons: int,
+        gate_type: GateType,
+        gate_hidden_dims: list[int],
         pretrained_model_output_attr: str | None,
     ):
         super().__init__()
@@ -48,12 +56,18 @@ class ComponentModel(nn.Module):
             target_module_patterns=target_module_patterns, C=C
         )
 
-        gate_class = GateMLP if n_ci_mlp_neurons > 0 else Gate
-        gate_kwargs = {"C": C}
-        if n_ci_mlp_neurons > 0:
-            gate_kwargs["n_ci_mlp_neurons"] = n_ci_mlp_neurons
-
-        self.gates = nn.ModuleDict({name: gate_class(**gate_kwargs) for name in self.components})
+        self.gates = nn.ModuleDict(
+            {
+                component_name: GateMLP(C=C, hidden_dims=gate_hidden_dims)
+                if gate_type == "mlp"
+                else VectorGateMLP(
+                    C=C,
+                    input_dim=cast(LinearComponent | EmbeddingComponent, component).weight.shape[1],
+                    hidden_dims=gate_hidden_dims,
+                )
+                for component_name, component in self.components.items()
+            }
+        )
 
     def create_target_components(self, target_module_patterns: list[str], C: int) -> nn.ModuleDict:
         """Create target components for the model."""
@@ -263,7 +277,8 @@ class ComponentModel(nn.Module):
             base_model=base_model,
             target_module_patterns=config.target_module_patterns,
             C=config.C,
-            n_ci_mlp_neurons=config.n_ci_mlp_neurons,
+            gate_hidden_dims=config.gate_hidden_dims,
+            gate_type=config.gate_type,
             pretrained_model_output_attr=config.pretrained_model_output_attr,
         )
         comp_model.load_state_dict(model_weights)

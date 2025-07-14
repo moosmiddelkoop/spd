@@ -1,4 +1,5 @@
-from typing import override
+from collections.abc import Iterable
+from typing import Literal, cast, override
 
 import einops
 import torch
@@ -7,6 +8,8 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from spd.utils.module_utils import init_param_
+
+GateType = Literal["mlp", "vector_mlp"]
 
 
 class Gate(nn.Module):
@@ -27,39 +30,82 @@ class Gate(nn.Module):
 class GateMLP(nn.Module):
     """A gate with a hidden layer that maps a single input to a single output."""
 
-    def __init__(self, C: int, n_ci_mlp_neurons: int):
+    def __init__(self, C: int, hidden_dims: list[int]):
         super().__init__()
-        self.n_ci_mlp_neurons = n_ci_mlp_neurons
 
-        self.mlp_in = nn.Parameter(torch.empty((C, n_ci_mlp_neurons)))
-        self.in_bias = nn.Parameter(torch.zeros((C, n_ci_mlp_neurons)))
-        self.mlp_out = nn.Parameter(torch.empty((C, n_ci_mlp_neurons)))
-        self.out_bias = nn.Parameter(torch.zeros((C,)))
+        self.hidden_dims = hidden_dims
+        dim_pairs = list(zip([1] + hidden_dims, hidden_dims + [1], strict=True))
 
-        init_param_(self.mlp_in, fan_val=1, nonlinearity="relu")
-        init_param_(self.mlp_out, fan_val=n_ci_mlp_neurons, nonlinearity="linear")
-
-    @override
-    def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
-        hidden = (
-            einops.einsum(
-                x,
-                self.mlp_in,
-                "... C, C n_ci_mlp_neurons -> ... C n_ci_mlp_neurons",
-            )
-            + self.in_bias
+        self.weights_CDiDo: nn.ParameterList = nn.ParameterList(
+            [nn.Parameter(torch.empty((C, in_dim, out_dim))) for in_dim, out_dim in dim_pairs]
         )
-        hidden = F.gelu(hidden)
 
-        out = (
-            einops.einsum(
-                hidden,
-                self.mlp_out,
-                "... C n_ci_mlp_neurons, C n_ci_mlp_neurons -> ... C",
-            )
-            + self.out_bias
+        self.biases_CDo: nn.ParameterList = nn.ParameterList(
+            [nn.Parameter(torch.zeros((C, out_dim))) for _in_dim, out_dim in dim_pairs]
         )
-        return out
+
+        for weight_CDiDo, (in_dim, _out_dim) in zip(
+            cast(Iterable[nn.Parameter], self.weights_CDiDo), dim_pairs, strict=True
+        ):
+            init_param_(weight_CDiDo, fan_val=in_dim, nonlinearity="relu")
+
+    def forward(self, x_BxC: Tensor) -> Tensor:
+        hidden_BxCDi = einops.rearrange(x_BxC, "... C -> ... C 1")
+        for weight_CDiDo, bias_CDo in zip(self.weights_CDiDo, self.biases_CDo, strict=True):
+            hidden_BxCDo = (
+                einops.einsum(
+                    hidden_BxCDi, weight_CDiDo, "... C d_in, C in_dim out_dim -> ... C out_dim"
+                )
+                + bias_CDo
+            )
+            hidden_BxCDi = F.gelu(hidden_BxCDo)
+
+        assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
+        hidden_BxC = hidden_BxCDi[..., 0]
+
+        return hidden_BxC
+
+
+class VectorGateMLP(nn.Module):
+    """An MLP based gate that maps a vector valued input (residual stream,
+    MLP hidden activations, etc.) to a single output."""
+
+    def __init__(self, C: int, input_dim: int, hidden_dims: list[int]):
+        super().__init__()
+
+        self.hidden_dims = hidden_dims
+        dim_pairs = list(zip([input_dim] + hidden_dims, hidden_dims + [1], strict=True))
+
+        self.weights_CDiDo: nn.ParameterList = nn.ParameterList(
+            [nn.Parameter(torch.empty((C, in_dim, out_dim))) for in_dim, out_dim in dim_pairs]
+        )
+
+        self.biases_CDo: nn.ParameterList = nn.ParameterList(
+            [nn.Parameter(torch.zeros((C, out_dim))) for _in_dim, out_dim in dim_pairs]
+        )
+
+        for weight_CDiDo, (in_dim, _out_dim) in zip(
+            cast(Iterable[nn.Parameter], self.weights_CDiDo), dim_pairs, strict=True
+        ):
+            init_param_(weight_CDiDo, fan_val=in_dim, nonlinearity="relu")
+
+    def forward(self, x_BxD: Tensor) -> Tensor:
+        hidden_BxCDi = einops.rearrange(
+            x_BxD, "... d_in -> ... C d_in", C=1
+        )  # this C=1 will broadcast out to actual C size, but no need to expand out yet
+        for weight_CDiDo, bias_CDo in zip(self.weights_CDiDo, self.biases_CDo, strict=True):
+            hidden_BxCDo = (
+                einops.einsum(
+                    hidden_BxCDi, weight_CDiDo, "... C d_in, C in_dim out_dim -> ... C out_dim"
+                )
+                + bias_CDo
+            )
+            hidden_BxCDi = F.gelu(hidden_BxCDo)
+
+        assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
+        hidden_BxC = hidden_BxCDi[..., 0]
+
+        return hidden_BxC
 
 
 class LinearComponent(nn.Module):
