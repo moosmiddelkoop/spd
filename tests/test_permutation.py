@@ -1,6 +1,6 @@
 import torch
 
-from spd.utils.target_solutions import (
+from spd.utils.target_ci_solutions import (
     permute_to_dense,
     permute_to_identity_greedy,
     permute_to_identity_hungarian,

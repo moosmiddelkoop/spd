@@ -15,9 +15,9 @@ from torch import Tensor
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.models.sigmoids import SigmoidTypes
-from spd.registry import SOLUTION_REGISTRY
+from spd.registry import EXPERIMENT_REGISTRY, has_ci_solution
 from spd.utils.component_utils import calc_causal_importances
-from spd.utils.target_solutions import permute_to_identity_greedy
+from spd.utils.target_ci_solutions import permute_to_identity_greedy
 
 
 def _plot_causal_importances_figure(
@@ -190,8 +190,9 @@ def plot_single_feature_causal_importances(
     has_pos_dim = len(batch_shape) == 3
 
     # Apply permutations based on target solution if available
-    if experiment_id and experiment_id in SOLUTION_REGISTRY:
-        target_solution = SOLUTION_REGISTRY[experiment_id]
+    if experiment_id and has_ci_solution(experiment_id):
+        target_solution = EXPERIMENT_REGISTRY[experiment_id].target_solution
+        assert target_solution is not None  # Guaranteed by has_ci_solution check
         ci, _ = target_solution.permute_to_target(ci_raw)
         ci_upper_leaky, all_perm_indices = target_solution.permute_to_target(ci_upper_leaky_raw)
     else:

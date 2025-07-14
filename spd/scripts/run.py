@@ -28,7 +28,7 @@ import wandb_workspaces.workspaces as ws
 import yaml
 
 from spd.configs import Config
-from spd.registry import EXPERIMENT_REGISTRY, SOLUTION_REGISTRY
+from spd.registry import EXPERIMENT_REGISTRY, has_ci_solution
 from spd.settings import REPO_ROOT
 from spd.utils.general_utils import apply_nested_updates, load_config
 from spd.utils.git_utils import create_git_snapshot
@@ -226,7 +226,7 @@ def create_wandb_report(run_id: str, experiments_list: list[str], project: str =
         ]
 
         # Add target error panel for experiments with target solutions
-        if experiment in SOLUTION_REGISTRY:
+        if has_ci_solution(experiment):
             panels.append(
                 wr.LinePlot(
                     x="Step",
@@ -239,7 +239,7 @@ def create_wandb_report(run_id: str, experiments_list: list[str], project: str =
         # Only add KL loss plots for language model experiments
         if exp_type == "lm":
             # Place KL plots on row 24 if target error is shown, otherwise row 18
-            kl_y_pos = 24 if experiment in SOLUTION_REGISTRY else 18
+            kl_y_pos = 24 if has_ci_solution(experiment) else 18
             panels.extend(
                 [
                     wr.LinePlot(
