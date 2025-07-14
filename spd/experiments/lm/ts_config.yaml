@@ -10,7 +10,9 @@ wandb_run_name_prefix: ""
 seed: 0
 C: 100
 n_mask_samples: 1
-n_ci_mlp_neurons: 0
+# n_ci_mlp_neurons: 0
+gate_mlp: "sigmoid"
+gate_hidden_
 sigmoid_type: "leaky_hard"
 target_module_patterns: ["transformer.h.3.mlp.c_fc"]
 

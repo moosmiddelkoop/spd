@@ -16,7 +16,6 @@ from wandb.apis.public import Run
 from spd.configs import Config
 from spd.models.components import (
     EmbeddingComponent,
-    Gate,
     GateMLP,
     GateType,
     LinearComponent,

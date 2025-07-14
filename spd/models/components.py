@@ -12,21 +12,6 @@ from spd.utils.module_utils import init_param_
 GateType = Literal["mlp", "vector_mlp"]
 
 
-class Gate(nn.Module):
-    """A gate that maps a single input to a single output."""
-
-    def __init__(self, C: int):
-        super().__init__()
-        self.weight = nn.Parameter(torch.empty((C,)))
-        self.bias = nn.Parameter(torch.zeros((C,)))
-        fan_val = 1  # Since each weight gets applied independently
-        init_param_(self.weight, fan_val=fan_val, nonlinearity="linear")
-
-    @override
-    def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
-        return x * self.weight + self.bias
-
-
 class GateMLP(nn.Module):
     """A gate with a hidden layer that maps a single input to a single output."""
 
