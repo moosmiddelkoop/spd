@@ -1,12 +1,12 @@
 import torch
 
-from spd.utils.target_solutions import DenseColumnsPattern, IdentityPattern, TargetSolution
+from spd.utils.target_ci_solutions import DenseCIPattern, IdentityCIPattern, TargetCISolution
 
 
-class TestIdentityPattern:
+class TestIdentityCIPattern:
     def test_perfect_identity_distance_zero(self):
         """Perfect identity matrix should have distance 0."""
-        pattern = IdentityPattern(n_features=3)
+        pattern = IdentityCIPattern(n_features=3)
         ci_array = torch.tensor(
             [
                 [1.0, 0.0, 0.0, 0.0, 0.0],
@@ -18,7 +18,7 @@ class TestIdentityPattern:
 
     def test_within_tolerance_identity(self):
         """Single off-diagonal element above tolerance."""
-        pattern = IdentityPattern(n_features=3)
+        pattern = IdentityCIPattern(n_features=3)
         ci_array = torch.tensor(
             [
                 [0.95, 0.01, 0.0, 0.0],
@@ -30,7 +30,7 @@ class TestIdentityPattern:
 
     def test_one_off_diagonal_error(self):
         """Single off-diagonal element above tolerance."""
-        pattern = IdentityPattern(n_features=3)
+        pattern = IdentityCIPattern(n_features=3)
         ci_array = torch.tensor(
             [
                 [1.0, 0.2, 0.0, 0.0],  # 0.2 > 0.1 tolerance
@@ -42,7 +42,7 @@ class TestIdentityPattern:
 
     def test_multiple_errors(self):
         """Multiple off-diagonal and diagonal errors."""
-        pattern = IdentityPattern(n_features=3)
+        pattern = IdentityCIPattern(n_features=3)
         ci_array = torch.tensor(
             [
                 [0.7, 0.3, 0.0, 0.2],
@@ -53,10 +53,10 @@ class TestIdentityPattern:
         assert pattern.distance_from(ci_array, tolerance=0.1) == 4
 
 
-class TestDenseColumnsPattern:
+class TestDenseCIPattern:
     def test_exactly_k_columns_distance_zero(self):
         """When exactly k columns are active, distance is 0."""
-        pattern = DenseColumnsPattern(k=2)
+        pattern = DenseCIPattern(k=2)
         ci_array = torch.tensor(
             [
                 [0.5, 0.0, 0.3, 0.0],
@@ -69,7 +69,7 @@ class TestDenseColumnsPattern:
 
     def test_one_excess_column(self):
         """One column beyond k has entries."""
-        pattern = DenseColumnsPattern(k=1)
+        pattern = DenseCIPattern(k=1)
         ci_array = torch.tensor(
             [
                 [0.5, 0.2, 0.0, 0.0],
@@ -81,7 +81,7 @@ class TestDenseColumnsPattern:
 
     def test_multiple_excess_columns(self):
         """Multiple columns beyond k have entries."""
-        pattern = DenseColumnsPattern(k=2)
+        pattern = DenseCIPattern(k=2)
         ci_array = torch.tensor(
             [
                 [0.5, 0.4, 0.3, 0.2, 0.1],
@@ -95,11 +95,11 @@ class TestDenseColumnsPattern:
         assert pattern.distance_from(ci_array, tolerance=0.1) == 8
 
 
-class TestTargetSolution:
+class TestTargetCISolution:
     def test_combined_errors_from_modules(self):
         """Errors from multiple modules should sum."""
-        solution = TargetSolution(
-            {"module1": IdentityPattern(n_features=2), "module2": DenseColumnsPattern(k=1)}
+        solution = TargetCISolution(
+            {"module1": IdentityCIPattern(n_features=2), "module2": DenseCIPattern(k=1)}
         )
         ci_arrays = {
             "module1": torch.tensor(
@@ -124,11 +124,11 @@ class TestTargetSolution:
         assert solution.distance_from(ci_arrays, tolerance=0.2) == 1
 
     def test_permute_to_target(self):
-        """Test that TargetSolution can permute CI arrays to match patterns."""
-        solution = TargetSolution(
+        """Test that TargetCISolution can permute CI arrays to match patterns."""
+        solution = TargetCISolution(
             {
-                "identity_module": IdentityPattern(n_features=2),
-                "dense_module": DenseColumnsPattern(k=1),
+                "identity_module": IdentityCIPattern(n_features=2),
+                "dense_module": DenseCIPattern(k=1),
             }
         )
 
@@ -153,3 +153,112 @@ class TestTargetSolution:
         # Check indices are correct
         assert torch.equal(perm_indices["identity_module"], torch.tensor([1, 0, 2]))
         assert torch.equal(perm_indices["dense_module"], torch.tensor([2, 0, 1]))
+
+    def test_expand_module_targets(self):
+        """Test that expand_module_targets correctly matches patterns."""
+        solution = TargetCISolution(
+            {
+                "layers.*.mlp_in": IdentityCIPattern(n_features=2),
+                "layers.*.mlp_out": DenseCIPattern(k=1),
+            }
+        )
+
+        module_names = ["layers.0.mlp_in", "layers.1.mlp_out", "other.module"]
+        expanded = solution.expand_module_targets(module_names, validate=False)
+
+        assert len(expanded) == 2
+        assert isinstance(expanded["layers.0.mlp_in"], IdentityCIPattern)
+        assert isinstance(expanded["layers.1.mlp_out"], DenseCIPattern)
+        assert "other.module" not in expanded
+
+    def test_distance_from_with_patterns(self):
+        """Test that distance_from works with pattern expansion on multiple modules."""
+        solution = TargetCISolution(
+            {
+                "layers.*.mlp_in": IdentityCIPattern(n_features=2),
+                "layers.*.mlp_out": DenseCIPattern(k=1),
+            }
+        )
+
+        ci_arrays = {
+            "layers.0.mlp_in": torch.tensor(
+                [
+                    [0.8, 0.2, 0.0],  # diagonal low, off-diag high
+                    [0.0, 1.0, 0.0],
+                ]
+            ),
+            "layers.0.mlp_out": torch.tensor(
+                [
+                    [0.5, 0.3, 0.0],  # 2 columns active but k=1
+                    [0.0, 0.4, 0.0],
+                ]
+            ),
+            "layers.1.mlp_in": torch.tensor(
+                [
+                    [1.0, 0.0],  # perfect identity
+                    [0.0, 1.0],
+                ]
+            ),
+            "layers.1.mlp_out": torch.tensor(
+                [
+                    [0.6, 0.0],  # only 1 column active, perfect for k=1
+                    [0.7, 0.0],
+                ]
+            ),
+        }
+
+        # layers.0.mlp_in: 1 diagonal + 1 off-diagonal = 2 errors
+        # layers.0.mlp_out: column 1 has 1 excess entry = 1 error
+        # layers.1.mlp_in: perfect identity = 0 errors
+        # layers.1.mlp_out: perfect dense = 0 errors
+        # Total: 2 + 1 + 0 + 0 = 3 errors
+        assert solution.distance_from(ci_arrays, tolerance=0.1) == 3
+
+    def test_compute_target_metrics_with_patterns(self):
+        """Test that compute_target_metrics works with pattern expansion."""
+        from spd.utils.target_ci_solutions import compute_target_metrics
+
+        solution = TargetCISolution(
+            {
+                "layers.*.mlp_in": IdentityCIPattern(n_features=2),
+                "layers.*.mlp_out": DenseCIPattern(k=1),
+            }
+        )
+
+        ci_arrays = {
+            "layers.0.mlp_in": torch.tensor(
+                [
+                    [0.8, 0.2, 0.0],
+                    [0.0, 1.0, 0.0],
+                ]
+            ),
+            "layers.0.mlp_out": torch.tensor(
+                [
+                    [0.5, 0.3, 0.0],
+                    [0.0, 0.4, 0.0],
+                ]
+            ),
+            "layers.1.mlp_in": torch.tensor(
+                [
+                    [1.0, 0.0],
+                    [0.0, 1.0],
+                ]
+            ),
+            "layers.1.mlp_out": torch.tensor(
+                [
+                    [0.6, 0.0],
+                    [0.7, 0.0],
+                ]
+            ),
+        }
+
+        metrics = compute_target_metrics(ci_arrays, solution, tolerance=0.1)
+
+        # Check total errors
+        assert metrics["target_solution_error/total"] == 3
+
+        # Check per-module errors
+        assert metrics["target_solution_error/layers.0.mlp_in"] == 2
+        assert metrics["target_solution_error/layers.0.mlp_out"] == 1
+        assert metrics["target_solution_error/layers.1.mlp_in"] == 0
+        assert metrics["target_solution_error/layers.1.mlp_out"] == 0

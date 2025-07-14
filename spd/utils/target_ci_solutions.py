@@ -3,12 +3,13 @@
 This module provides abstractions for testing whether learned sparsity patterns
 match expected target solutions in toy models:
 
-- TargetPattern classes define expected sparsity patterns (Identity, DenseColumns)
-- TargetSolution maps model components to their expected patterns
+- TargetCIPattern classes define expected sparsity patterns (Identity, DenseColumns)
+- TargetCISolution maps model components to their expected patterns
 - Evaluation uses a discrete distance metric that counts elements deviating beyond
   a tolerance threshold, making it robust to small values from inactive components
 """
 
+import fnmatch
 from abc import ABC, abstractmethod
 from typing import Literal, override
 
@@ -105,7 +106,7 @@ def permute_to_dense(
     return ci_vals[:, perm_indices], perm_indices
 
 
-class TargetPattern(ABC):
+class TargetCIPattern(ABC):
     """Base class for target patterns."""
 
     def _verify_inputs(self, ci_array: torch.Tensor) -> None:
@@ -137,7 +138,7 @@ class TargetPattern(ABC):
         pass
 
 
-class IdentityPattern(TargetPattern):
+class IdentityCIPattern(TargetCIPattern):
     """Identity pattern: expects one-to-one feature to component mapping.
 
     Each feature should activate exactly one component (up to permutation).
@@ -190,7 +191,7 @@ class IdentityPattern(TargetPattern):
             return permute_to_identity_greedy(ci_array)
 
 
-class DenseColumnsPattern(TargetPattern):
+class DenseCIPattern(TargetCIPattern):
     """Dense columns pattern: at most K components should be active.
 
     Expects sparsity where only K columns (components) have non-zero entries.
@@ -221,25 +222,58 @@ class DenseColumnsPattern(TargetPattern):
         return permute_to_dense(ci_array)
 
 
-class TargetSolution:
-    """Collection of expected patterns for different modules in a model."""
+class TargetCISolution:
+    """Collection of expected patterns for different modules in a model.
 
-    def __init__(self, module_targets: dict[str, TargetPattern]):
+    The module_targets dictionary can use fnmatch-style patterns as keys:
+    - Explicit module names: {"layers.0.mlp_in": IdentityCIPattern(...)}
+    - Wildcard patterns: {"layers.*.mlp_in": IdentityCIPattern(...)}
+    - Mixed patterns: {"layers.*.mlp_*": pattern, "specific.module": pattern}
+
+    Patterns are expanded at runtime when given actual module names.
+    First matching pattern wins for each module name.
+    """
+
+    def __init__(
+        self, module_targets: dict[str, TargetCIPattern], expected_matches: int | None = None
+    ):
+        """Initialize target solution with pattern mappings.
+
+        Args:
+            module_targets: Dictionary mapping module name patterns to target patterns.
+                Keys can be exact module names or fnmatch-style patterns (e.g., "layers.*.mlp_in").
+            expected_matches: Optional validation - expected total number of modules that
+                should match the patterns. If provided, expand_module_targets will validate
+                that exactly this many modules match.
+        """
         self.module_targets = module_targets
+        self.expected_matches = expected_matches
+
+    def expand_module_targets(
+        self, module_names: list[str], validate: bool = True
+    ) -> dict[str, TargetCIPattern]:
+        """Expand patterns to concrete module name -> TargetCIPattern mappings."""
+        result = {}
+        for name in module_names:
+            for pattern, target in self.module_targets.items():
+                if fnmatch.fnmatch(name, pattern):
+                    result[name] = target
+                    break
+
+        if validate and self.expected_matches and len(result) != self.expected_matches:
+            raise ValueError(
+                f"Expected {self.expected_matches} matches, got {len(result)}: {sorted(result.keys())}"
+            )
+
+        return result
 
     def distance_from(self, ci_arrays: dict[str, torch.Tensor], tolerance: float = 0.1) -> int:
         """Total number of elements that are off across all modules."""
-        target_keys = set(self.module_targets.keys())
-        ci_keys = set(ci_arrays.keys())
-
-        if target_keys != ci_keys:
-            missing = target_keys - ci_keys
-            extra = ci_keys - target_keys
-            raise ValueError(f"Keys mismatch. Missing: {missing}, Extra: {extra}")
+        expanded_targets = self.expand_module_targets(list(ci_arrays.keys()))
 
         return sum(
-            self.module_targets[name].distance_from(arr, tolerance)
-            for name, arr in ci_arrays.items()
+            target.distance_from(ci_arrays[name], tolerance)
+            for name, target in expanded_targets.items()
         )
 
     def permute_to_target(
@@ -254,12 +288,13 @@ class TargetSolution:
             - Dictionary of permuted matrices
             - Dictionary of permutation indices
         """
+        expanded_targets = self.expand_module_targets(list(ci_vals.keys()))
         permuted_ci = {}
         perm_indices = {}
 
         for module_name, ci_matrix in ci_vals.items():
-            if module_name in self.module_targets:
-                pattern = self.module_targets[module_name]
+            if module_name in expanded_targets:
+                pattern = expanded_targets[module_name]
                 permuted_ci[module_name], perm_indices[module_name] = pattern.permute_for_display(
                     ci_matrix
                 )
@@ -274,7 +309,7 @@ class TargetSolution:
 
 def compute_target_metrics(
     causal_importances: dict[str, torch.Tensor],
-    target_solution: TargetSolution,
+    target_solution: TargetCISolution,
     tolerance: float = 0.1,
 ) -> dict[str, float]:
     """Compute target solution distance metrics.
@@ -298,7 +333,8 @@ def compute_target_metrics(
     )
 
     # Per-module errors
-    for module_name, pattern in target_solution.module_targets.items():
+    expanded_targets = target_solution.expand_module_targets(list(causal_importances.keys()))
+    for module_name, pattern in expanded_targets.items():
         module_error = pattern.distance_from(causal_importances[module_name], tolerance)
         metrics[f"target_solution_error/{module_name}"] = module_error
 

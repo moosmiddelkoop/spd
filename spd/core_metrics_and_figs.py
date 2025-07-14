@@ -24,10 +24,10 @@ from spd.plotting import (
     plot_single_feature_causal_importances,
     plot_UV_matrices,
 )
-from spd.registry import SOLUTION_REGISTRY
+from spd.registry import EXPERIMENT_REGISTRY, has_ci_solution
 from spd.utils.component_utils import calc_ci_l_zero, component_activation_statistics
 from spd.utils.general_utils import calc_kl_divergence_lm
-from spd.utils.target_solutions import compute_target_metrics
+from spd.utils.target_ci_solutions import compute_target_metrics
 
 try:
     from spd.user_metrics_and_figs import compute_user_metrics, create_user_figures
@@ -89,7 +89,7 @@ def create_metrics(
 
     # Canonical solution metrics
     if evals_id is not None and config.task_config.task_name in ["tms", "residual_mlp"]:
-        if evals_id in SOLUTION_REGISTRY:
+        if has_ci_solution(evals_id):
             # Get causal importance arrays using single active features
             ci_arrays, _ = get_single_feature_causal_importances(
                 model=model,
@@ -101,7 +101,8 @@ def create_metrics(
                 sigmoid_type=config.sigmoid_type,
             )
 
-            target_solution = SOLUTION_REGISTRY[evals_id]
+            target_solution = EXPERIMENT_REGISTRY[evals_id].target_solution
+            assert target_solution is not None  # Guaranteed by has_ci_solution check
             target_metrics = compute_target_metrics(
                 causal_importances=ci_arrays,
                 target_solution=target_solution,
