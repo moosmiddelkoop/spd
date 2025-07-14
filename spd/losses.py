@@ -43,7 +43,9 @@ def calc_embedding_recon_loss(
     # --- masked embedding output ----------------------------------------------------------- #
     loss = torch.tensor(0.0, device=component.V.device)
     for mask_info in masks:
-        masked_out: Float[Tensor, "... d_emb"] = component(batch, mask_BxC=mask_info[embed_module_name])
+        masked_out: Float[Tensor, "... d_emb"] = component(
+            batch, mask_BxC=mask_info[embed_module_name]
+        )
 
         if unembed:
             assert hasattr(model.model, "lm_head"), "Only supports unembedding named lm_head"
@@ -298,9 +300,7 @@ def calculate_losses(
 
     # Faithfulness loss
     if config.faithfulness_coeff is not None:
-        faithfulness_loss = calc_faithfulness_loss(
-            components=components, target_model=model.model, n_params=n_params, device=device
-        )
+        faithfulness_loss = calc_faithfulness_loss(model=model, n_params=n_params, device=device)
         total_loss += config.faithfulness_coeff * faithfulness_loss
         loss_terms["loss/faithfulness"] = faithfulness_loss.item()
 
