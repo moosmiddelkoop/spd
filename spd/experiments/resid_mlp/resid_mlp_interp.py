@@ -13,7 +13,7 @@ from spd.configs import Config
 from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
+from spd.models.components import LinearComponent
 from spd.plotting import plot_causal_importance_vals
 from spd.utils.general_utils import get_device, set_seed
 from spd.utils.run_utils import get_output_dir
@@ -36,19 +36,6 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
     )
     n_features = target_model.config.n_features
 
-    # Get components and gates from model
-    # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, GateMLP | VectorGateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
-        for k, v in model.gates.items()
-    }
-    components: dict[str, LinearComponent | EmbeddingComponent] = {
-        k.removeprefix("components.").replace("-", "."): cast(
-            LinearComponent | EmbeddingComponent, v
-        )
-        for k, v in model.components.items()
-    }
-
     # Assume no position dimension
     batch_shape = (1, n_features)
 
@@ -58,8 +45,6 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
     # Get mask values without plotting regular masks
     figures, all_perm_indices_ci_vals = plot_causal_importance_vals(
         model=model,
-        components=components,
-        gates=gates,
         batch_shape=batch_shape,
         device=device,
         input_magnitude=input_magnitude,
@@ -71,7 +56,7 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
         "figures": figures,
         "all_perm_indices_ci_vals": all_perm_indices_ci_vals,
         "config": config,
-        "components": components,
+        "components": model.replaced_components,
         "n_features": n_features,
     }
 
@@ -648,11 +633,10 @@ def main():
         assert isinstance(target_model, ResidualMLP)
         n_layers = target_model.config.n_layers
 
-        components: dict[str, LinearComponent] = {
-            k.removeprefix("components.").replace("-", "."): v
-            for k, v in model.components.items()
-            if isinstance(v, LinearComponent)
-        }
+        components = {}
+        for k, v in model.replaced_components.items():
+            assert isinstance(v, LinearComponent)
+            components[k] = v.replacement
 
         fig = plot_spd_feature_contributions_truncated(
             components=components,
@@ -693,16 +677,9 @@ def main():
                     return f"Layer {layer_idx} - $W_{{out}}$"
             return mask_name  # Fallback to original if pattern doesn't match
 
-        # Generate and save causal importance plots
-        gates: dict[str, GateMLP | VectorGateMLP] = {
-            k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
-            for k, v in model.gates.items()
-        }
         batch_shape = (1, target_model.config.n_features)
         figs_causal = plot_causal_importance_vals(
             model=model,
-            components=components,
-            gates=gates,
             batch_shape=batch_shape,
             device=device,
             input_magnitude=0.75,

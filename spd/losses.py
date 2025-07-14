@@ -9,7 +9,7 @@ from torch import Tensor
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, LinearComponent
+from spd.models.components import EmbeddingComponent, LinearComponent, ReplacedComponent
 from spd.utils.component_utils import calc_stochastic_masks
 from spd.utils.general_utils import calc_kl_divergence_lm
 
@@ -43,10 +43,7 @@ def calc_embedding_recon_loss(
     # --- masked embedding output ----------------------------------------------------------- #
     loss = torch.tensor(0.0, device=component.V.device)
     for mask_info in masks:
-        component.mask = mask_info[embed_module_name]
-
-        masked_out: Float[Tensor, "... d_emb"] = component(batch)
-        component.mask = None
+        masked_out: Float[Tensor, "... d_emb"] = component(batch, mask_BxC=mask_info[embed_module_name])
 
         if unembed:
             assert hasattr(model.model, "lm_head"), "Only supports unembedding named lm_head"
@@ -64,7 +61,7 @@ def calc_embedding_recon_loss(
 def calc_schatten_loss(
     ci_upper_leaky: dict[str, Float[Tensor, "... C"]],
     pnorm: float,
-    components: dict[str, LinearComponent | EmbeddingComponent],
+    components: dict[str, ReplacedComponent],
     device: str,
 ) -> Float[Tensor, ""]:
     """Calculate the Schatten loss on the active components.
@@ -90,8 +87,8 @@ def calc_schatten_loss(
 
     total_loss = torch.tensor(0.0, device=device)
     for component_name, component in components.items():
-        V_norms = component.V.square().sum(dim=-2)
-        U_norms = component.U.square().sum(dim=-1)
+        V_norms = component.replacement.V.square().sum(dim=-2)
+        U_norms = component.replacement.U.square().sum(dim=-1)
         schatten_norms = V_norms + U_norms
         loss = einops.einsum(
             ci_upper_leaky[component_name] ** pnorm, schatten_norms, "... C, C -> ..."
@@ -128,7 +125,6 @@ def calc_masked_recon_layerwise_loss(
     model: ComponentModel,
     batch: Int[Tensor, "..."],
     device: str,
-    components: dict[str, LinearComponent | EmbeddingComponent],
     masks: list[dict[str, Float[Tensor, "... C"]]],
     target_out: Float[Tensor, "... d_model_out"],
     loss_type: Literal["mse", "kl"] = "kl",
@@ -137,10 +133,9 @@ def calc_masked_recon_layerwise_loss(
     assert loss_type in ["mse", "kl"], f"Invalid loss type: {loss_type}"
     total_loss = torch.tensor(0.0, device=device)
     for mask_info in masks:
-        for component_name, component in components.items():
+        for component_name in model.replaced_components:
             modified_out = model.forward_with_components(
                 batch,
-                components={component_name: component},
                 masks={component_name: mask_info[component_name]},
             )
             if loss_type == "mse":
@@ -155,14 +150,13 @@ def calc_masked_recon_layerwise_loss(
 def calc_masked_recon_loss(
     model: ComponentModel,
     batch: Float[Tensor, "... d_in"],
-    components: dict[str, LinearComponent | EmbeddingComponent],
     masks: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_mdoel_out"],
     loss_type: Literal["mse", "kl"] = "mse",
 ) -> Float[Tensor, ""]:
     """Calculate the MSE over all masks."""
     # Do a forward pass with all components
-    out = model.forward_with_components(batch, components=components, masks=masks)
+    out = model.forward_with_components(batch, masks=masks)
     assert loss_type in ["mse", "kl"], f"Invalid loss type: {loss_type}"
     if loss_type == "mse":
         loss = ((out - target_out) ** 2).mean()
@@ -195,8 +189,7 @@ def _calc_tensors_mse(
 
 
 def calc_faithfulness_loss(
-    components: dict[str, LinearComponent | EmbeddingComponent],
-    target_model: nn.Module,
+    model: ComponentModel,
     n_params: int,
     device: str,
 ) -> Float[Tensor, ""]:
@@ -204,11 +197,9 @@ def calc_faithfulness_loss(
     target_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
     component_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
 
-    for comp_name, component in components.items():
-        component_params[comp_name] = component.weight
-        submodule = target_model.get_submodule(comp_name)
-        assert isinstance(submodule, nn.Linear | nn.Embedding)
-        target_params[comp_name] = submodule.weight
+    for comp_name, component in model.replaced_components.items():
+        component_params[comp_name] = component.replacement.weight
+        target_params[comp_name] = component.original.weight
         assert component_params[comp_name].shape == target_params[comp_name].shape
 
     faithfulness_loss = _calc_tensors_mse(
@@ -223,7 +214,6 @@ def calc_faithfulness_loss(
 def calc_ce_losses(
     model: ComponentModel,
     batch: Int[Tensor, "..."],
-    components: dict[str, LinearComponent | EmbeddingComponent],
     masks: dict[str, Float[Tensor, "..."]],
     unmasked_component_logits: Float[Tensor, "..."],
     masked_component_logits: Float[Tensor, "..."],
@@ -234,7 +224,6 @@ def calc_ce_losses(
     Args:
         model: The component model
         batch: Input batch
-        components: Dictionary of components
         masks: Dictionary of masks for components
         unmasked_component_logits: Logits from unmasked components
         masked_component_logits: Logits from masked components
@@ -263,9 +252,7 @@ def calc_ce_losses(
 
     # CE when every component is fully masked (all-zero masks)
     zero_masks = {k: torch.zeros_like(v) for k, v in masks.items()}
-    zero_masked_component_logits = model.forward_with_components(
-        batch, components=components, masks=zero_masks
-    )
+    zero_masked_component_logits = model.forward_with_components(batch, masks=zero_masks)
     flat_zero_masked_component_logits = einops.rearrange(
         zero_masked_component_logits, "... vocab -> (...) vocab"
     )
@@ -285,7 +272,6 @@ def calculate_losses(
     model: ComponentModel,
     batch: Int[Tensor, "..."],
     config: Config,
-    components: dict[str, LinearComponent | EmbeddingComponent],
     causal_importances: dict[str, Float[Tensor, "batch C"]],
     causal_importances_upper_leaky: dict[str, Float[Tensor, "batch C"]],
     target_out: Tensor,
@@ -298,7 +284,6 @@ def calculate_losses(
         model: The component model
         batch: Input batch
         config: Configuration object with loss coefficients
-        components: Dictionary of component modules
         causal_importances: Causal importance masks
         causal_importances_upper_leaky: Upper leaky causal importances for regularization
         target_out: Target model output
@@ -324,7 +309,6 @@ def calculate_losses(
         recon_loss = calc_masked_recon_loss(
             model=model,
             batch=batch,
-            components=components,
             masks=causal_importances,
             target_out=target_out,
             loss_type=config.output_loss_type,
@@ -342,7 +326,6 @@ def calculate_losses(
             stochastic_recon_loss += calc_masked_recon_loss(
                 model=model,
                 batch=batch,
-                components=components,
                 masks=stochastic_masks[i],
                 target_out=target_out,
                 loss_type=config.output_loss_type,
@@ -357,7 +340,6 @@ def calculate_losses(
             model=model,
             batch=batch,
             device=device,
-            components=components,
             masks=[causal_importances],
             target_out=target_out,
             loss_type=config.output_loss_type,
@@ -374,7 +356,6 @@ def calculate_losses(
             model=model,
             batch=batch,
             device=device,
-            components=components,
             masks=layerwise_stochastic_masks,
             target_out=target_out,
             loss_type=config.output_loss_type,
@@ -394,7 +375,7 @@ def calculate_losses(
         schatten_loss = calc_schatten_loss(
             ci_upper_leaky=causal_importances_upper_leaky,
             pnorm=config.pnorm,
-            components=components,
+            components=model.replaced_components,
             device=device,
         )
         total_loss += config.schatten_coeff * schatten_loss
@@ -406,7 +387,6 @@ def calculate_losses(
         out_recon_loss = calc_masked_recon_loss(
             model=model,
             batch=batch,
-            components=components,
             masks=masks_all_ones,
             target_out=target_out,
             loss_type=config.output_loss_type,
@@ -419,15 +399,15 @@ def calculate_losses(
         stochastic_masks = calc_stochastic_masks(
             causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
         )
-        assert len(components) == 1, "Only one embedding component is supported"
-        component = list(components.values())[0]
-        assert isinstance(component, EmbeddingComponent)
+        assert len(model.replaced_components) == 1, "Only one embedding component is supported"
+        component_name, component = next(iter(model.replaced_components.items()))
+        assert isinstance(component.replacement, EmbeddingComponent)
         embedding_recon_loss = calc_embedding_recon_loss(
             model=model,
             batch=batch,
-            component=component,
+            component=component.replacement,
             masks=stochastic_masks,
-            embed_module_name=next(iter(components.keys())),
+            embed_module_name=component_name,
             unembed=config.is_embed_unembed_recon,
         )
         total_loss += config.embedding_recon_coeff * embedding_recon_loss

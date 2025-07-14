@@ -1,9 +1,8 @@
 import fnmatch
-from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any, cast, override
+from typing import Any, override
 
 import einops
 import torch
@@ -11,6 +10,7 @@ import wandb
 import yaml
 from jaxtyping import Float
 from torch import Tensor, nn
+from torch.utils.hooks import RemovableHandle
 from wandb.apis.public import Run
 
 from spd.configs import Config
@@ -19,8 +19,10 @@ from spd.models.components import (
     GateMLP,
     GateType,
     LinearComponent,
+    ReplacedComponent,
     VectorGateMLP,
 )
+from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
 from spd.utils.general_utils import load_pretrained
 from spd.utils.wandb_utils import (
@@ -51,40 +53,58 @@ class ComponentModel(nn.Module):
         self.model = base_model
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
-        self.components = self.create_target_components(
-            target_module_patterns=target_module_patterns, C=C
+
+        replaced_components = self.create_replaced_components(base_model, target_module_patterns, C)
+        self.replaced_components = replaced_components
+        self._replaced_components = nn.ModuleDict(
+            {k.replace(".", "-"): v for k, v in replaced_components.items()}
         )
 
-        self.gates = nn.ModuleDict(
-            {
-                component_name: GateMLP(C=C, hidden_dims=gate_hidden_dims)
-                if gate_type == "mlp"
-                else VectorGateMLP(
+        gates = self.make_gates(replaced_components, C, gate_type, gate_hidden_dims)
+        self.gates = gates
+        self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in gates.items()})
+
+    @staticmethod
+    def make_gates(
+        replaced_components: dict[str, ReplacedComponent],
+        C: int,
+        gate_type: GateType,
+        gate_hidden_dims: list[int],
+    ) -> dict[str, nn.Module]:
+        gates = {}
+        for component_name, component in replaced_components.items():
+            if gate_type == "mlp":
+                gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims)
+            else:
+                input_dim = (
+                    component.original.weight.shape[1]
+                    if isinstance(component.original, nn.Linear)
+                    else component.original.num_embeddings
+                )
+                gates[component_name] = VectorGateMLP(
                     C=C,
-                    input_dim=cast(LinearComponent | EmbeddingComponent, component).weight.shape[1],
+                    input_dim=input_dim,
                     hidden_dims=gate_hidden_dims,
                 )
-                for component_name, component in self.components.items()
-            }
-        )
+        return gates
 
-    def create_target_components(self, target_module_patterns: list[str], C: int) -> nn.ModuleDict:
+    @staticmethod
+    def create_replaced_components(
+        model: nn.Module, target_module_patterns: list[str], C: int
+    ) -> dict[str, ReplacedComponent]:
         """Create target components for the model."""
-        components: dict[str, LinearComponent | EmbeddingComponent] = {}
+        components: dict[str, ReplacedComponent] = {}
         matched_patterns: set[str] = set()
 
-        for name, module in self.model.named_modules():
+        for name, module in model.named_modules():
             for pattern in target_module_patterns:
                 if fnmatch.fnmatch(name, pattern):
                     matched_patterns.add(pattern)
                     if isinstance(module, nn.Linear):
                         d_out, d_in = module.weight.shape
-                        # Replace "." with "-" in the name to avoid issues with module dict keys
-                        components[name.replace(".", "-")] = LinearComponent(
-                            d_in=d_in, d_out=d_out, C=C, bias=module.bias
-                        )
+                        component = LinearComponent(d_in=d_in, d_out=d_out, C=C, bias=module.bias)
                     elif isinstance(module, nn.Embedding):
-                        components[name.replace(".", "-")] = EmbeddingComponent(
+                        component = EmbeddingComponent(
                             vocab_size=module.num_embeddings,
                             embedding_dim=module.embedding_dim,
                             C=C,
@@ -94,7 +114,10 @@ class ComponentModel(nn.Module):
                             f"Module '{name}' matched pattern '{pattern}' but is not nn.Linear or "
                             f"nn.Embedding. Found type: {type(module)}"
                         )
-                    break
+                    replaced_component = ReplacedComponent(original=module, replacement=component)
+
+                    # Maybe a `.get_replaced` method
+                    components[name] = replaced_component
 
         unmatched_patterns = set(target_module_patterns) - matched_patterns
         if unmatched_patterns:
@@ -107,7 +130,8 @@ class ComponentModel(nn.Module):
             raise ValueError(
                 f"No modules found matching target_module_patterns: {target_module_patterns}"
             )
-        return nn.ModuleDict(components)
+
+        return components
 
     @override
     def to(self, *args: Any, **kwargs: Any) -> "ComponentModel":
@@ -133,58 +157,38 @@ class ComponentModel(nn.Module):
         return out
 
     @contextmanager
-    def _replaced_modules(
-        self,
-        components: Mapping[str, LinearComponent | EmbeddingComponent],
-        masks: dict[str, Float[Tensor, "... C"]] | None = None,
-    ):
+    def _replaced_modules(self, masks_BxC: dict[str, Tensor]):
         """Context manager for temporarily replacing modules with components.
 
         Args:
-            components: Dictionary mapping component names to components
-            masks: Optional dictionary mapping component names to masks
+            masks_BxC: Optional dictionary mapping component names to masks
         """
-        old_modules = {}
-
-        # Setup: Save old modules and replace with components
-        for module_name, component in components.items():
-            old_module = self.model.get_submodule(module_name)
-            assert old_module is not None, f"Module {module_name} not found"
-
-            old_modules[module_name] = old_module
-
-            # Set mask if provided
-            if masks is not None:
-                component.mask = masks[module_name]
-
-            # Replace module
-            self.model.set_submodule(module_name, component)
-
+        for module_name, component in self.replaced_components.items():
+            if module_name in masks_BxC:
+                component.forward_mode = "replacement"
+                component.mask_BxC = masks_BxC[module_name]
+            else:
+                component.forward_mode = "original"
+                component.mask_BxC = None
         try:
             yield
         finally:
-            # Teardown: Restore original modules and clear masks
-            for module_name, old_module in old_modules.items():
-                self.model.set_submodule(module_name, old_module)
-
-            # Clear masks from all components
-            for component in components.values():
-                component.mask = None
+            for component in self.replaced_components.values():
+                component.forward_mode = None
+                component.mask_BxC = None
 
     def forward_with_components(
         self,
         *args: Any,
-        components: dict[str, LinearComponent | EmbeddingComponent],
-        masks: dict[str, Float[Tensor, "... C"]] | None = None,
+        masks: dict[str, Float[Tensor, "... C"]],
         **kwargs: Any,
     ) -> Any:
         """Forward pass with temporary component replacements.
 
         Args:
-            components: Dictionary mapping component names to components
             masks: Optional dictionary mapping component names to masks
         """
-        with self._replaced_modules(components, masks):
+        with self._replaced_modules(masks):
             return self(*args, **kwargs)
 
     def forward_with_pre_forward_cache_hooks(
@@ -199,7 +203,7 @@ class ComponentModel(nn.Module):
             Tuple of (model output, cache dictionary)
         """
         cache = {}
-        handles: list[torch.utils.hooks.RemovableHandle] = []
+        handles: list[RemovableHandle] = []
 
         def cache_hook(_: nn.Module, input: tuple[Tensor, ...], param_name: str) -> None:
             cache[param_name] = input[0]
@@ -283,33 +287,57 @@ class ComponentModel(nn.Module):
         comp_model.load_state_dict(model_weights)
         return comp_model, config, out_dir
 
+    def calc_causal_importances(
+        self,
+        pre_weight_acts: dict[str, Tensor],
+        detach_inputs: bool = False,
+        sigmoid_type: SigmoidTypes = "leaky_hard",
+    ) -> tuple[dict[str, Float[Tensor, "... C"]], dict[str, Float[Tensor, "... C"]]]:
+        """Calculate component activations and causal importances in one pass to save memory.
 
-def init_Vs_and_Us_(
-    model: ComponentModel, components: dict[str, LinearComponent | EmbeddingComponent]
-) -> None:
-    """Initialize the V and U matrices.
-    1. Normalize every component to 1.
-    2. Take inner product with original model
-    3. This gives you roughly how much overlap there is with the target model.
-    4. Scale the Us by this value (we can choose either matrix)
-    """
-    # NOTE: This may increase memory usage if done on GPU.
-    for param_name, component in components.items():
-        V = component.V
-        U = component.U
-        target_weight = model.model.get_parameter(param_name + ".weight")
-        if isinstance(component, EmbeddingComponent):
-            target_weight = target_weight.T  # (d_out d_in)
+        Args:
+            pre_weight_acts: The activations before each layer in the target model.
+            detach_inputs: Whether to detach the inputs to the gates.
+            sigmoid_type: Type of sigmoid to use.
 
-        # Make V and U have unit norm in the d_in and d_out dimensions
-        V.data[:] = torch.randn_like(V.data)
-        U.data[:] = torch.randn_like(U.data)
-        V.data[:] = V.data / V.data.norm(dim=-2, keepdim=True)
-        U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
+        Returns:
+            Tuple of (causal_importances, causal_importances_upper_leaky) dictionaries for each layer.
+        """
+        causal_importances = {}
+        causal_importances_upper_leaky = {}
 
-        # Calculate inner products
-        inner = einops.einsum(U, target_weight, "C d_out, d_out d_in -> C d_in")
-        C_norms = einops.einsum(inner, V, "C d_in, d_in C -> C")
+        for param_name in pre_weight_acts:
+            acts_BxD = pre_weight_acts[param_name]
+            gate = self.gates[param_name]
+            V = self.replaced_components[param_name].replacement.V
 
-        # Scale U by the inner product.
-        U.data[:] = U.data * C_norms.unsqueeze(-1)
+            if isinstance(gate, GateMLP):
+                # need to get the inner activation for GateMLP
+                if not acts_BxD.dtype.is_floating_point:
+                    # Embedding layer
+                    inner_acts_BxC = V[acts_BxD]
+                else:
+                    # Linear layer
+                    inner_acts_BxC = einops.einsum(acts_BxD, V, "... d_in, d_in C -> ... C")
+                gate_input = inner_acts_BxC
+            else:
+                gate_input = acts_BxD
+
+            if detach_inputs:
+                gate_input = gate_input.detach()
+
+            gate_output = gate(gate_input)
+
+            if sigmoid_type == "leaky_hard":
+                causal_importances[param_name] = SIGMOID_TYPES["lower_leaky_hard"](gate_output)
+                causal_importances_upper_leaky[param_name] = SIGMOID_TYPES["upper_leaky_hard"](
+                    gate_output
+                )
+            else:
+                # For other sigmoid types, use the same function for both
+                sigmoid_fn = SIGMOID_TYPES[sigmoid_type]
+                causal_importances[param_name] = sigmoid_fn(gate_output)
+                # Use absolute value to ensure upper_leaky values are non-negative for importance minimality loss
+                causal_importances_upper_leaky[param_name] = sigmoid_fn(gate_output).abs()
+
+        return causal_importances, causal_importances_upper_leaky
