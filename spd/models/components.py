@@ -1,5 +1,4 @@
-from collections.abc import Iterable
-from typing import Literal, cast, override
+from typing import Literal, override
 
 import einops
 import torch

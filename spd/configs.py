@@ -115,8 +115,7 @@ class Config(BaseModel):
         description="Type of gate used to calculate the causal importance.",
     )
     gate_hidden_dims: list[NonNegativeInt] = Field(
-        ...,
-        description="Hidden dimensions for the gate used to calculate the causal importance"
+        ..., description="Hidden dimensions for the gate used to calculate the causal importance"
     )
     sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"] = Field(
         default="leaky_hard",
