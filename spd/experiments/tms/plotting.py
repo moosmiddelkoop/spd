@@ -772,7 +772,9 @@ class HiddenLayerPlotter:
         hidden_weights = hidden_weights[order]
 
         # Get target weights
-        target_weights = cast(nn.Linear, target_model.hidden_layers[0]).weight.T.unsqueeze(0).detach().cpu()
+        target_weights = (
+            cast(nn.Linear, target_model.hidden_layers[0]).weight.T.unsqueeze(0).detach().cpu()
+        )
 
         return hidden_weights, target_weights, order
 

@@ -9,10 +9,10 @@ import einops
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch import nn
 import wandb
 from matplotlib import collections as mc
 from pydantic import BaseModel, ConfigDict, PositiveInt, model_validator
+from torch import nn
 from tqdm import tqdm, trange
 
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
