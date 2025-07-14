@@ -695,7 +695,8 @@ def main():
 
         # Generate and save causal importance plots
         gates: dict[str, GateMLP | VectorGateMLP] = {
-            k.removeprefix("gates.").replace("-", "."): v for k, v in model.gates.items()
+            k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
+            for k, v in model.gates.items()
         }
         batch_shape = (1, target_model.config.n_features)
         figs_causal = plot_causal_importance_vals(
