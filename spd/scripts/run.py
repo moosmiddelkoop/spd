@@ -444,10 +444,9 @@ def main(
         if sweep_params_file is None:
             n_agents = len(experiments_list)
         else:
-            if not local:
-                raise ValueError(
-                    "n_agents must be provided if sweep is enabled (unless running with --local)"
-                )
+            assert local, (
+                "n_agents must be provided if sweep is enabled (unless running with --local)"
+            )
 
     # Validate experiment names
     invalid_experiments = [exp for exp in experiments_list if exp not in EXPERIMENT_REGISTRY]
