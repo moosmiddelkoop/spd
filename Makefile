@@ -44,3 +44,9 @@ test:
 .PHONY: test-all
 test-all:
 	uv run pytest tests/ --runslow
+
+.PHONY: coverage
+coverage:
+	uv run pytest tests/ --cov=. --runslow
+	uv run python -m coverage report -m > .cov/coverage.txt
+	uv run python -m coverage html --directory=.cov/html/
