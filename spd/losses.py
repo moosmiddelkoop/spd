@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Literal
 
 import einops
@@ -11,12 +10,7 @@ from torch import Tensor
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, ReplacedComponent
-from spd.utils.component_utils import (
-    SampleFn,
-    bernoulli_ste,
-    calc_stochastic_masks,
-    sample_uniform_to_1,
-)
+from spd.utils.component_utils import calc_stochastic_masks
 from spd.utils.general_utils import calc_kl_divergence_lm
 
 
