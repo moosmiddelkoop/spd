@@ -16,6 +16,8 @@ class ParallelLinear(nn.Module):
 
     def __init__(self, C: int, input_dim: int, output_dim: int):
         super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
         self.W_CDiDo = nn.Parameter(torch.empty(C, input_dim, output_dim))
         self.bias_Do = nn.Parameter(torch.zeros(C, output_dim))
         init_param_(self.W_CDiDo, fan_val=input_dim, nonlinearity="relu")
@@ -23,7 +25,7 @@ class ParallelLinear(nn.Module):
     @override
     def forward(self, x_BxCDi: Tensor) -> Tensor:
         x_BxCDo = einops.einsum(x_BxCDi, self.W_CDiDo, "... C d_in, C d_in d_out -> ... C d_out")
-        x_BxCDo = F.gelu(x_BxCDo + self.bias_Do)
+        x_BxCDo = x_BxCDo + self.bias_Do
         return x_BxCDo
 
 
@@ -34,15 +36,19 @@ class GateMLP(nn.Module):
         super().__init__()
 
         self.hidden_dims = hidden_dims
-        dim_pairs = list(zip([1] + hidden_dims, hidden_dims + [1], strict=True))
-        self.parallel_linears = nn.Sequential(
-            *[ParallelLinear(C, in_dim, out_dim) for in_dim, out_dim in dim_pairs]
-        )
+
+        self.layers = nn.Sequential()
+        for i in range(len(hidden_dims)):
+            input_dim = 1 if i == 0 else hidden_dims[i - 1]
+            output_dim = hidden_dims[i]
+            self.layers.append(ParallelLinear(C, input_dim, output_dim))
+            self.layers.append(nn.GELU())
+        self.layers.append(ParallelLinear(C, hidden_dims[-1], 1))
 
     @override
     def forward(self, x_BxC: Tensor) -> Tensor:
         hidden_BxCDi = einops.rearrange(x_BxC, "... C -> ... C 1")
-        hidden_BxCDi = self.parallel_linears(hidden_BxCDi)
+        hidden_BxCDi = self.layers(hidden_BxCDi)
         assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
         hidden_BxC = hidden_BxCDi[..., 0]
         return hidden_BxC
@@ -55,17 +61,21 @@ class VectorGateMLP(nn.Module):
         super().__init__()
 
         self.hidden_dims = hidden_dims
-        dim_pairs = list(zip([input_dim] + hidden_dims, hidden_dims + [1], strict=True))
 
-        self.parallel_linears = nn.Sequential(
-            *[ParallelLinear(C, in_dim, out_dim) for in_dim, out_dim in dim_pairs]
-        )
+        self.layers = nn.Sequential()
+        for i in range(len(hidden_dims)):
+            input_dim = input_dim if i == 0 else hidden_dims[i - 1]
+            output_dim = hidden_dims[i]
+            self.layers.append(ParallelLinear(C, input_dim, output_dim))
+            self.layers.append(nn.GELU())
+
+        self.layers.append(ParallelLinear(C, hidden_dims[-1], 1))
 
     @override
     def forward(self, x_BxD: Tensor) -> Tensor:
         # this 1 will broadcast out to actual C size, but no need to expand out yet
         hidden_BxCDi = einops.rearrange(x_BxD, "... d_in -> ... 1 d_in")
-        hidden_BxCDi = self.parallel_linears(hidden_BxCDi)
+        hidden_BxCDi = self.layers(hidden_BxCDi)
         assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
         hidden_BxC = hidden_BxCDi[..., 0]
         return hidden_BxC

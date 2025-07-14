@@ -131,7 +131,7 @@ class Config(BaseModel):
         ...,
         description="The number of subcomponents per layer",
     )
-    sample_cfg: UniformSampleConfig | BernoulliSampleConfig = Field(
+    sample_config: UniformSampleConfig | BernoulliSampleConfig = Field(
         discriminator="sample_type",
         description="Configuration for the sample function used for stochastic reconstruction",
     )
