@@ -339,10 +339,10 @@ def compute_target_weight_neuron_contributions(
 
     # Stack mlp_in / mlp_out weights across layers so that einsums can broadcast
     W_in: Float[Tensor, "n_layers d_mlp d_embed"] = torch.stack(
-        [layer.mlp_in.weight for layer in target_model.layers], dim=0
+        [cast(LinearComponent, layer.mlp_in).weight for layer in target_model.layers], dim=0
     )
     W_out: Float[Tensor, "n_layers d_embed d_mlp"] = torch.stack(
-        [layer.mlp_out.weight for layer in target_model.layers], dim=0
+        [cast(LinearComponent, layer.mlp_out).weight for layer in target_model.layers], dim=0
     )
 
     # Compute connection strengths
