@@ -154,6 +154,13 @@ class ComponentModel(nn.Module):
             masks_BxC: Optional dictionary mapping component names to masks
         """
         for module_name, component in self.replaced_components.items():
+            assert component.forward_mode is None, (
+                f"Component must be in pristine state, but forward_mode is {component.forward_mode}"
+            )
+            assert component.mask_BxC is None, (
+                "Component must be in pristine state, but mask_BxC is not None"
+            )
+
             if module_name in masks_BxC:
                 component.forward_mode = "replacement"
                 component.mask_BxC = masks_BxC[module_name]

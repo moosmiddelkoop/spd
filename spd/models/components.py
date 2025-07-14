@@ -213,10 +213,10 @@ class ReplacedComponent(nn.Module):
             raise ValueError("Forward mode not set")
 
         if self.forward_mode == "original":
-            assert self.mask_BxC is None
+            assert self.mask_BxC is None, "Mask should not be present in original mode"
             return self.original(x)
         elif self.forward_mode == "replacement":
-            # mask *can* but doesn't need to be present here
+            # mask *can* but doesn't *need to* be present here
             return self.replacement(x, self.mask_BxC)
 
         raise ValueError(f"Invalid forward mode: {self.forward_mode}")
