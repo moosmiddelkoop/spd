@@ -144,7 +144,7 @@ class EmbeddingComponent(nn.Module):
         NOTE: Unlike a LinearComponent, here we alter the mask with an instance attribute rather
         than passing it in the forward pass. This is just because we only use this component in the
         newer lm_decomposition.py setup which does monkey-patching of the modules rather than using
-        a SPDModel object.
+        a SPDModel object. TESTING
 
         Args:
             x: Input tensor of token indices
