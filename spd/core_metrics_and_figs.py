@@ -151,7 +151,7 @@ def create_figures(
 
         fig_dict["UV_matrices"] = plot_UV_matrices(
             components={k: v.replacement for k, v in model.replaced_components.items()},
-            all_perm_indices=all_perm_indices
+            all_perm_indices=all_perm_indices,
         )
 
     if create_user_figures is not None:

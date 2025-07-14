@@ -1,15 +1,9 @@
-from collections.abc import Mapping
-from typing import cast
-
-import einops
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 from torch.utils.data import DataLoader
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
-from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
 from spd.utils.general_utils import extract_batch_data
 
 

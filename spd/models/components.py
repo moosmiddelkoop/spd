@@ -94,7 +94,9 @@ class LinearComponent(nn.Module):
         return einops.einsum(self.V, self.U, "d_in C, C d_out -> d_out d_in")
 
     @override
-    def forward(self, x: Float[Tensor, "... d_in"], mask_BxD: Tensor | None = None) -> Float[Tensor, "... d_out"]:
+    def forward(
+        self, x: Float[Tensor, "... d_in"], mask_BxD: Tensor | None = None
+    ) -> Float[Tensor, "... d_out"]:
         """Forward pass through V and U matrices.
 
         Args:
@@ -114,6 +116,7 @@ class LinearComponent(nn.Module):
             out += self.bias
 
         return out
+
 
 class EmbeddingComponent(nn.Module):
     """An efficient embedding component for SPD that avoids one-hot encoding."""
@@ -141,7 +144,9 @@ class EmbeddingComponent(nn.Module):
         )
 
     @override
-    def forward(self, x: Float[Tensor, "batch pos"], mask_BxC: Tensor | None) -> Float[Tensor, "batch pos embedding_dim"]:
+    def forward(
+        self, x: Float[Tensor, "batch pos"], mask_BxC: Tensor | None
+    ) -> Float[Tensor, "batch pos embedding_dim"]:
         """Forward through the embedding component using nn.Embedding for efficient lookup
 
         NOTE: Unlike a LinearComponent, here we alter the mask with an instance attribute rather
@@ -162,6 +167,7 @@ class EmbeddingComponent(nn.Module):
             component_acts, self.U, "batch pos C, ... C embedding_dim -> batch pos embedding_dim"
         )
         return out
+
 
 # TODO(oli) make this the only public class here
 class ReplacedComponent(nn.Module):
@@ -205,7 +211,6 @@ class ReplacedComponent(nn.Module):
 
         # Scale U by the inner product.
         U.data[:] = U.data * C_norms.unsqueeze(-1)
-
 
     @override
     def forward(self, x: Tensor) -> Tensor:

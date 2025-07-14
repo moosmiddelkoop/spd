@@ -13,7 +13,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, LinearComponent, ReplacedComponent
+from spd.models.components import EmbeddingComponent, LinearComponent
 from spd.models.sigmoids import SigmoidTypes
 
 
