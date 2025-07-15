@@ -18,7 +18,6 @@ import yaml
 
 from spd.scripts.run import (
     generate_commands,
-    generate_run_id,
     main,
     resolve_sweep_params_path,
 )
@@ -50,19 +49,6 @@ class TestCommandGeneration:
     generate_commands() with actual config loading and JSON serialization.
     Grid combination logic is tested separately in test_grid_search.py.
     """
-
-    def test_generate_run_id_format(self):
-        """Test that generated run IDs have the expected format."""
-        run_id = generate_run_id()
-
-        # Should start with 'run_' and have timestamp format
-        assert run_id.startswith("run_")
-        assert len(run_id) == 19  # run_YYYYMMDD_HHMMSS
-
-        # Should be parseable as a timestamp format
-        timestamp_part = run_id[4:]  # Remove 'run_' prefix
-        assert len(timestamp_part) == 15  # YYYYMMDD_HHMMSS
-        assert "_" in timestamp_part
 
     def test_resolve_sweep_params_path_simple_name(self):
         """Test resolving sweep params path with simple filename."""
