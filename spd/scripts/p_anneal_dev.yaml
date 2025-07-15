@@ -1,0 +1,9 @@
+# Params used for all experiments
+global:
+  p_anneal_start_frac:
+    values: [0.25, 1]
+  p_anneal_final_p:
+    values: [1]
+  pnorm:
+    values: [2] #overwriting here because smallest TMS setting uses pnorm=1
+
