@@ -485,7 +485,7 @@ def main(
 
     # Print clean summary after wandb messages
     logger.values(
-        msg="workspace urls per experiment:",
+        msg="workspace urls per experiment",
         data={
             **workspace_urls,
             **({"Aggregated Report": report_url} if report_url else {}),
