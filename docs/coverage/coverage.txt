@@ -1,0 +1,49 @@
+Name                                                   Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------------
+spd/__init__.py                                            0      0   100%
+spd/configs.py                                            90      9    90%   261-262, 264-266, 274, 276, 278, 282
+spd/core_metrics_and_figs.py                              54     22    59%   56-59, 64-73, 77-79, 87-100, 137-180
+spd/data.py                                               73     73     0%   1-212
+spd/experiments/__init__.py                                0      0   100%
+spd/experiments/lm/__init__.py                             0      0   100%
+spd/experiments/lm/app.py                                172    172     0%   9-400
+spd/experiments/lm/component_viz.py                       27     27     0%   5-73
+spd/experiments/lm/lm_decomposition.py                    64     64     0%   3-157
+spd/experiments/lm/play.py                                28     28     0%   4-113
+spd/experiments/lm/plot_embedding_components.py           90     90     0%   3-173
+spd/experiments/resid_mlp/__init__.py                      0      0   100%
+spd/experiments/resid_mlp/models.py                       95     26    73%   109, 120-133, 159-192
+spd/experiments/resid_mlp/plotting.py                    122    122     0%   1-266
+spd/experiments/resid_mlp/resid_mlp_dataset.py            41     20    51%   63-74, 91-100, 105-111, 115-118
+spd/experiments/resid_mlp/resid_mlp_decomposition.py      73     73     0%   3-154
+spd/experiments/resid_mlp/resid_mlp_interp.py            273    273     0%   1-751
+spd/experiments/resid_mlp/train_resid_mlp.py             142    142     0%   3-347
+spd/experiments/tms/__init__.py                            0      0   100%
+spd/experiments/tms/models.py                             84     24    71%   47, 85-93, 112-143
+spd/experiments/tms/plotting.py                          437    437     0%   7-1045
+spd/experiments/tms/tms_decomposition.py                  76     76     0%   7-146
+spd/experiments/tms/train_tms.py                         198    120    39%   42, 47-49, 58, 62, 101-105, 113, 122-143, 157-173, 208-374, 378-471
+spd/log.py                                                45      2    96%   49, 83
+spd/losses.py                                            144     57    60%   37-61, 91-100, 149, 170, 246-281, 393-400, 404-414, 418-433
+spd/models/__init__.py                                     0      0   100%
+spd/models/component_model.py                            141     30    79%   80, 88, 94, 119, 216-226, 238-270, 288
+spd/models/components.py                                  74      7    91%   24, 136, 153-161
+spd/models/sigmoids.py                                    38      7    82%   43, 47, 51, 63, 67, 77-78
+spd/plotting.py                                          199    174    13%   31-51, 78-127, 162-216, 223-253, 266-287, 295-345, 360-375, 382-409, 425-439
+spd/registry.py                                           10      0   100%
+spd/run_spd.py                                           132     44    67%   33-49, 143-147, 210-214, 217, 225-250, 257-260, 267-271
+spd/scripts/__init__.py                                    0      0   100%
+spd/scripts/run.py                                       174     22    87%   161-180, 186-259, 533, 537
+spd/settings.py                                            5      0   100%
+spd/spd_types.py                                          20      2    90%   21-23
+spd/utils/__init__.py                                      0      0   100%
+spd/utils/component_utils.py                              61     25    59%   59-114, 144, 159-162
+spd/utils/data_utils.py                                   91      5    95%   45, 49-50, 130, 144
+spd/utils/general_utils.py                               121     35    71%   43, 56, 72, 75, 84, 126, 158, 160, 165-169, 181, 194-199, 232-238, 264-269, 275, 285-289
+spd/utils/git_utils.py                                    25     18    28%   26-98
+spd/utils/module_utils.py                                 25      4    84%   26-27, 41-42
+spd/utils/run_utils.py                                    60     41    32%   27-30, 42-51, 55-56, 60-61, 65, 69, 73-74, 86-99, 121-138
+spd/utils/slurm_utils.py                                  55     43    22%   21-23, 46-101, 113-118, 141-181, 193-198, 208-223
+spd/utils/wandb_utils.py                                  52     36    31%   23-36, 47-65, 78-81, 98-116, 121-129
+------------------------------------------------------------------------------------
+TOTAL                                                   3611   2350    35%
