@@ -11,6 +11,7 @@ SigmoidTypes = Literal[
     "upper_leaky_hard",
     "lower_leaky_hard",
     "swish_hard",
+    "scaled",
 ]
 
 
@@ -82,6 +83,15 @@ def swish_hard_sigmoid(
     )
 
 
+def scaled_sigmoid(x: Tensor, epsilon: float = 0.01) -> Tensor:
+    """A sigmoid function that maps input to range (-epsilon, 1+epsilon).
+    
+    Standard sigmoid maps to (0, 1), this version scales the output to
+    (-epsilon, 1+epsilon) for better gradient flow.
+    """
+    return (1 + 2 * epsilon) * torch.sigmoid(x) - epsilon
+
+
 SIGMOID_TYPES = {
     "normal": normal_sigmoid,
     "hard": hard_sigmoid,
@@ -89,4 +99,5 @@ SIGMOID_TYPES = {
     "upper_leaky_hard": upper_leaky_hard_sigmoid,
     "lower_leaky_hard": lower_leaky_hard_sigmoid,
     "swish_hard": swish_hard_sigmoid,
+    "scaled": scaled_sigmoid,
 }

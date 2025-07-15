@@ -1,0 +1,6 @@
+# Params used for all experiments
+global:
+  sigmoid_type:
+    values: ["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"]
+  seed:
+    values: [0,1,2,3]
