@@ -32,6 +32,7 @@ This repository implements methods from two key research papers on parameter dec
 - Useful reading for understanding the implementation details, though may be outdated.
 
 **Attribution-based Parameter Decomposition (APD)** - [`papers/Attribution_based_Parameter_Decomposition/apd_paper.md`](papers/Attribution_based_Parameter_Decomposition/apd_paper.md)
+- This paper was the first to introduce the concept of linear parameter decomposition. It's the precursor to SPD.
 - Contains **high-level conceptual insights** of parameter decompositions
 - Provides theoretical foundations and broader context for parameter decomposition approaches
 - Useful for understanding the conceptual framework and motivation behind SPD
@@ -202,4 +203,4 @@ spd-run --no-create_report                   # Skip W&B report creation
 - Use branch names `refactor/X` or `feature/Y` or `fix/Z`.
 
 ## Coding Guidelines
-- Always use the PEP 604 typing format of unions everywhere and no "Optional".
+- see [STYLE.md](./STYLE.md)
