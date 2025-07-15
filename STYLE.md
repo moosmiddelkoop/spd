@@ -1,15 +1,21 @@
 # Code Style Guide
 
 TLDR:
-- simple, straightforward code
-- fail fast - no defensive programming
-- use einops, jaxtyping, and shape assertions for tensor shape clarity
+- prioritise simple, straightforward code. Our users are researchers, often with little coding experience.
+- safety: use types, einops, jaxtyping, and liberal assertions.
+- fail fast - if something is wrong, the code should fail, not recover silently.
 
 
-## Core Principles
+## Design / Architecture
+
+We want to decouple metrics and analysis from the core codebase as much as possible, so that users can easily define their own and we don't need to make PRs to the codebase. See how this is done for core_metrics_and_figs.py.
 
 ### Fail Fast (Negative Space Programming)
 Code should fail immediately when assumptions are violated, preventing bugs from propagating.
+
+If there's an assumption you're making while writing code, assert it.
+- If you were right, then it won't matter
+- If you were wrong, then the code **should** fail.
 
 ```python
 # BAD - silently handles unexpected state
@@ -23,16 +29,11 @@ def process_activations(acts):
     assert acts.dim() == 3, f"Expected 3D tensor, got {acts.dim()}D"
 ```
 
-In practice:
-- Use assertions liberally
-- Use tensor shape assertions liberally
-- Define types as tightly as possible
-- Log warnings for edge cases
-- Don't add soft failovers unless they're very much expected
-
 ## Type Annotations
-- Don't add type annotations when they're redundant or obvious
 - Use jaxtyping for tensor shapes (though for now we don't do runtime checking)
+- Always use the PEP 604 typing format of `|` for unions and `type | None` over `Optional`.
+- Use `dict`, `list` and `tuple` not `Dict`, `List` and `Tuple`
+- Don't add type annotations when they're redundant. (i.e. `my_thing: Thing = Thing()` or `name: str = "John Doe"`)
 
 ## Tensor Operations
 - Try to use einops by default for clarity.
@@ -41,26 +42,29 @@ In practice:
 
 ## Comments
 
-Your first instinct should be: "How can I write this code so it's clear without comments?"
+Your first instinct should be: "If I couldn't write any comments, how would I write this code?"
 
-### Don't Write Obvious Comments
+**Don't**: Write Obvious Comments
+**Do**: Write comments for complex logic
 
 ```python
 # BAD
 # get dataloader
 dataloader = get_dataloader(config)
-
-# make a tensor of all zeros
-mask = torch.zeros(...)
 ```
 
-### Do Comment Complex Logic
-
-```python
+```
 # GOOD
 # We need to mask out future positions for causal attention
 # Upper triangular matrix excludes the diagonal (hence k=1)
 causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1)
 ```
 
-Watch: [Don't Write Comments (YouTube)](https://www.youtube.com/watch?v=Bf7vDBBOBUA)
+(See: [Don't Write Comments (YouTube)](https://www.youtube.com/watch?v=Bf7vDBBOBUA))
+
+
+### Testing
+
+The point of tests in this codebase is to ensure that the code is working as expected, not to prevent production outages - there's no deployment here.
+Therefore, don't worry about lots of larger integration/end-to-end tests. These often require too much overhead for what it's worth in our case, and
+this codebase is interactively run so often that issues will likely be caught by the user at very little cost.
