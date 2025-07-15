@@ -9,10 +9,12 @@ in test_grid_search.py and test_run_sweep_params.py respectively.
 
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedParameter=false
 
+import importlib.resources
 import json
 from unittest.mock import Mock, patch
 
 import pytest
+import yaml
 
 from spd.scripts.run import (
     generate_commands,
@@ -23,31 +25,10 @@ from spd.scripts.run import (
 
 
 def get_valid_tms_config():
-    """Get a valid TMS experiment config."""
-    return {
-        "wandb_project": "test",
-        "C": 10,
-        "n_mask_samples": 100,
-        "target_module_patterns": ["layer1"],
-        "importance_minimality_coeff": 0.1,
-        "faithfulness_coeff": 1.0,
-        "stochastic_recon_coeff": 1.0,
-        "stochastic_recon_layerwise_coeff": 1.0,
-        "pnorm": 2.0,
-        "output_loss_type": "mse",
-        "lr": 0.001,
-        "steps": 1000,
-        "batch_size": 32,
-        "n_eval_steps": 100,
-        "print_freq": 50,
-        "pretrained_model_class": "spd.experiments.tms.models.TMSModel",
-        "pretrained_model_path": "test_model.pth",
-        "task_config": {
-            "task_name": "tms",
-            "feature_probability": 0.05,
-            "data_generation_type": "at_least_zero_active",
-        },
-    }
+    """get the *raw* data of a valid TMS experiment config."""
+    import spd.experiments.tms
+
+    return yaml.safe_load(importlib.resources.read_text(spd.experiments.tms, "tms_5-2_config.yaml"))
 
 
 def get_valid_resid_mlp_config():
@@ -129,7 +110,7 @@ class TestCommandGeneration:
         config_json = json.loads(command[json_start:json_end])
 
         assert config_json["wandb_project"] == "test-project"  # Should be overridden
-        assert config_json["C"] == 10
+        assert config_json["C"] == 20
         assert config_json["task_config"]["task_name"] == "tms"
 
     @patch("spd.scripts.run.load_config")
