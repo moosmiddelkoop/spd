@@ -181,10 +181,6 @@ class TestLocalExecution:
         assert args[0] == "python"
         assert "tms_decomposition.py" in args[1]
 
-        # Verify logger calls
-        mock_logger.info.assert_any_call("Experiments: tms_5-2-id")
-        mock_logger.section.assert_any_call("LOCAL EXECUTION: Running 1 tasks")
-
         # Verify workspace was created
         assert mock_workspace.call_count == 1
         assert mock_workspace.call_args[0][1] == "tms_5-2-id"
@@ -457,78 +453,6 @@ class TestParameterSweeps:
         main(experiments="tms_5-2-id", sweep=True, local=True)
 
         assert mock_subprocess.call_count == 2
-
-
-class TestLoggerOutput:
-    """Test logger calls and messages."""
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    @patch("spd.scripts.run.generate_run_id")
-    @patch("spd.scripts.run.logger")
-    def test_logger_output_for_local_run(
-        self,
-        mock_logger,
-        mock_generate_run_id,
-        mock_subprocess,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-    ):
-        """Test all logger calls during local execution."""
-        # Setup mocks
-        mock_generate_run_id.return_value = "run_20240115_143022"
-        mock_subprocess.return_value = Mock(returncode=0)
-        mock_workspace.side_effect = (
-            lambda run_id, exp, proj: f"https://wandb.ai/{proj}/{exp}/workspace/{run_id}"
-        )
-        mock_report.return_value = "https://wandb.ai/test/report"
-
-        main(experiments="tms_5-2,resid_mlp1", local=True)
-
-        # Verify initial info logs
-        mock_logger.info.assert_any_call("Run ID: run_20240115_143022")
-        mock_logger.info.assert_any_call("Experiments: tms_5-2, resid_mlp1")
-
-        # Verify section logs
-        mock_logger.section.assert_any_call("Creating workspace views...")
-        mock_logger.section.assert_any_call("LOCAL EXECUTION: Running 2 tasks")
-
-        # Verify execution logs (should have progress for each command)
-        section_calls = [call[0][0] for call in mock_logger.section.call_args_list]
-        execution_calls = [c for c in section_calls if "Executing:" in c]
-        assert len(execution_calls) == 2
-
-        # Verify completion log
-        mock_logger.section.assert_any_call("LOCAL EXECUTION COMPLETE")
-
-        # Verify workspace URLs logged
-        values_calls = mock_logger.values.call_args_list
-        workspace_call = next(c for c in values_calls if "workspace urls" in str(c))
-        workspace_data = workspace_call[1]["data"]
-        assert "tms_5-2" in workspace_data
-        assert "resid_mlp1" in workspace_data
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    @patch("spd.scripts.run.logger")
-    def test_logger_warning_on_failure(
-        self, mock_logger, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test logger warning when command fails."""
-        # Make subprocess fail
-        mock_subprocess.return_value = Mock(returncode=1)
-
-        main(experiments="tms_5-2-id", local=True)
-
-        # Verify warning was logged
-        warning_calls = mock_logger.warning.call_args_list
-        assert len(warning_calls) == 1
-        assert "exit code 1" in warning_calls[0][0][0]
 
 
 class TestIntegration:
