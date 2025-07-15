@@ -203,4 +203,4 @@ spd-run --no-create_report                   # Skip W&B report creation
 - Use branch names `refactor/X` or `feature/Y` or `fix/Z`.
 
 ## Coding Guidelines
-- see [STYLE.md](./STYLE.md)
+see @STYLE.md
