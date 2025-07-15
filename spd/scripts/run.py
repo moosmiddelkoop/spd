@@ -296,10 +296,10 @@ def generate_commands(
             config_with_overrides: Config = Config(**base_config_dict)
 
             # Convert to JSON string
-            config_json: str = f"json:{json.dumps(config_with_overrides.model_dump(mode='json'))}"
+            config_json = f"json:{json.dumps(config_with_overrides.model_dump(mode='json'))}"
 
             # Use run_id for sweep_id and experiment name for evals_id
-            command: str = (
+            command = (
                 f"python {decomp_script} '{config_json}' "
                 f"--sweep_id {run_id} --evals_id {experiment}"
             )
@@ -425,7 +425,7 @@ def main(
         # Use custom W&B project
         spd-run --experiments tms_5-2 --project my-spd-project
     """
-    # Set logger format
+
     logger.set_format("console", log_format)
 
     # Determine the sweep parameters file

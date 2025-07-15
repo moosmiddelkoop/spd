@@ -715,7 +715,7 @@ def main():
             sigmoid_type=config.sigmoid_type,
         )[0]
 
-        fname_importances: Path = (
+        fname_importances = (
             out_dir / f"causal_importance_upper_leaky_{n_layers}layers_{wandb_id}.png"
         )
         figs_causal["causal_importances_upper_leaky"].savefig(

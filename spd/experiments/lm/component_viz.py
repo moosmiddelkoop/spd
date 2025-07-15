@@ -2,8 +2,6 @@
 Vizualises the components of the model.
 """
 
-from pathlib import Path
-
 import torch
 
 from spd.configs import LMTaskConfig
@@ -63,7 +61,7 @@ def main(path: ModelPath) -> None:
         mean_component_activation_counts=mean_component_activation_counts,
     )
     # Save the entire figure once
-    save_path: Path = out_dir / "modules_mean_component_activation_counts.png"
+    save_path = out_dir / "modules_mean_component_activation_counts.png"
     fig.savefig(save_path)
     logger.info(f"Saved combined plot to {save_path}")
 

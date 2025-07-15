@@ -139,7 +139,7 @@ def plot_embedding_mask_heatmap(masks: Float[Tensor, "vocab C"], out_dir: Path) 
         ax.set_ylabel(f"Freq for token {token_id}")
 
     fig.suptitle(f"Mask Values (> {threshold}) for Each Token")
-    fname_hist: Path = out_dir / "first_token_histogram.png"
+    fname_hist = out_dir / "first_token_histogram.png"
     fig.savefig(fname_hist, dpi=300)
     fig.savefig(fname_hist.with_suffix(".svg"))  # vector graphic for zooming
     logger.info(f"Saved first token histogram to {fname_hist} and .svg")
