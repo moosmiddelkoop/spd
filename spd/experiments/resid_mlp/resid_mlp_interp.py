@@ -15,7 +15,7 @@ from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
 from spd.models.components import LinearComponent
 from spd.plotting import plot_causal_importance_vals
-from spd.utils.general_utils import get_device, set_seed
+from spd.utils.general_utils import get_device, runtime_cast, set_seed
 from spd.utils.run_utils import get_output_dir
 
 
@@ -633,10 +633,10 @@ def main():
         assert isinstance(target_model, ResidualMLP)
         n_layers = target_model.config.n_layers
 
-        components = {}
-        for k, v in model.replaced_components.items():
-            assert isinstance(v, LinearComponent)
-            components[k] = v.replacement
+        components = {
+            k: runtime_cast(LinearComponent, v.replacement)
+            for k, v in model.replaced_components.items()
+        }
 
         fig = plot_spd_feature_contributions_truncated(
             components=components,
