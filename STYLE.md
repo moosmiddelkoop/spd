@@ -17,18 +17,6 @@ If there's an assumption you're making while writing code, assert it.
 - If you were right, then it won't matter
 - If you were wrong, then the code **should** fail.
 
-```python
-# BAD - silently handles unexpected state
-def process_activations(acts):
-    if acts is None:
-        return torch.zeros(hidden_size)  # Hides the problem
-    
-# GOOD - fail immediately with clear error
-def process_activations(acts):
-    assert acts is not None, "Activations cannot be None"
-    assert acts.dim() == 3, f"Expected 3D tensor, got {acts.dim()}D"
-```
-
 ## Type Annotations
 - Use jaxtyping for tensor shapes (though for now we don't do runtime checking)
 - Always use the PEP 604 typing format of `|` for unions and `type | None` over `Optional`.
@@ -47,14 +35,14 @@ Your first instinct should be: "If I couldn't write any comments, how would I wr
 **Don't**: Write Obvious Comments
 **Do**: Write comments for complex logic
 
+**Bad:**
 ```python
-# BAD
 # get dataloader
 dataloader = get_dataloader(config)
 ```
 
-```
-# GOOD
+**Good:**
+```python
 # We need to mask out future positions for causal attention
 # Upper triangular matrix excludes the diagonal (hence k=1)
 causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1)
