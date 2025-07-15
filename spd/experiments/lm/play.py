@@ -85,11 +85,11 @@ eos_token_id = 1
 # logits, _ = ss_model.forward(input_ids, components=gate_proj_components)
 logits = comp_model.forward(input_ids).logits
 logger.values(
-    dict(
-        inputs_shape=input_ids.shape,
-        logits=logits,
-        logits_shape=logits.shape,
-    )
+    {
+        "inputs_shape": input_ids.shape,
+        "logits": logits
+        "logits_shape": logits.shape,
+    }
 )
 
 logits = comp_model.forward_with_components(input_ids, components=gate_proj_components)
