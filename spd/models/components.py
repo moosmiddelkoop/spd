@@ -16,15 +16,14 @@ class ParallelLinear(nn.Module):
 
     def __init__(self, C: int, input_dim: int, output_dim: int):
         super().__init__()
-        self.W_CDiDo = nn.Parameter(torch.empty(C, input_dim, output_dim))
-        self.bias_Do = nn.Parameter(torch.zeros(C, output_dim))
-        init_param_(self.W_CDiDo, fan_val=input_dim, nonlinearity="relu")
+        self.W = nn.Parameter(torch.empty(C, input_dim, output_dim))
+        self.b = nn.Parameter(torch.zeros(C, output_dim))
+        init_param_(self.W, fan_val=input_dim, nonlinearity="relu")
 
     @override
-    def forward(self, x_BxCDi: Tensor) -> Tensor:
-        x_BxCDo = einops.einsum(x_BxCDi, self.W_CDiDo, "... C d_in, C d_in d_out -> ... C d_out")
-        x_BxCDo = F.gelu(x_BxCDo + self.bias_Do)
-        return x_BxCDo
+    def forward(self, x: Float[Tensor, "... C d_in"]) -> Float[Tensor, "... C d_out"]:
+        x = einops.einsum(x, self.W, "... C d_in, C d_in d_out -> ... C d_out")
+        return F.gelu(x + self.b)
 
 
 class GateMLP(nn.Module):
@@ -40,12 +39,11 @@ class GateMLP(nn.Module):
         )
 
     @override
-    def forward(self, x_BxC: Tensor) -> Tensor:
-        hidden_BxCDi = einops.rearrange(x_BxC, "... C -> ... C 1")
-        hidden_BxCDi = self.parallel_linears(hidden_BxCDi)
-        assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
-        hidden_BxC = hidden_BxCDi[..., 0]
-        return hidden_BxC
+    def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
+        hidden = einops.rearrange(x, "... C -> ... C 1")
+        out: Float[Tensor, "... C 1"] = self.parallel_linears(hidden)
+        assert out.shape[-1] == 1, "Last dimension should be 1 after the final layer"
+        return out[..., 0]
 
 
 class VectorGateMLP(nn.Module):
@@ -62,13 +60,12 @@ class VectorGateMLP(nn.Module):
         )
 
     @override
-    def forward(self, x_BxD: Tensor) -> Tensor:
+    def forward(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... C"]:
         # this 1 will broadcast out to actual C size, but no need to expand out yet
-        hidden_BxCDi = einops.rearrange(x_BxD, "... d_in -> ... 1 d_in")
-        hidden_BxCDi = self.parallel_linears(hidden_BxCDi)
-        assert hidden_BxCDi.shape[-1] == 1, "Last dimension should be 1 after the final layer"
-        hidden_BxC = hidden_BxCDi[..., 0]
-        return hidden_BxC
+        hidden = einops.rearrange(x, "... d_in -> ... 1 d_in")
+        out: Float[Tensor, "... C 1"] = self.parallel_linears(hidden)
+        assert out.shape[-1] == 1, "Last dimension should be 1 after the final layer"
+        return out[..., 0]
 
 
 class LinearComponent(nn.Module):
