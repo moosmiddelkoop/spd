@@ -18,6 +18,7 @@ Usage:
 import copy
 import itertools
 import json
+import shlex
 import subprocess
 import tempfile
 from datetime import datetime
@@ -351,7 +352,6 @@ def run_commands_locally(commands: list[str]) -> None:
     Args:
         commands: List of shell commands to execute
     """
-    import shlex
 
     logger.section(f"LOCAL EXECUTION: Running {len(commands)} tasks")
 
