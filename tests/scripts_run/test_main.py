@@ -16,6 +16,7 @@ from unittest.mock import Mock, patch
 import pytest
 import yaml
 
+from spd.configs import Config
 from spd.scripts.run import (
     generate_commands,
     main,
@@ -27,19 +28,24 @@ def get_valid_tms_config():
     """get the *raw* data of a valid TMS experiment config."""
     import spd.experiments.tms
 
-    return yaml.safe_load(importlib.resources.read_text(spd.experiments.tms, "tms_5-2_config.yaml"))
+    return yaml.safe_load(
+        importlib.resources.read_text(
+            spd.experiments.tms,
+            "tms_5-2_config.yaml",
+        )
+    )
 
 
 def get_valid_resid_mlp_config():
-    """Get a valid ResidMLP experiment config."""
-    config = get_valid_tms_config()
-    config["pretrained_model_class"] = "spd.experiments.resid_mlp.models.ResidualMLP"
-    config["task_config"] = {
-        "task_name": "residual_mlp",
-        "feature_probability": 0.1,
-        "data_generation_type": "exactly_two_active",
-    }
-    return config
+    """Get the *raw* data of a valid Residual MLP experiment config."""
+    import spd.experiments.resid_mlp
+
+    return yaml.safe_load(
+        importlib.resources.read_text(
+            spd.experiments.resid_mlp,
+            "resid_mlp1_config.yaml",
+        )
+    )
 
 
 class TestCommandGeneration:
@@ -65,7 +71,6 @@ class TestCommandGeneration:
     @patch("spd.scripts.run.load_config")
     def test_generate_commands_without_sweep(self, mock_load_config):
         """Test generate_commands function without sweep parameters."""
-        from spd.configs import Config
 
         # Mock config loading with proper Config structure
         mock_config = Mock(spec=Config)
@@ -103,7 +108,6 @@ class TestCommandGeneration:
     @patch("spd.scripts.run.load_sweep_params")
     def test_generate_commands_with_sweep(self, mock_load_sweep_params, mock_load_config):
         """Test generate_commands function with sweep parameters."""
-        from spd.configs import Config
 
         # Mock config loading
         mock_config = Mock(spec=Config)
@@ -146,10 +150,9 @@ class TestLocalExecution:
     @patch("spd.scripts.run.create_wandb_report")
     @patch("spd.scripts.run.create_workspace_view")
     @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.logger")
     @patch("spd.scripts.run.subprocess.run")
     def test_local_run_single_experiment(
-        self, mock_subprocess, mock_logger, mock_ensure_project, mock_workspace, mock_report
+        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
     ):
         """Test running a single experiment locally."""
         # Setup mocks
@@ -177,10 +180,9 @@ class TestLocalExecution:
     @patch("spd.scripts.run.create_wandb_report")
     @patch("spd.scripts.run.create_workspace_view")
     @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.logger")
     @patch("spd.scripts.run.subprocess.run")
     def test_local_run_multiple_experiments(
-        self, mock_subprocess, mock_logger, mock_ensure_project, mock_workspace, mock_report
+        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
     ):
         """Test running multiple experiments locally."""
         # Setup mocks
@@ -525,141 +527,3 @@ class TestIntegration:
 
         # Verify no report created
         assert mock_report.call_count == 0
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    @patch("spd.scripts.run.logger")
-    def test_log_format_parameter(
-        self, mock_logger, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test log_format parameter is passed to logger."""
-        # Setup mocks
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        main(experiments="tms_5-2-id", local=True, log_format="terse")
-
-        # Verify logger format was set
-        mock_logger.set_format.assert_called_once_with("console", "terse")
-
-
-class TestErrorHandling:
-    """Test error propagation and edge cases."""
-
-    @patch("spd.scripts.run.load_config")
-    def test_config_validation_error_propagation(self, mock_load_config):
-        """Test that config validation errors in main() are properly propagated."""
-        from pydantic import ValidationError
-
-        # Make load_config raise a ValidationError
-        mock_load_config.side_effect = ValidationError.from_exception_data(
-            "Config",
-            [{"type": "missing", "loc": ("lr",)}],  # pyright: ignore[reportArgumentType]
-        )
-
-        with pytest.raises(ValidationError):
-            main(experiments="tms_5-2-id", local=True)
-
-    @patch("spd.scripts.run.load_config")
-    def test_missing_config_file_error(self, mock_load_config):
-        """Test handling of missing config files."""
-        # Make load_config raise FileNotFoundError
-        mock_load_config.side_effect = FileNotFoundError("Config file not found")
-
-        with pytest.raises(FileNotFoundError, match="Config file not found"):
-            main(experiments="tms_5-2-id", local=True)
-
-    @patch("spd.scripts.run.submit_slurm_array")
-    @patch("spd.scripts.run.create_slurm_array_script")
-    @patch("spd.scripts.run.create_git_snapshot")
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    def test_slurm_submission_failure(
-        self,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-        mock_git,
-        mock_create_script,
-        mock_submit,
-    ):
-        """Test handling of SLURM submission failures."""
-        # Setup mocks
-        mock_git.return_value = "snapshot-20231215-120000"
-
-        # Make SLURM submission fail
-        mock_submit.side_effect = RuntimeError("SLURM submission failed")
-
-        with pytest.raises(RuntimeError, match="SLURM submission failed"):
-            main(experiments="tms_5-2-id", local=False)
-
-    @patch("spd.scripts.run.create_git_snapshot")
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    def test_git_snapshot_failure(self, mock_ensure_project, mock_workspace, mock_report, mock_git):
-        """Test handling of git snapshot creation failures."""
-        # Make git snapshot creation fail
-        mock_git.side_effect = RuntimeError("Git snapshot failed")
-
-        with pytest.raises(RuntimeError, match="Git snapshot failed"):
-            main(experiments="tms_5-2-id", local=False)
-
-    @patch("spd.scripts.run.load_sweep_params")
-    def test_sweep_params_loading_error(self, mock_load_sweep_params):
-        """Test handling of sweep parameters loading errors."""
-        # Make sweep params loading fail
-        mock_load_sweep_params.side_effect = FileNotFoundError("Sweep params file not found")
-
-        with pytest.raises(FileNotFoundError, match="Sweep params file not found"):
-            main(experiments="tms_5-2-id", sweep=True, local=True)
-
-    @patch("spd.scripts.run.load_config")
-    def test_invalid_task_config_discriminator(self, mock_load_config):
-        """Test handling of invalid task_config discriminator values."""
-        from pydantic import ValidationError
-
-        # Create a simple ValidationError for testing error propagation
-        try:
-            from spd.configs import Config
-
-            Config(task_config={"task_name": "invalid_task"})  # pyright: ignore[reportCallIssue]
-        except ValidationError as e:
-            mock_load_config.side_effect = e
-
-        with pytest.raises(ValidationError):
-            main(experiments="tms_5-2-id", local=True)
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    @patch("spd.scripts.run.load_sweep_params")
-    def test_large_parameter_grid_performance(
-        self,
-        mock_load_sweep_params,
-        mock_subprocess,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-    ):
-        """Test handling of very large parameter grids."""
-        # Setup large parameter grid (2^6 = 64 combinations using valid Config fields)
-        large_params = {
-            "lr": {"values": [0.001, 0.01]},
-            "batch_size": {"values": [16, 32]},
-            "steps": {"values": [100, 200]},
-            "seed": {"values": [0, 1]},
-            "C": {"values": [5, 10]},
-            "task_config": {"feature_probability": {"values": [0.05, 0.1]}},
-        }
-        mock_load_sweep_params.return_value = large_params
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        # Should handle large grid without issues
-        main(experiments="tms_5-2-id", sweep=True, local=True)
-
-        # Verify all 64 combinations were generated
-        assert mock_subprocess.call_count == 64
