@@ -114,7 +114,7 @@ class Config(BaseModel):
         description="Number of hidden neurons in the MLP used to calculate the causal importance."
         "If 0, use a single-layer gate.",
     )
-    sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"] = Field(
+    sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard", "scaled"] = Field(
         default="leaky_hard",
         description="Type of sigmoid to use for causal importance calculation",
     )
@@ -167,6 +167,14 @@ class Config(BaseModel):
     pnorm: PositiveFloat = Field(
         ...,
         description="The p-value used for the importance minimality loss",
+    )
+    p_anneal_start_frac: Probability = Field(
+        default=1.0,
+        description="Fraction of training after which to start annealing p (1.0 = no annealing)",
+    )
+    p_anneal_final_p: PositiveFloat | None = Field(
+        default=None,
+        description="Final p value to anneal to (None = no annealing)",
     )
     output_loss_type: Literal["mse", "kl"] = Field(
         ...,
