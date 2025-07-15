@@ -115,7 +115,7 @@ def init_wandb(
     return config
 
 
-def ensure_project_exists(project: str) -> None:
+def ensure_project_exists(project: str, public: bool = True) -> None:
     """Ensure the W&B project exists by creating a dummy run if needed."""
     api = wandb.Api()
 
@@ -123,6 +123,15 @@ def ensure_project_exists(project: str) -> None:
     if project not in [p.name for p in api.projects()]:
         # Project doesn't exist, create it with a dummy run
         print(f"Creating W&B project '{project}'...")
-        run = wandb.init(project=project, name="project_init", tags=["init"])
+
+        #Set visibility based on public parameter
+        visibility = "public" if public else "private"
+
+        run = wandb.init(
+            project=project, 
+            name="project_init", 
+            tags=["init"],
+            settings=wandb.Settings(project_visibility=visibility)
+        )
         run.finish()
         print(f"Project '{project}' created successfully")
