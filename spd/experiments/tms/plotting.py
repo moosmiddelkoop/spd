@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import torch
+import torch.nn as nn
 from jaxtyping import Float
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap
@@ -459,13 +460,15 @@ class FullNetworkDiagramPlotter:
             {
                 "title": "Target model",
                 "linear1_weights": target_model.linear1.weight.T.detach().cpu().numpy(),
-                "hidden_weights": [
-                    target_model.hidden_layers[i].weight.T.detach().cpu().numpy()
-                    for i in range(target_model.config.n_hidden_layers)
-                ]
-                if target_model.config.n_hidden_layers > 0
-                and target_model.hidden_layers is not None
-                else None,
+                "hidden_weights": (
+                    [
+                        target_model.hidden_layers[i].weight.T.detach().cpu().numpy()  # pyright: ignore[reportCallIssue]
+                        for i in range(len(target_model.hidden_layers))
+                    ]
+                    if target_model.config.n_hidden_layers > 0
+                    and target_model.hidden_layers is not None
+                    else None
+                ),
                 "component_type": "full",
             }
         )
@@ -771,7 +774,9 @@ class HiddenLayerPlotter:
         hidden_weights = hidden_weights[order]
 
         # Get target weights
-        target_weights = target_model.hidden_layers[0].weight.T.unsqueeze(0).detach().cpu()
+        first_layer = target_model.hidden_layers[0]
+        assert isinstance(first_layer, nn.Linear)
+        target_weights = first_layer.weight.T.unsqueeze(0).detach().cpu()
 
         return hidden_weights, target_weights, order
 
@@ -953,6 +958,7 @@ class TMSPlotter:
         print(f"Mean L2 ratio: {l2_ratio.mean():.4f}")
         print(f"Std L2 ratio: {l2_ratio.std():.4f}")
         if hasattr(self.analyzer.target_model, "b_final"):
+            assert isinstance(self.analyzer.target_model.b_final, torch.Tensor)
             print(f"Mean bias: {self.analyzer.target_model.b_final.mean():.4f}")
 
 

@@ -10,7 +10,7 @@ from jaxtyping import Float
 from torch import Tensor
 
 from spd.configs import Config
-from spd.experiments.resid_mlp.models import ResidualMLP
+from spd.experiments.resid_mlp.models import MLP, ResidualMLP
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
@@ -338,12 +338,16 @@ def compute_target_weight_neuron_contributions(
     assert torch.equal(W_E, target_model.W_U.T)
 
     # Stack mlp_in / mlp_out weights across layers so that einsums can broadcast
-    W_in: Float[Tensor, "n_layers d_mlp d_embed"] = torch.stack(
-        [layer.mlp_in.weight for layer in target_model.layers], dim=0
-    )
-    W_out: Float[Tensor, "n_layers d_embed d_mlp"] = torch.stack(
-        [layer.mlp_out.weight for layer in target_model.layers], dim=0
-    )
+    in_weights = []
+    out_weights = []
+    for i in range(len(target_model.layers)):
+        mlp = target_model.layers[i]
+        assert isinstance(mlp, MLP)
+        in_weights.append(mlp.mlp_in.weight)
+        out_weights.append(mlp.mlp_out.weight)
+
+    W_in: Float[Tensor, "n_layers d_mlp d_embed"] = torch.stack(in_weights, dim=0)
+    W_out: Float[Tensor, "n_layers d_embed d_mlp"] = torch.stack(out_weights, dim=0)
 
     # Compute connection strengths
     in_conns: Float[Tensor, "n_layers n_features d_mlp"] = einops.einsum(

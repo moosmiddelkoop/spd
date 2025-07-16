@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 
 from spd.configs import Config, TMSTaskConfig
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
@@ -186,7 +187,9 @@ def test_tms_train_fixed_identity():
 
     assert model.hidden_layers is not None
     # Assert that this is an identity matrix
-    initial_hidden = model.hidden_layers[0].weight.data.clone()
+    first_layer = model.hidden_layers[0]
+    assert isinstance(first_layer, nn.Linear)
+    initial_hidden = first_layer.weight.data.clone()
     assert torch.allclose(initial_hidden, eye), "Initial hidden layer is not identity"
 
     train(
@@ -201,7 +204,9 @@ def test_tms_train_fixed_identity():
     )
 
     # Assert that the hidden layers remains identity
-    assert torch.allclose(model.hidden_layers[0].weight.data, eye), "Hidden layer changed"
+    first_layer_after = model.hidden_layers[0]
+    assert isinstance(first_layer_after, nn.Linear)
+    assert torch.allclose(first_layer_after.weight.data, eye), "Hidden layer changed"
 
 
 def test_tms_train_fixed_random():
@@ -229,7 +234,9 @@ def test_tms_train_fixed_random():
     model, dataloader = get_model_and_dataloader(config, device)
 
     assert model.hidden_layers is not None
-    initial_hidden = model.hidden_layers[0].weight.data.clone()
+    first_layer = model.hidden_layers[0]
+    assert isinstance(first_layer, nn.Linear)
+    initial_hidden = first_layer.weight.data.clone()
 
     train(
         model,
@@ -243,6 +250,6 @@ def test_tms_train_fixed_random():
     )
 
     # Assert that the hidden layers are unchanged
-    assert torch.allclose(model.hidden_layers[0].weight.data, initial_hidden), (
-        "Hidden layer changed"
-    )
+    first_layer_after = model.hidden_layers[0]
+    assert isinstance(first_layer_after, nn.Linear)
+    assert torch.allclose(first_layer_after.weight.data, initial_hidden), "Hidden layer changed"

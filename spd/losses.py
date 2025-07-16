@@ -50,6 +50,7 @@ def calc_embedding_recon_loss(
 
         if unembed:
             assert hasattr(model.model, "lm_head"), "Only supports unembedding named lm_head"
+            assert isinstance(model.model.lm_head, nn.Module), "lm_head must be an nn.Module"
             target_out_unembed = model.model.lm_head(target_out)
             masked_out_unembed = model.model.lm_head(masked_out)
             loss += calc_kl_divergence_lm(pred=masked_out_unembed, target=target_out_unembed)
@@ -312,11 +313,12 @@ def calculate_losses(
     loss_terms: dict[str, float] = {}
 
     # Faithfulness loss
-    faithfulness_loss = calc_faithfulness_loss(
-        components=components, target_model=model.model, n_params=n_params, device=device
-    )
-    total_loss += config.faithfulness_coeff * faithfulness_loss
-    loss_terms["loss/faithfulness"] = faithfulness_loss.item()
+    if config.faithfulness_coeff is not None:
+        faithfulness_loss = calc_faithfulness_loss(
+            components=components, target_model=model.model, n_params=n_params, device=device
+        )
+        total_loss += config.faithfulness_coeff * faithfulness_loss
+        loss_terms["loss/faithfulness"] = faithfulness_loss.item()
 
     # Reconstruction loss
     if config.recon_coeff is not None:
