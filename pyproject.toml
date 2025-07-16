@@ -2,7 +2,7 @@
 name = "spd"
 version = "0.0.1"
 description = "Sparse Parameter Decomposition"
-requires-python = "==3.12"
+requires-python = ">=3.12"
 urls = { "Homepage" = "https://github.com/goodfire-ai/spd" }
 license = { text = "MIT" }
 readme = "README.md"
@@ -20,7 +20,7 @@ dependencies = [
     "matplotlib==3.9.1", # Avoid frequent pyright errors with new matplotlib versions
     "numpy",
     "python-dotenv",
-    "wandb-workspaces==0.1.12", # Need older version for workspace.from_url to work properly
+    "wandb-workspaces==0.1.12", # See https://github.com/wandb/wandb-workspaces/issues/65
     "sympy",
     "streamlit",
     "streamlit-antd-components",

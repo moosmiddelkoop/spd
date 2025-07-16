@@ -14,11 +14,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import torch
+import torch.nn as nn
 from jaxtyping import Float
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap
 from matplotlib.figure import Figure
-from torch import Tensor, nn
+from torch import Tensor
 
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel

@@ -124,7 +124,7 @@ def initialize(model_path: ModelPath) -> AppData:
             }
 
         # Map over the streaming dataset and return an iterator
-        return map(tokenize_and_prepare, iter(dataset))
+        return map(tokenize_and_prepare, iter(dataset))  # pyright: ignore[reportArgumentType]
 
     # Extract components and gates
     gates: dict[str, GateMLP | VectorGateMLP] = {
