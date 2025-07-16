@@ -43,9 +43,7 @@ def calc_embedding_recon_loss(
     # --- masked embedding output ----------------------------------------------------------- #
     loss = torch.tensor(0.0, device=component.V.device)
     for mask_info in masks:
-        masked_out: Float[Tensor, "... d_emb"] = component(
-            batch, mask_BxC=mask_info[embed_module_name]
-        )
+        masked_out: Float[Tensor, "... d_emb"] = component(batch, mask=mask_info[embed_module_name])
 
         if unembed:
             assert hasattr(model.model, "lm_head"), "Only supports unembedding named lm_head"

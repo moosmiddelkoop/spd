@@ -53,31 +53,33 @@ class ComponentModel(nn.Module):
         self.model = base_model
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
-        self.components = self.create_target_components(
-            target_module_patterns=target_module_patterns,
-            C=C,
+
+        replaced_components = self.create_components(base_model, target_module_patterns, C)
+        self.replaced_components = replaced_components
+        self._replaced_components = nn.ModuleDict(
+            {k.replace(".", "-"): v for k, v in replaced_components.items()}
         )
-        self.gates = self.make_gates(
-            components=self.components,
-            gate_type=gate_type,
-            gate_hidden_dims=gate_hidden_dims,
-            C=C,
-        )
+
+        gates = self.make_gates(replaced_components, C, gate_type, gate_hidden_dims)
+        self.gates = gates
+        self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in gates.items()})
 
     @staticmethod
     def make_gates(
-        components: nn.ModuleDict, gate_type: GateType, gate_hidden_dims: list[int], C: int
+        components: dict[str, ReplacedComponent],
+        C: int,
+        gate_type: GateType,
+        gate_hidden_dims: list[int],
     ) -> nn.ModuleDict:
         gates = nn.ModuleDict()
         for component_name, component in components.items():
-            component = cast(LinearComponent | EmbeddingComponent, component)
             if gate_type == "mlp":
                 gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims)
             else:
                 input_dim = (
-                    component.vocab_size
-                    if isinstance(component, EmbeddingComponent)
-                    else component.d_in
+                    component.replacement.vocab_size
+                    if isinstance(component.replacement, EmbeddingComponent)
+                    else component.replacement.d_in
                 )
                 gates[component_name] = VectorGateMLP(
                     C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims
@@ -85,7 +87,7 @@ class ComponentModel(nn.Module):
         return gates
 
     @staticmethod
-    def create_replaced_components(
+    def create_components(
         model: nn.Module, target_module_patterns: list[str], C: int
     ) -> dict[str, ReplacedComponent]:
         """Create target components for the model."""
@@ -143,32 +145,32 @@ class ComponentModel(nn.Module):
         return out
 
     @contextmanager
-    def _replaced_modules(self, masks_BxC: dict[str, Tensor]):
+    def _replaced_modules(self, masks: dict[str, Tensor]):
         """Context manager for temporarily replacing modules with components.
 
         Args:
-            masks_BxC: Optional dictionary mapping component names to masks
+            masks: Optional dictionary mapping component names to masks
         """
         for module_name, component in self.replaced_components.items():
             assert component.forward_mode is None, (
                 f"Component must be in pristine state, but forward_mode is {component.forward_mode}"
             )
-            assert component.mask_BxC is None, (
-                "Component must be in pristine state, but mask_BxC is not None"
+            assert component.mask is None, (
+                "Component must be in pristine state, but mask is not None"
             )
 
-            if module_name in masks_BxC:
+            if module_name in masks:
                 component.forward_mode = "replacement"
-                component.mask_BxC = masks_BxC[module_name]
+                component.mask = masks[module_name]
             else:
                 component.forward_mode = "original"
-                component.mask_BxC = None
+                component.mask = None
         try:
             yield
         finally:
             for component in self.replaced_components.values():
                 component.forward_mode = None
-                component.mask_BxC = None
+                component.mask = None
 
     def forward_with_components(
         self,
@@ -302,7 +304,7 @@ class ComponentModel(nn.Module):
         for param_name in pre_weight_acts:
             acts = pre_weight_acts[param_name]
             gate = self.gates[param_name]
-            V = self.components[param_name].V
+            V = self.replaced_components[param_name].replacement.V
 
             if isinstance(gate, GateMLP):
                 # need to get the inner activation for GateMLP

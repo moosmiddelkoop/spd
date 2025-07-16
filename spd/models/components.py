@@ -101,7 +101,7 @@ class LinearComponent(nn.Module):
 
     @override
     def forward(
-        self, x: Float[Tensor, "... d_in"], mask_BxD: Tensor | None = None
+        self, x: Float[Tensor, "... d_in"], mask: Tensor | None = None
     ) -> Float[Tensor, "... d_out"]:
         """Forward pass through V and U matrices.
 
@@ -113,8 +113,8 @@ class LinearComponent(nn.Module):
         """
         component_acts = einops.einsum(x, self.V, "... d_in, d_in C -> ... C")
 
-        if mask_BxD is not None:
-            component_acts *= mask_BxD
+        if mask is not None:
+            component_acts *= mask
 
         out = einops.einsum(component_acts, self.U, "... C, C d_out -> ... d_out")
 
@@ -153,7 +153,7 @@ class EmbeddingComponent(nn.Module):
 
     @override
     def forward(
-        self, x: Float[Tensor, "batch pos"], mask_BxC: Tensor | None
+        self, x: Float[Tensor, "batch pos"], mask: Tensor | None
     ) -> Float[Tensor, "batch pos embedding_dim"]:
         """Forward through the embedding component using nn.Embedding for efficient lookup
 
@@ -168,8 +168,8 @@ class EmbeddingComponent(nn.Module):
         # From https://github.com/pytorch/pytorch/blob/main/torch/_decomp/decompositions.py#L1211
         component_acts = self.V[x]  # (batch pos C)
 
-        if mask_BxC is not None:
-            component_acts *= mask_BxC
+        if mask is not None:
+            component_acts *= mask
 
         out = einops.einsum(
             component_acts, self.U, "batch pos C, ... C embedding_dim -> batch pos embedding_dim"
@@ -190,7 +190,7 @@ class ReplacedComponent(nn.Module):
         self.replacement = replacement
 
         self.forward_mode: Literal["original"] | Literal["replacement"] | None = None
-        self.mask_BxC: Tensor | None = None
+        self.mask: Tensor | None = None
         self.init_weights_()
 
     def init_weights_(self) -> None:
@@ -226,10 +226,10 @@ class ReplacedComponent(nn.Module):
             raise ValueError("Forward mode not set")
 
         if self.forward_mode == "original":
-            assert self.mask_BxC is None, "Mask should not be present in original mode"
+            assert self.mask is None, "Mask should not be present in original mode"
             return self.original(x)
         elif self.forward_mode == "replacement":
             # mask *can* but doesn't *need to* be present here
-            return self.replacement(x, self.mask_BxC)
+            return self.replacement(x, self.mask)
 
         raise ValueError(f"Invalid forward mode: {self.forward_mode}")

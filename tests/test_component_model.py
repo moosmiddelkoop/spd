@@ -43,16 +43,16 @@ def test_no_replacement_masks_means_original_mode(component_model: ComponentMode
 
     # Initial state: nothing should be active
     assert all(comp.forward_mode is None for comp in cm.replaced_components.values())
-    assert all(comp.mask_BxC is None for comp in cm.replaced_components.values())
+    assert all(comp.mask is None for comp in cm.replaced_components.values())
 
     # No masks supplied: everything should stay in "original" mode
     with cm._replaced_modules({}):
         assert all(comp.forward_mode == "original" for comp in cm.replaced_components.values())
-        assert all(comp.mask_BxC is None for comp in cm.replaced_components.values())
+        assert all(comp.mask is None for comp in cm.replaced_components.values())
 
     # After the context the state must be fully reset
     assert all(comp.forward_mode is None for comp in cm.replaced_components.values())
-    assert all(comp.mask_BxC is None for comp in cm.replaced_components.values())
+    assert all(comp.mask is None for comp in cm.replaced_components.values())
 
 
 def test_replaced_modules_sets_and_restores_masks(component_model: ComponentModel):
@@ -64,11 +64,11 @@ def test_replaced_modules_sets_and_restores_masks(component_model: ComponentMode
         # All components should now be in replacement‑mode with the given masks
         for name, comp in cm.replaced_components.items():
             assert comp.forward_mode == "replacement"
-            assert torch.equal(comp.mask_BxC, full_masks[name])  # pyright: ignore [reportArgumentType]
+            assert torch.equal(comp.mask, full_masks[name])  # pyright: ignore [reportArgumentType]
 
     # Back to pristine state
     assert all(comp.forward_mode is None for comp in cm.replaced_components.values())
-    assert all(comp.mask_BxC is None for comp in cm.replaced_components.values())
+    assert all(comp.mask is None for comp in cm.replaced_components.values())
 
 
 def test_replaced_modules_sets_and_restores_masks_partial(component_model: ComponentModel):
@@ -77,15 +77,15 @@ def test_replaced_modules_sets_and_restores_masks_partial(component_model: Compo
     partial_masks = {"linear1": torch.ones(1, cm.C)}
     with cm._replaced_modules(partial_masks):
         assert cm.replaced_components["linear1"].forward_mode == "replacement"
-        assert torch.equal(cm.replaced_components["linear1"].mask_BxC, partial_masks["linear1"])  # pyright: ignore [reportArgumentType]
+        assert torch.equal(cm.replaced_components["linear1"].mask, partial_masks["linear1"])  # pyright: ignore [reportArgumentType]
         # Others fall back to original‑only mode with no masks
         assert cm.replaced_components["linear2"].forward_mode == "original"
-        assert cm.replaced_components["linear2"].mask_BxC is None
+        assert cm.replaced_components["linear2"].mask is None
         assert cm.replaced_components["embedding"].forward_mode == "original"
 
     # Back to pristine state
     assert all(comp.forward_mode is None for comp in cm.replaced_components.values())
-    assert all(comp.mask_BxC is None for comp in cm.replaced_components.values())
+    assert all(comp.mask is None for comp in cm.replaced_components.values())
 
 
 def test_replaced_component_forward_linear_matches_modes():
@@ -97,7 +97,7 @@ def test_replaced_component_forward_linear_matches_modes():
 
     # --- Original path ---
     rep.forward_mode = "original"
-    rep.mask_BxC = None
+    rep.mask = None
     out_orig = rep(x)
     expected_orig = lin(x)
     torch.testing.assert_close(out_orig, expected_orig, rtol=1e-4, atol=1e-5)
@@ -105,7 +105,7 @@ def test_replaced_component_forward_linear_matches_modes():
     # --- Replacement path (with mask) ---
     rep.forward_mode = "replacement"
     mask = torch.rand(5, 3)
-    rep.mask_BxC = mask
+    rep.mask = mask
     out_rep = rep(x)
     expected_rep = comp(x, mask)
     torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
@@ -126,7 +126,7 @@ def test_replaced_component_forward_embedding_matches_modes():
 
     # --- Original path ---
     rep.forward_mode = "original"
-    rep.mask_BxC = None
+    rep.mask = None
     out_orig = rep(idx)
     expected_orig = emb(idx)
     torch.testing.assert_close(out_orig, expected_orig, rtol=1e-4, atol=1e-5)
@@ -134,7 +134,7 @@ def test_replaced_component_forward_embedding_matches_modes():
     # --- Replacement path (with mask) ---
     rep.forward_mode = "replacement"
     mask = torch.rand(batch_size, seq_len, C)  # (batch pos C)
-    rep.mask_BxC = mask
+    rep.mask = mask
     out_rep = rep(idx)
     expected_rep = comp.forward(idx, mask)
     torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
