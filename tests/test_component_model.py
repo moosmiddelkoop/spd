@@ -3,7 +3,7 @@ from typing import override
 import pytest
 import torch
 from jaxtyping import Float
-from torch import nn
+from torch import Tensor, nn
 
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponents, LinearComponents, ReplacedComponents
@@ -20,7 +20,7 @@ class SimpleTestModel(nn.Module):
         self.other_layer = nn.ReLU()  # Non‑target layer (should never be wrapped)
 
     @override
-    def forward(self, x: Float[torch.Tensor, "... 10"]):  # noqa: D401,E501
+    def forward(self, x: Float[Tensor, "... 10"]):  # noqa: D401,E501
         return self.linear2(self.linear1(x))
 
 

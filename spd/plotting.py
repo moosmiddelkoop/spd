@@ -247,7 +247,7 @@ def plot_subnetwork_attributions_statistics(
 
 def plot_matrix(
     ax: plt.Axes,
-    matrix: torch.Tensor,
+    matrix: Tensor,
     title: str,
     xlabel: str,
     ylabel: str,

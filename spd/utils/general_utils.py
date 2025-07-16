@@ -243,9 +243,9 @@ def load_pretrained(
 
 
 def extract_batch_data(
-    batch_item: dict[str, Any] | tuple[torch.Tensor, ...] | torch.Tensor,
+    batch_item: dict[str, Any] | tuple[Tensor, ...] | Tensor,
     input_key: str = "input_ids",
-) -> torch.Tensor:
+) -> Tensor:
     """Extract input data from various batch formats.
 
     This utility function handles different batch formats commonly used across the codebase:
@@ -260,7 +260,7 @@ def extract_batch_data(
     Returns:
         The input tensor extracted from the batch
     """
-    assert isinstance(batch_item, dict | tuple | torch.Tensor), (
+    assert isinstance(batch_item, dict | tuple | Tensor), (
         f"Unsupported batch format: {type(batch_item)}. Must be a dictionary, tuple, or tensor."
     )
     if isinstance(batch_item, dict):
