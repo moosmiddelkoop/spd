@@ -114,7 +114,7 @@ class Components(ABC, nn.Module):
         U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
 
         # Calculate inner products
-        inner = einops.einsum(U, target_weight, "C cols, rows cols -> C rows")
+        inner = einops.einsum(U, target_weight.to(U.device), "C cols, rows cols -> C rows")
         C_norms = einops.einsum(inner, V, "C rows, rows C -> C")
 
         # Scale U by the inner product.
@@ -125,7 +125,7 @@ class Components(ABC, nn.Module):
     def forward(self, x: Tensor, mask: Tensor | None) -> Tensor:
         """Forward pass through the component."""
         raise NotImplementedError()
-    
+
     @abstractmethod
     def get_inner_acts(self, x: Tensor) -> Tensor:
         """Get the inner acts of the component."""

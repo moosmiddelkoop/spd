@@ -4,7 +4,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any, override
 
-import einops
 import torch
 import wandb
 import yaml

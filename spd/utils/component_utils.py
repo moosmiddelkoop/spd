@@ -52,8 +52,7 @@ def component_activation_statistics(
     n_tokens = {module_name: 0 for module_name in model.components}
     total_n_active_components = {module_name: 0 for module_name in model.components}
     component_activation_counts = {
-        module_name: torch.zeros(model.C, device=device)
-        for module_name in model.components
+        module_name: torch.zeros(model.C, device=device) for module_name in model.components
     }
     data_iter = iter(dataloader)
     for _ in range(n_steps):

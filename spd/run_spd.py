@@ -100,16 +100,13 @@ def optimize(
     lr_schedule_fn = get_lr_schedule_fn(config.lr_schedule, config.lr_exponential_halflife)
     logger.info(f"Base LR scheduler created: {config.lr_schedule}")
 
-    n_params = sum(
-        component.weight.numel() for component in model.components.values()
-    )
+    n_params = sum(component.weight.numel() for component in model.components.values())
 
     data_iter = iter(train_loader)
 
     # TODO(oli): replace with AliveTracker class
     alive_components: dict[str, Bool[Tensor, " C"]] = {
-        layer_name: torch.zeros(config.C, device=device).bool()
-        for layer_name in model.components
+        layer_name: torch.zeros(config.C, device=device).bool() for layer_name in model.components
     }
 
     # Iterate one extra step for final logging/plotting/saving
