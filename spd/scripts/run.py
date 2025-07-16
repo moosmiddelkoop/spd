@@ -385,6 +385,8 @@ def main(
     project: str = "spd",
     local: bool = False,
     log_format: LogFormat = "default",
+    override_branch: str | None = None,
+    use_wandb: bool = True,
 ) -> None:
     """SPD runner for experiments with optional parameter sweeps.
 
@@ -402,6 +404,11 @@ def main(
         local: Run locally instead of submitting to SLURM (default: False)
         log_format: Logging format for the script output.
             Options are "terse" (no timestamps/level) or "default".
+        override_branch: use the given branch instead of creating a snapshot for the current branch.
+            only relevant if running on SLURM (`local` is False). If None, creates a snapshot branch.
+            (default: None)
+        use_wandb: Use W&B for logging and tracking (default: True).
+            If set to false, `create_report` must also be false.
 
     Examples:
         # Run subset of experiments locally
@@ -456,6 +463,7 @@ def main(
             f"Invalid experiments: {invalid_experiments}. Available experiments: {available}"
         )
 
+    # generate commands
     run_id = generate_run_id()
 
     logger.info(f"Run ID: {run_id}")
@@ -468,29 +476,37 @@ def main(
         project=project,
     )
 
-    # Ensure the W&B project exists
-    ensure_project_exists(project)
+    # wandb setup
+    if use_wandb:
+        # Ensure the W&B project exists
+        ensure_project_exists(project)
 
-    # Create workspace views for each experiment
-    logger.section("Creating workspace views...")
-    workspace_urls: dict[str, str] = {}
-    for experiment in experiments_list:
-        workspace_url = create_workspace_view(run_id, experiment, project)
-        workspace_urls[experiment] = workspace_url
+        # Create workspace views for each experiment
+        logger.section("Creating workspace views...")
+        workspace_urls: dict[str, str] = {}
+        for experiment in experiments_list:
+            workspace_url = create_workspace_view(run_id, experiment, project)
+            workspace_urls[experiment] = workspace_url
 
-    # Create report if requested
-    report_url: str | None = None
-    if create_report and len(experiments_list) > 1:
-        report_url = create_wandb_report(run_id, experiments_list, project)
+        # Create report if requested
+        report_url: str | None = None
+        if create_report and len(experiments_list) > 1:
+            report_url = create_wandb_report(run_id, experiments_list, project)
 
-    # Print clean summary after wandb messages
-    logger.values(
-        msg="workspace urls per experiment",
-        data={
-            **workspace_urls,
-            **({"Aggregated Report": report_url} if report_url else {}),
-        },
-    )
+        # Print clean summary after wandb messages
+        logger.values(
+            msg="workspace urls per experiment",
+            data={
+                **workspace_urls,
+                **({"Aggregated Report": report_url} if report_url else {}),
+            },
+        )
+    else:
+        assert not create_report, f"can't create report if use_wandb is false: {create_report = }"
+        logger.warning(
+            "W&B logging is disabled. No workspace views or reports will be created. "
+            "Set `use_wandb=True` to enable."
+        )
 
     # Determine job name
     job_name: str = f"spd-{job_suffix}" if job_suffix else "spd"
@@ -498,8 +514,13 @@ def main(
     if local:
         run_commands_locally(commands)
     else:
-        snapshot_branch = create_git_snapshot(branch_name_prefix="run")
-        logger.info(f"Using git snapshot: {snapshot_branch}")
+        snapshot_branch: str
+        if override_branch is None:
+            snapshot_branch = create_git_snapshot(branch_name_prefix="run")
+            logger.info(f"Using git snapshot: {snapshot_branch}")
+        else:
+            snapshot_branch = override_branch
+            logger.info(f"Using manually specified branch: {snapshot_branch}")
 
         # Submit to SLURM
         with tempfile.TemporaryDirectory() as temp_dir:
