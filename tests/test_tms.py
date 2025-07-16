@@ -1,4 +1,7 @@
+from typing import cast
+
 import torch
+from torch import nn
 
 from spd.configs import Config, TMSTaskConfig
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
@@ -33,7 +36,8 @@ def test_tms_decomposition_happy_path() -> None:
         seed=0,
         C=10,  # Smaller C for faster testing
         n_mask_samples=1,
-        n_ci_mlp_neurons=8,
+        gate_type="mlp",
+        gate_hidden_dims=[8],
         target_module_patterns=["linear1", "linear2", "hidden_layers.0"],
         # Loss Coefficients
         faithfulness_coeff=1.0,
@@ -186,7 +190,7 @@ def test_tms_train_fixed_identity():
 
     assert model.hidden_layers is not None
     # Assert that this is an identity matrix
-    initial_hidden = model.hidden_layers[0].weight.data.clone()
+    initial_hidden = cast(nn.Linear, model.hidden_layers[0]).weight.data.clone()
     assert torch.allclose(initial_hidden, eye), "Initial hidden layer is not identity"
 
     train(
@@ -201,7 +205,9 @@ def test_tms_train_fixed_identity():
     )
 
     # Assert that the hidden layers remains identity
-    assert torch.allclose(model.hidden_layers[0].weight.data, eye), "Hidden layer changed"
+    assert torch.allclose(cast(nn.Linear, model.hidden_layers[0]).weight.data, eye), (
+        "Hidden layer changed"
+    )
 
 
 def test_tms_train_fixed_random():
@@ -229,7 +235,7 @@ def test_tms_train_fixed_random():
     model, dataloader = get_model_and_dataloader(config, device)
 
     assert model.hidden_layers is not None
-    initial_hidden = model.hidden_layers[0].weight.data.clone()
+    initial_hidden = cast(nn.Linear, model.hidden_layers[0]).weight.data.clone()
 
     train(
         model,
@@ -243,6 +249,6 @@ def test_tms_train_fixed_random():
     )
 
     # Assert that the hidden layers are unchanged
-    assert torch.allclose(model.hidden_layers[0].weight.data, initial_hidden), (
+    assert torch.allclose(cast(nn.Linear, model.hidden_layers[0]).weight.data, initial_hidden), (
         "Hidden layer changed"
     )
