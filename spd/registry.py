@@ -58,12 +58,12 @@ EXPERIMENT_REGISTRY: dict[str, ExperimentConfig] = {
         config_path=Path("spd/experiments/resid_mlp/resid_mlp2_config.yaml"),
         expected_runtime=11,
     ),
-    "resid_mlp3": ExperimentConfig(
-        experiment_type="resid_mlp",
-        decomp_script=Path("spd/experiments/resid_mlp/resid_mlp_decomposition.py"),
-        config_path=Path("spd/experiments/resid_mlp/resid_mlp3_config.yaml"),
-        expected_runtime=60,
-    ),
+    # "resid_mlp3": ExperimentConfig(
+    #     experiment_type="resid_mlp",
+    #     decomp_script=Path("spd/experiments/resid_mlp/resid_mlp_decomposition.py"),
+    #     config_path=Path("spd/experiments/resid_mlp/resid_mlp3_config.yaml"),
+    #     expected_runtime=60,
+    # ),
     # "ss_emb": ExperimentConfig(
     #     experiment_type="lm",
     #     decomp_script=Path("spd/experiments/lm/lm_decomposition.py"),
