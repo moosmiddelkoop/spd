@@ -84,6 +84,8 @@ class LinearComponent(nn.Module):
     def __init__(self, d_in: int, d_out: int, C: int, bias: Tensor | None):
         super().__init__()
         self.C = C
+        self.d_in = d_in
+        self.d_out = d_out
 
         self.V = nn.Parameter(torch.empty(d_in, C))
         self.U = nn.Parameter(torch.empty(C, d_out))
@@ -132,6 +134,8 @@ class EmbeddingComponent(nn.Module):
         C: int,
     ):
         super().__init__()
+        self.vocab_size: int = vocab_size
+        self.embedding_dim: int = embedding_dim
         self.C: int = C
 
         self.V: nn.Parameter = nn.Parameter(torch.empty(vocab_size, C))
@@ -147,7 +151,7 @@ class EmbeddingComponent(nn.Module):
     def weight(self) -> Float[Tensor, "vocab_size embedding_dim"]:
         """V @ U"""
         return einops.einsum(
-            self.V, self.U, "vocab_size C, ... C embedding_dim -> vocab_size embedding_dim"
+            self.V, self.U, "vocab_size C, C embedding_dim -> vocab_size embedding_dim"
         )
 
     @override

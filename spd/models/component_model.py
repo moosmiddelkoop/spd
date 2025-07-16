@@ -52,21 +52,35 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
         self.components = self.create_target_components(
-            target_module_patterns=target_module_patterns, C=C
+            target_module_patterns=target_module_patterns,
+            C=C,
+        )
+        self.gates = self.make_gates(
+            components=self.components,
+            gate_type=gate_type,
+            gate_hidden_dims=gate_hidden_dims,
+            C=C,
         )
 
-        self.gates = nn.ModuleDict(
-            {
-                component_name: GateMLP(C=C, hidden_dims=gate_hidden_dims)
-                if gate_type == "mlp"
-                else VectorGateMLP(
-                    C=C,
-                    input_dim=cast(LinearComponent | EmbeddingComponent, component).weight.shape[1],
-                    hidden_dims=gate_hidden_dims,
+    @staticmethod
+    def make_gates(
+        components: nn.ModuleDict, gate_type: GateType, gate_hidden_dims: list[int], C: int
+    ) -> nn.ModuleDict:
+        gates = nn.ModuleDict()
+        for component_name, component in components.items():
+            component = cast(LinearComponent | EmbeddingComponent, component)
+            if gate_type == "mlp":
+                gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims)
+            else:
+                input_dim = (
+                    component.vocab_size
+                    if isinstance(component, EmbeddingComponent)
+                    else component.d_in
                 )
-                for component_name, component in self.components.items()
-            }
-        )
+                gates[component_name] = VectorGateMLP(
+                    C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims
+                )
+        return gates
 
     def create_target_components(self, target_module_patterns: list[str], C: int) -> nn.ModuleDict:
         """Create target components for the model."""
