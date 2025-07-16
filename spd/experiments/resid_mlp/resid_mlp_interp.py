@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any
 
 import einops
 import fire
@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from jaxtyping import Float
-from torch import Tensor
+from torch import Tensor, nn
 
 from spd.configs import Config
 from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
-from spd.models.components import LinearComponents
+from spd.models.components import Components
 from spd.plotting import plot_causal_importance_vals
 from spd.utils.general_utils import get_device, runtime_cast, set_seed
 from spd.utils.run_utils import get_output_dir
@@ -56,7 +56,7 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
         "figures": figures,
         "all_perm_indices_ci_vals": all_perm_indices_ci_vals,
         "config": config,
-        "components": model.replaced_components,
+        "components": model.components,
         "n_features": n_features,
     }
 
@@ -324,10 +324,10 @@ def compute_target_weight_neuron_contributions(
 
     # Stack mlp_in / mlp_out weights across layers so that einsums can broadcast
     W_in: Float[Tensor, "n_layers d_mlp d_embed"] = torch.stack(
-        [cast(LinearComponents, layer.mlp_in).weight for layer in target_model.layers], dim=0
+        [runtime_cast(nn.Linear, layer.mlp_in).weight for layer in target_model.layers], dim=0
     )
     W_out: Float[Tensor, "n_layers d_embed d_mlp"] = torch.stack(
-        [cast(LinearComponents, layer.mlp_out).weight for layer in target_model.layers], dim=0
+        [runtime_cast(nn.Linear, layer.mlp_out).weight for layer in target_model.layers], dim=0
     )
 
     # Compute connection strengths
@@ -352,7 +352,7 @@ def compute_target_weight_neuron_contributions(
 
 
 def compute_spd_weight_neuron_contributions(
-    components: dict[str, LinearComponents],
+    components: dict[str, Components],
     target_model: ResidualMLP,
     n_features: int | None = None,
 ) -> Float[Tensor, "n_layers n_features C d_mlp"]:
@@ -407,7 +407,7 @@ def compute_spd_weight_neuron_contributions(
 
 
 def plot_spd_feature_contributions_truncated(
-    components: dict[str, LinearComponents],
+    components: dict[str, Components],
     target_model: ResidualMLP,
     n_features: int | None = 50,
 ):
@@ -493,7 +493,7 @@ def plot_spd_feature_contributions_truncated(
 
 
 def plot_neuron_contribution_pairs(
-    components: dict[str, LinearComponents],
+    components: dict[str, Components],
     target_model: ResidualMLP,
     n_features: int | None = 50,
 ) -> plt.Figure:
@@ -633,13 +633,8 @@ def main():
         assert isinstance(target_model, ResidualMLP)
         n_layers = target_model.config.n_layers
 
-        components = {
-            k: runtime_cast(LinearComponents, v.components)
-            for k, v in model.replaced_components.items()
-        }
-
         fig = plot_spd_feature_contributions_truncated(
-            components=components,
+            components=model.components,
             target_model=target_model,
             n_features=10,
         )
@@ -652,7 +647,7 @@ def main():
 
         # Generate and save neuron contribution pairs plot
         fig_pairs = plot_neuron_contribution_pairs(
-            components=components,
+            components=model.components,
             target_model=target_model,
             n_features=None,  # Using same number of features as above
         )

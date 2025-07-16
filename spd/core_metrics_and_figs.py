@@ -150,7 +150,7 @@ def create_figures(
         fig_dict.update(figures)
 
         fig_dict["UV_matrices"] = plot_UV_matrices(
-            components={k: v.components for k, v in model.replaced_components.items()},
+            components=model.components,
             all_perm_indices=all_perm_indices,
         )
 

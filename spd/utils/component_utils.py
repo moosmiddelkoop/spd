@@ -49,11 +49,11 @@ def component_activation_statistics(
     threshold: float = 0.1,
 ) -> tuple[dict[str, float], dict[str, Float[Tensor, " C"]]]:
     """Get the number and strength of the masks over the full dataset."""
-    n_tokens = {module_name: 0 for module_name in model.replaced_components}
-    total_n_active_components = {module_name: 0 for module_name in model.replaced_components}
+    n_tokens = {module_name: 0 for module_name in model.components}
+    total_n_active_components = {module_name: 0 for module_name in model.components}
     component_activation_counts = {
         module_name: torch.zeros(model.C, device=device)
-        for module_name in model.replaced_components
+        for module_name in model.components
     }
     data_iter = iter(dataloader)
     for _ in range(n_steps):
@@ -62,7 +62,7 @@ def component_activation_statistics(
         batch = batch.to(device)
 
         _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-            batch, module_names=list(model.replaced_components.keys())
+            batch, module_names=model.target_module_paths
         )
 
         causal_importances, _ = model.calc_causal_importances(pre_weight_acts, detach_inputs=False)
@@ -80,11 +80,11 @@ def component_activation_statistics(
     # Show the mean number of components
     mean_n_active_components_per_token: dict[str, float] = {
         module_name: (total_n_active_components[module_name] / n_tokens[module_name])
-        for module_name in model.replaced_components
+        for module_name in model.components
     }
     mean_component_activation_counts: dict[str, Float[Tensor, " C"]] = {
         module_name: component_activation_counts[module_name] / n_tokens[module_name]
-        for module_name in model.replaced_components
+        for module_name in model.components
     }
 
     return mean_n_active_components_per_token, mean_component_activation_counts

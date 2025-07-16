@@ -22,8 +22,8 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
     Returns:
         Tensor of shape (vocab_size, C) containing masks for each vocab token
     """
-    assert len(model.replaced_components) == 1, "Expected exactly one embedding component"
-    component_name = next(iter(model.replaced_components.keys()))
+    assert len(model.components) == 1, "Expected exactly one embedding component"
+    component_name = model.target_module_paths[0]
 
     vocab_size = model.target_model.get_parameter("transformer.wte.weight").shape[0]
 

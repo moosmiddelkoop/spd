@@ -22,7 +22,7 @@ from torch import Tensor, nn
 
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
-from spd.models.components import LinearComponents
+from spd.models.components import Components
 from spd.settings import REPO_ROOT
 
 
@@ -65,9 +65,8 @@ class TMSAnalyzer:
 
     def extract_subnets(self) -> Float[Tensor, "n_subnets n_features n_hidden"]:
         """Extract subnet weights from the component model."""
-        linear1_components = self.comp_model.replaced_components["linear1"]
+        linear1_components = self.comp_model.components["linear1"]
 
-        assert isinstance(linear1_components, LinearComponents)
         Vs = linear1_components.V.detach().cpu()  # (n_features, C)
         Us = linear1_components.U.detach().cpu()  # (C, n_hidden)
 
@@ -405,8 +404,8 @@ class FullNetworkDiagramPlotter:
         # analyzer = TMSAnalyzer(comp_model, target_model, self.config)
 
         # Get subnet decompositions for linear1
-        linear1_components = comp_model.replaced_components["linear1"]
-        assert isinstance(linear1_components, LinearComponents)
+        linear1_components = comp_model.components["linear1"]
+        assert isinstance(linear1_components, Components)
         Vs = linear1_components.V.detach().cpu()
         Us = linear1_components.U.detach().cpu()
         linear1_subnets = torch.einsum("f C, C h -> C f h", Vs, Us)
@@ -417,8 +416,8 @@ class FullNetworkDiagramPlotter:
             hidden_layer_components = []
             for i in range(target_model.config.n_hidden_layers):
                 hidden_comp_name = f"hidden_layers-{i}"
-                hidden_comp = comp_model.replaced_components[hidden_comp_name]
-                assert isinstance(hidden_comp, LinearComponents)
+                hidden_comp = comp_model.components[hidden_comp_name]
+                assert isinstance(hidden_comp, Components)
                 hidden_V = hidden_comp.V.detach().cpu()
                 hidden_U = hidden_comp.U.detach().cpu()
                 hidden_weights = torch.einsum("h C, C j -> C h j", hidden_V, hidden_U)
@@ -759,8 +758,8 @@ class HiddenLayerPlotter:
             raise ValueError("Target model must have hidden layers")
 
         hidden_comp_name = "hidden_layers-0"
-        hidden_components = comp_model.replaced_components[hidden_comp_name]
-        assert isinstance(hidden_components, LinearComponents)
+        hidden_components = comp_model.components[hidden_comp_name]
+        assert isinstance(hidden_components, Components)
 
         hidden_V = hidden_components.V.detach().cpu()
         hidden_U = hidden_components.U.detach().cpu()

@@ -122,7 +122,7 @@ def initialize(model_path: ModelPath) -> AppData:
         # Map over the streaming dataset and return an iterator
         return map(tokenize_and_prepare, iter(dataset))
 
-    target_layer_names = sorted(list(ss_model.replaced_components.keys()))
+    target_layer_names = sorted(ss_model.target_module_paths)
 
     logger.info(f"Initialization complete for {model_path}.")
     return AppData(
@@ -204,7 +204,7 @@ def load_next_prompt() -> None:
     # Calculate activations and masks
     with torch.no_grad():
         _, pre_weight_acts = app_data.model.forward_with_pre_forward_cache_hooks(
-            input_ids, module_names=list(app_data.model.replaced_components.keys())
+            input_ids, module_names=app_data.model.target_module_paths
         )
         masks, _ = app_data.model.calc_causal_importances(
             pre_weight_acts=pre_weight_acts,

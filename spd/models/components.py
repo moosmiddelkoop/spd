@@ -114,8 +114,8 @@ class Components(ABC, nn.Module):
         U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
 
         # Calculate inner products
-        inner = einops.einsum(U, target_weight, "C d_out, d_out d_in -> C d_in")
-        C_norms = einops.einsum(inner, V, "C d_in, d_in C -> C")
+        inner = einops.einsum(U, target_weight, "C cols, rows cols -> C rows")
+        C_norms = einops.einsum(inner, V, "C rows, rows C -> C")
 
         # Scale U by the inner product.
         U.data[:] = U.data * C_norms.unsqueeze(-1)
@@ -124,6 +124,11 @@ class Components(ABC, nn.Module):
     @abstractmethod
     def forward(self, x: Tensor, mask: Tensor | None) -> Tensor:
         """Forward pass through the component."""
+        raise NotImplementedError()
+    
+    @abstractmethod
+    def get_inner_acts(self, x: Tensor) -> Tensor:
+        """Get the inner acts of the component."""
         raise NotImplementedError()
 
 
@@ -143,6 +148,10 @@ class LinearComponents(Components):
         self.bias = bias
 
     @override
+    def get_inner_acts(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
+        return einops.einsum(x, self.U, "... d_in, C d_in -> ... C")
+
+    @override
     def forward(
         self, x: Float[Tensor, "... d_in"], mask: Tensor | None = None
     ) -> Float[Tensor, "... d_out"]:
@@ -154,12 +163,12 @@ class LinearComponents(Components):
         Returns:
             output: The summed output across all components
         """
-        component_acts = einops.einsum(x, self.V, "... d_in, d_in C -> ... C")
+        component_acts = self.get_inner_acts(x)
 
         if mask is not None:
             component_acts *= mask
 
-        out = einops.einsum(component_acts, self.U, "... C, C d_out -> ... d_out")
+        out = einops.einsum(component_acts, self.V, "... C, d_out C -> ... d_out")
 
         if self.bias is not None:
             out += self.bias
@@ -181,10 +190,14 @@ class EmbeddingComponents(Components):
         self.embedding_dim: int = embedding_dim
 
     @override
+    def get_inner_acts(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
+        return einops.einsum(x, self.U, "... d_in, d_in C -> ... C")
+
+    @override
     def forward(
         self,
         x: Int[Tensor, "..."],
-        mask: (Float | Bool)[Tensor, "... C"] | None,
+        mask: Float[Tensor, "... C"] | Bool[Tensor, "... C"] | None,
     ) -> Float[Tensor, "... embedding_dim"]:
         """Forward through the embedding component using indexing instead of one-hot matmul.
 
@@ -208,7 +221,7 @@ class EmbeddingComponents(Components):
 class ReplacedComponents(nn.Module):
     def __init__(
         self,
-        original: nn.Module,
+        original: nn.Linear | nn.Embedding,
         components: Components,
     ):
         super().__init__()

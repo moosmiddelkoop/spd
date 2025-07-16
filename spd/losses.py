@@ -9,7 +9,7 @@ from torch import Tensor
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponents, ReplacedComponents
+from spd.models.components import Components, EmbeddingComponents, ReplacedComponents
 from spd.utils.component_utils import calc_stochastic_masks
 from spd.utils.general_utils import calc_kl_divergence_lm
 
@@ -43,7 +43,9 @@ def calc_embedding_recon_loss(
     # --- masked embedding output ----------------------------------------------------------- #
     loss = torch.tensor(0.0, device=components.V.device)
     for mask_info in masks:
-        masked_out: Float[Tensor, "... d_emb"] = components(batch, mask=mask_info[embed_module_name])
+        masked_out: Float[Tensor, "... d_emb"] = components(
+            batch, mask=mask_info[embed_module_name]
+        )
 
         if unembed:
             assert hasattr(model.target_model, "lm_head"), "Only supports unembedding named lm_head"
@@ -61,7 +63,7 @@ def calc_embedding_recon_loss(
 def calc_schatten_loss(
     ci_upper_leaky: dict[str, Float[Tensor, "... C"]],
     pnorm: float,
-    components: dict[str, ReplacedComponents],
+    components: dict[str, Components],
     device: str,
 ) -> Float[Tensor, ""]:
     """Calculate the Schatten loss on the active components.
@@ -87,8 +89,8 @@ def calc_schatten_loss(
 
     total_loss = torch.tensor(0.0, device=device)
     for component_name, component in components.items():
-        V_norms = component.components.V.square().sum(dim=-2)
-        U_norms = component.components.U.square().sum(dim=-1)
+        V_norms = component.V.square().sum(dim=-2)
+        U_norms = component.U.square().sum(dim=-1)
         schatten_norms = V_norms + U_norms
         loss = einops.einsum(
             ci_upper_leaky[component_name] ** pnorm, schatten_norms, "... C, C -> ..."
@@ -133,7 +135,7 @@ def calc_masked_recon_layerwise_loss(
     assert loss_type in ["mse", "kl"], f"Invalid loss type: {loss_type}"
     total_loss = torch.tensor(0.0, device=device)
     for mask_info in masks:
-        for component_name in model.replaced_components:
+        for component_name in model.components:
             modified_out = model.forward_with_components(
                 batch,
                 masks={component_name: mask_info[component_name]},
@@ -197,9 +199,9 @@ def calc_faithfulness_loss(
     target_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
     component_params: dict[str, Float[Tensor, "d_in d_out"]] = {}
 
-    for comp_name, component in model.replaced_components.items():
-        component_params[comp_name] = component.components.weight
-        target_params[comp_name] = component.original.weight
+    for comp_name, components_or_module in model.components_or_modules.items():
+        component_params[comp_name] = components_or_module.components.weight
+        target_params[comp_name] = components_or_module.original.weight
         assert component_params[comp_name].shape == target_params[comp_name].shape
 
     faithfulness_loss = _calc_tensors_mse(
@@ -373,7 +375,7 @@ def calculate_losses(
         schatten_loss = calc_schatten_loss(
             ci_upper_leaky=causal_importances_upper_leaky,
             pnorm=config.pnorm,
-            components=model.replaced_components,
+            components=model.components,
             device=device,
         )
         total_loss += config.schatten_coeff * schatten_loss
@@ -397,13 +399,13 @@ def calculate_losses(
         stochastic_masks = calc_stochastic_masks(
             causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
         )
-        assert len(model.replaced_components) == 1, "Only one embedding component is supported"
-        component_name, component = next(iter(model.replaced_components.items()))
-        assert isinstance(component.components, EmbeddingComponents)
+        assert len(model.components) == 1, "Only one embedding component is supported"
+        component_name, components = next(iter(model.components.items()))
+        assert isinstance(components, EmbeddingComponents)
         embedding_recon_loss = calc_embedding_recon_loss(
             model=model,
             batch=batch,
-            components=component.components,
+            components=components,
             masks=stochastic_masks,
             embed_module_name=component_name,
             unembed=config.is_embed_unembed_recon,

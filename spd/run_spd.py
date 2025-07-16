@@ -82,15 +82,15 @@ def optimize(
         # Tie component weights. Assume that the first element is a transpose of the second element
         # NOTE: Tying weights will make your training nondeterministic
         for src_name, tgt_name in tied_weights:
-            tgt = model.replaced_components[tgt_name].components
-            src = model.replaced_components[src_name].components
+            tgt = model.components_or_modules[tgt_name].components
+            src = model.components_or_modules[src_name].components
             tgt.U.data = src.V.data.T
             tgt.V.data = src.U.data.T
 
     component_params: list[torch.nn.Parameter] = []
     gate_params: list[torch.nn.Parameter] = []
-    for name, component in model.replaced_components.items():
-        component_params.extend(list(component.components.parameters()))
+    for name, component in model.components.items():
+        component_params.extend(list(component.parameters()))
         gate_params.extend(list(model.gates[name].parameters()))
 
     assert len(component_params) > 0, "No parameters found in components to optimize"
@@ -101,7 +101,7 @@ def optimize(
     logger.info(f"Base LR scheduler created: {config.lr_schedule}")
 
     n_params = sum(
-        component.original.weight.numel() for component in model.replaced_components.values()
+        component.weight.numel() for component in model.components.values()
     )
 
     data_iter = iter(train_loader)
@@ -109,7 +109,7 @@ def optimize(
     # TODO(oli): replace with AliveTracker class
     alive_components: dict[str, Bool[Tensor, " C"]] = {
         layer_name: torch.zeros(config.C, device=device).bool()
-        for layer_name in model.replaced_components
+        for layer_name in model.components
     }
 
     # Iterate one extra step for final logging/plotting/saving
@@ -139,7 +139,7 @@ def optimize(
         batch = batch.to(device)
 
         target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-            batch, module_names=list(model.replaced_components.keys())
+            batch, module_names=model.target_module_paths
         )
 
         causal_importances, causal_importances_upper_leaky = model.calc_causal_importances(
@@ -251,7 +251,8 @@ def optimize(
                 for param in component_params + gate_params:
                     if param.grad is not None:
                         grad_norm += param.grad.data.flatten().pow(2).sum()
-                wandb.log({"misc/grad_norm": grad_norm.sqrt().item()}, step=step)
+                if step % config.print_freq == 0:
+                    wandb.log({"misc/grad_norm": grad_norm.sqrt().item()}, step=step)
             optimizer.step()
 
     logger.info("Finished training loop.")

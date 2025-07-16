@@ -15,6 +15,7 @@ from wandb.apis.public import Run
 
 from spd.configs import Config
 from spd.models.components import (
+    Components,
     EmbeddingComponents,
     GateMLPs,
     GateType,
@@ -54,61 +55,34 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
 
-        components, gates = self.create_components(
-            target_model, target_module_patterns, C, gate_type, gate_hidden_dims
+        self.target_module_paths = self._get_target_module_paths(
+            target_model, target_module_patterns
         )
 
-        self.components = components
-        self._components = nn.ModuleDict({k.replace(".", "-"): v for k, v in components.items()})
+        components_or_modules = self.create_components_or_modules(
+            target_model, self.target_module_paths, C
+        )
 
-        self.gates = gates
-        self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in gates.items()})
+        # just keep components_or_modules as a plain dict.
+        # state_dict will pick it up via the target_model
+        self.components_or_modules: dict[str, ReplacedComponents] = components_or_modules
 
-    @staticmethod
-    def create_components(
-        model: nn.Module,
-        target_module_patterns: list[str],
-        C: int,
-        gate_type: GateType,
-        gate_hidden_dims: list[int],
-    ) -> tuple[dict[str, ReplacedComponents], dict[str, nn.Module]]:
-        """Create target components for the model."""
-        components: dict[str, ReplacedComponents] = {}
-        gates: dict[str, nn.Module] = {}
+        self.gates = self.make_gates(gate_type, C, gate_hidden_dims, components_or_modules)
+        self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
 
-        def make_gate(input_dim: int) -> nn.Module:
-            if gate_type == "mlp":
-                return GateMLPs(C=C, hidden_dims=gate_hidden_dims)
-            return VectorGateMLPs(C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims)
+    @property
+    def components(self) -> dict[str, Components]:
+        return {name: cm.components for name, cm in self.components_or_modules.items()}
 
+    def _get_target_module_paths(
+        self, model: nn.Module, target_module_patterns: list[str]
+    ) -> list[str]:
         matched_patterns: set[str] = set()
-        for name, module in model.named_modules():
+        for name, _ in model.named_modules():
             for pattern in target_module_patterns:
                 if fnmatch.fnmatch(name, pattern):
+                    print(f"Matched {name} to {pattern}")
                     matched_patterns.add(pattern)
-                    if isinstance(module, nn.Linear):
-                        d_out, d_in = module.weight.shape
-                        component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
-                        component.init_from_target_weight(module.weight)
-                        gate = make_gate(d_in)
-                    elif isinstance(module, nn.Embedding):
-                        component = EmbeddingComponents(
-                            C=C,
-                            vocab_size=module.num_embeddings,
-                            embedding_dim=module.embedding_dim,
-                        )
-                        # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
-                        component.init_from_target_weight(module.weight)
-                        gate = make_gate(module.num_embeddings)
-                    else:
-                        raise ValueError(
-                            f"Module '{name}' matched pattern '{pattern}' but is not nn.Linear or "
-                            f"nn.Embedding. Found type: {type(module)}"
-                        )
-
-                    components[name] = ReplacedComponents(original=module, components=component)
-                    gates[name] = gate
-
         unmatched_patterns = set(target_module_patterns) - matched_patterns
         if unmatched_patterns:
             raise ValueError(
@@ -116,12 +90,71 @@ class ComponentModel(nn.Module):
                 f"{sorted(unmatched_patterns)}"
             )
 
-        if not components:
-            raise ValueError(
-                f"No modules found matching target_module_patterns: {target_module_patterns}"
-            )
+        return list(matched_patterns)
 
-        return components, gates
+    @staticmethod
+    def create_components_or_modules(
+        target_model: nn.Module,
+        target_module_paths: list[str],
+        C: int,
+    ) -> dict[str, ReplacedComponents]:
+        """Create target components for the model."""
+        components_or_modules: dict[str, ReplacedComponents] = {}
+
+        for module_path in target_module_paths:
+            module = target_model.get_submodule(module_path)
+
+            if isinstance(module, nn.Linear):
+                d_out, d_in = module.weight.shape
+                component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
+                component.init_from_target_weight(module.weight)
+            elif isinstance(module, nn.Embedding):
+                component = EmbeddingComponents(
+                    C=C,
+                    vocab_size=module.num_embeddings,
+                    embedding_dim=module.embedding_dim,
+                )
+                # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
+                component.init_from_target_weight(module.weight)
+            else:
+                raise ValueError(
+                    f"Module '{module_path}' matched pattern is not nn.Linear or "
+                    f"nn.Embedding. Found type: {type(module)}"
+                )
+
+            replacement = ReplacedComponents(original=module, components=component)
+
+            target_model.set_submodule(module_path, replacement)
+
+            components_or_modules[module_path] = replacement
+
+        return components_or_modules
+
+    @staticmethod
+    def make_gates(
+        gate_type: GateType,
+        C: int,
+        gate_hidden_dims: list[int],
+        components_or_modules: dict[str, ReplacedComponents],
+    ) -> dict[str, nn.Module]:
+        gates: dict[str, nn.Module] = {}
+        for module_path, component in components_or_modules.items():
+            # get input dim in case we're creating a vector gate
+            if isinstance(component.original, nn.Linear):
+                input_dim = component.original.weight.shape[1]
+            elif isinstance(component.original, nn.Embedding):  # pyright: ignore[reportUnnecessaryIsInstance]
+                input_dim = component.original.num_embeddings
+            else:
+                raise ValueError(f"Unknown component type: {type(component)}")
+
+            if gate_type == "mlp":
+                gate = GateMLPs(C=C, hidden_dims=gate_hidden_dims)
+            else:
+                gate = VectorGateMLPs(C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims)
+
+            gates[module_path] = gate
+
+        return gates
 
     @override
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
@@ -143,7 +176,7 @@ class ComponentModel(nn.Module):
         Args:
             masks: Optional dictionary mapping component names to masks
         """
-        for module_name, component in self.replaced_components.items():
+        for module_name, component in self.components_or_modules.items():
             assert component.forward_mode is None, (
                 f"Component must be in pristine state, but forward_mode is {component.forward_mode}"
             )
@@ -160,7 +193,7 @@ class ComponentModel(nn.Module):
         try:
             yield
         finally:
-            for component in self.replaced_components.values():
+            for component in self.components_or_modules.values():
                 component.forward_mode = None
                 component.mask = None
 
@@ -203,12 +236,18 @@ class ComponentModel(nn.Module):
                 module.register_forward_pre_hook(partial(cache_hook, param_name=module_name))
             )
 
+        for module in self.components_or_modules.values():
+            module.forward_mode = "original"
+
         try:
             out = self(*args, **kwargs)
             return out, cache
         finally:
             for handle in handles:
                 handle.remove()
+
+            for module in self.components_or_modules.values():
+                module.forward_mode = None
 
     @staticmethod
     def _download_wandb_files(wandb_project_run_id: str) -> tuple[Path, Path]:
@@ -280,7 +319,7 @@ class ComponentModel(nn.Module):
         detach_inputs: bool = False,
         sigmoid_type: SigmoidTypes = "leaky_hard",
     ) -> tuple[dict[str, Float[Tensor, "... C"]], dict[str, Float[Tensor, "... C"]]]:
-        """Calculate component activations and causal importances in one pass to save memory.
+        """Calculate causal importances.
 
         Args:
             pre_weight_acts: The activations before each layer in the target model.
@@ -296,19 +335,14 @@ class ComponentModel(nn.Module):
         for param_name in pre_weight_acts:
             acts = pre_weight_acts[param_name]
             gates = self.gates[param_name]
-            V = self.replaced_components[param_name].components.V
 
             if isinstance(gates, GateMLPs):
                 # need to get the inner activation for GateMLP
-                if not acts.dtype.is_floating_point:
-                    # Embedding layer
-                    inner_acts = V[acts]
-                else:
-                    # Linear layer
-                    inner_acts = einops.einsum(acts, V, "... d_in, d_in C -> ... C")
-                gate_input = inner_acts
-            else:
+                gate_input = self.components[param_name].get_inner_acts(acts)
+            elif isinstance(gates, VectorGateMLPs):
                 gate_input = acts
+            else:
+                raise ValueError(f"Unknown gate type: {type(gates)}")
 
             if detach_inputs:
                 gate_input = gate_input.detach()

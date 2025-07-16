@@ -13,7 +13,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponents, LinearComponents
+from spd.models.components import Components
 from spd.models.sigmoids import SigmoidTypes
 
 
@@ -162,7 +162,7 @@ def plot_causal_importance_vals(
         batch = batch.unsqueeze(1)
 
     pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-        batch, module_names=list(model.replaced_components.keys())
+        batch, module_names=model.target_module_paths
     )[1]
 
     ci_raw, ci_upper_leaky_raw = model.calc_causal_importances(
@@ -280,7 +280,7 @@ def plot_matrix(
 
 
 def plot_UV_matrices(
-    components: dict[str, LinearComponents | EmbeddingComponents],
+    components: dict[str, Components],
     all_perm_indices: dict[str, Float[Tensor, " C"]] | None = None,
 ) -> plt.Figure:
     """Plot V and U matrices for each instance, grouped by layer."""
