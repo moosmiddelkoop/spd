@@ -16,7 +16,7 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
     """Collect masks for each vocab token.
 
     Args:
-        model: The trained LinearComponent
+        model: The trained ComponentModel
         device: Device to run computation on
 
     Returns:

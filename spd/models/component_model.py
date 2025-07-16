@@ -15,12 +15,12 @@ from wandb.apis.public import Run
 
 from spd.configs import Config
 from spd.models.components import (
-    EmbeddingComponent,
-    GateMLP,
+    EmbeddingComponents,
+    GateMLPs,
     GateType,
-    LinearComponent,
-    ReplacedComponent,
-    VectorGateMLP,
+    LinearComponents,
+    ReplacedComponents,
+    VectorGateMLPs,
 )
 from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
@@ -54,68 +54,60 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
 
-        replaced_components = self.create_components(target_model, target_module_patterns, C)
-        self.replaced_components = replaced_components
-        self._replaced_components = nn.ModuleDict(
-            {k.replace(".", "-"): v for k, v in replaced_components.items()}
+        components, gates = self.create_components(
+            target_model, target_module_patterns, C, gate_type, gate_hidden_dims
         )
 
-        gates = self.make_gates(replaced_components, C, gate_type, gate_hidden_dims)
+        self.components = components
+        self._components = nn.ModuleDict({k.replace(".", "-"): v for k, v in components.items()})
+
         self.gates = gates
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in gates.items()})
 
     @staticmethod
-    def make_gates(
-        components: dict[str, ReplacedComponent],
+    def create_components(
+        model: nn.Module,
+        target_module_patterns: list[str],
         C: int,
         gate_type: GateType,
         gate_hidden_dims: list[int],
-    ) -> nn.ModuleDict:
-        gates = nn.ModuleDict()
-        for component_name, component in components.items():
-            if gate_type == "mlp":
-                gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims)
-            else:
-                input_dim = (
-                    component.replacement.vocab_size
-                    if isinstance(component.replacement, EmbeddingComponent)
-                    else component.replacement.d_in
-                )
-                gates[component_name] = VectorGateMLP(
-                    C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims
-                )
-        return gates
-
-    @staticmethod
-    def create_components(
-        model: nn.Module, target_module_patterns: list[str], C: int
-    ) -> dict[str, ReplacedComponent]:
+    ) -> tuple[dict[str, ReplacedComponents], dict[str, nn.Module]]:
         """Create target components for the model."""
-        components: dict[str, ReplacedComponent] = {}
-        matched_patterns: set[str] = set()
+        components: dict[str, ReplacedComponents] = {}
+        gates: dict[str, nn.Module] = {}
 
+        def make_gate(input_dim: int) -> nn.Module:
+            if gate_type == "mlp":
+                return GateMLPs(C=C, hidden_dims=gate_hidden_dims)
+            return VectorGateMLPs(C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims)
+
+        matched_patterns: set[str] = set()
         for name, module in model.named_modules():
             for pattern in target_module_patterns:
                 if fnmatch.fnmatch(name, pattern):
                     matched_patterns.add(pattern)
                     if isinstance(module, nn.Linear):
                         d_out, d_in = module.weight.shape
-                        component = LinearComponent(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
+                        component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
                         component.init_from_target_weight(module.weight)
+                        gate = make_gate(d_in)
                     elif isinstance(module, nn.Embedding):
-                        component = EmbeddingComponent(
+                        component = EmbeddingComponents(
                             C=C,
                             vocab_size=module.num_embeddings,
                             embedding_dim=module.embedding_dim,
                         )
                         # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
                         component.init_from_target_weight(module.weight)
+                        gate = make_gate(module.num_embeddings)
                     else:
                         raise ValueError(
                             f"Module '{name}' matched pattern '{pattern}' but is not nn.Linear or "
                             f"nn.Embedding. Found type: {type(module)}"
                         )
-                    components[name] = ReplacedComponent(original=module, replacement=component)
+
+                    components[name] = ReplacedComponents(original=module, components=component)
+                    gates[name] = gate
 
         unmatched_patterns = set(target_module_patterns) - matched_patterns
         if unmatched_patterns:
@@ -129,7 +121,7 @@ class ComponentModel(nn.Module):
                 f"No modules found matching target_module_patterns: {target_module_patterns}"
             )
 
-        return components
+        return components, gates
 
     @override
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
@@ -160,7 +152,7 @@ class ComponentModel(nn.Module):
             )
 
             if module_name in masks:
-                component.forward_mode = "replacement"
+                component.forward_mode = "components"
                 component.mask = masks[module_name]
             else:
                 component.forward_mode = "original"
@@ -303,10 +295,10 @@ class ComponentModel(nn.Module):
 
         for param_name in pre_weight_acts:
             acts = pre_weight_acts[param_name]
-            gate = self.gates[param_name]
-            V = self.replaced_components[param_name].replacement.V
+            gates = self.gates[param_name]
+            V = self.replaced_components[param_name].components.V
 
-            if isinstance(gate, GateMLP):
+            if isinstance(gates, GateMLPs):
                 # need to get the inner activation for GateMLP
                 if not acts.dtype.is_floating_point:
                     # Embedding layer
@@ -321,7 +313,7 @@ class ComponentModel(nn.Module):
             if detach_inputs:
                 gate_input = gate_input.detach()
 
-            gate_output = gate(gate_input)
+            gate_output = gates(gate_input)
 
             if sigmoid_type == "leaky_hard":
                 causal_importances[param_name] = SIGMOID_TYPES["lower_leaky_hard"](gate_output)

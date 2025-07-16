@@ -13,7 +13,7 @@ from spd.configs import Config
 from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
-from spd.models.components import LinearComponent
+from spd.models.components import LinearComponents
 from spd.plotting import plot_causal_importance_vals
 from spd.utils.general_utils import get_device, runtime_cast, set_seed
 from spd.utils.run_utils import get_output_dir
@@ -324,10 +324,10 @@ def compute_target_weight_neuron_contributions(
 
     # Stack mlp_in / mlp_out weights across layers so that einsums can broadcast
     W_in: Float[Tensor, "n_layers d_mlp d_embed"] = torch.stack(
-        [cast(LinearComponent, layer.mlp_in).weight for layer in target_model.layers], dim=0
+        [cast(LinearComponents, layer.mlp_in).weight for layer in target_model.layers], dim=0
     )
     W_out: Float[Tensor, "n_layers d_embed d_mlp"] = torch.stack(
-        [cast(LinearComponent, layer.mlp_out).weight for layer in target_model.layers], dim=0
+        [cast(LinearComponents, layer.mlp_out).weight for layer in target_model.layers], dim=0
     )
 
     # Compute connection strengths
@@ -352,7 +352,7 @@ def compute_target_weight_neuron_contributions(
 
 
 def compute_spd_weight_neuron_contributions(
-    components: dict[str, LinearComponent],
+    components: dict[str, LinearComponents],
     target_model: ResidualMLP,
     n_features: int | None = None,
 ) -> Float[Tensor, "n_layers n_features C d_mlp"]:
@@ -407,7 +407,7 @@ def compute_spd_weight_neuron_contributions(
 
 
 def plot_spd_feature_contributions_truncated(
-    components: dict[str, LinearComponent],
+    components: dict[str, LinearComponents],
     target_model: ResidualMLP,
     n_features: int | None = 50,
 ):
@@ -493,7 +493,7 @@ def plot_spd_feature_contributions_truncated(
 
 
 def plot_neuron_contribution_pairs(
-    components: dict[str, LinearComponent],
+    components: dict[str, LinearComponents],
     target_model: ResidualMLP,
     n_features: int | None = 50,
 ) -> plt.Figure:
@@ -634,7 +634,7 @@ def main():
         n_layers = target_model.config.n_layers
 
         components = {
-            k: runtime_cast(LinearComponent, v.replacement)
+            k: runtime_cast(LinearComponents, v.components)
             for k, v in model.replaced_components.items()
         }
 

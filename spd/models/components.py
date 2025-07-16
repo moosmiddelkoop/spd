@@ -3,7 +3,7 @@ from typing import Literal, override
 
 import einops
 import torch
-from jaxtyping import Float
+from jaxtyping import Bool, Float, Int
 from torch import Tensor, nn
 
 from spd.utils.module_utils import init_param_
@@ -27,8 +27,8 @@ class ParallelLinear(nn.Module):
         return einops.einsum(x, self.W, "... C d_in, C d_in d_out -> ... C d_out") + self.b
 
 
-class GateMLP(nn.Module):
-    """A gate with a hidden layer that maps a scalar input to a scalar output."""
+class GateMLPs(nn.Module):
+    """MLP based gates that map a scalar input to a scalar output."""
 
     def __init__(self, C: int, hidden_dims: list[int]):
         super().__init__()
@@ -51,8 +51,8 @@ class GateMLP(nn.Module):
         return x[..., 0]
 
 
-class VectorGateMLP(nn.Module):
-    """An MLP based gate that maps a vector valued input to a single output."""
+class VectorGateMLPs(nn.Module):
+    """MLP based gates that map a vector valued input to a single output."""
 
     def __init__(self, C: int, input_dim: int, hidden_dims: list[int]):
         super().__init__()
@@ -76,8 +76,16 @@ class VectorGateMLP(nn.Module):
         return x[..., 0]
 
 
-class Component(ABC, nn.Module):
+class Components(ABC, nn.Module):
     def __init__(self, C: int, rows: int, cols: int):
+        """
+        Base class for all components.
+
+        Args:
+            C: Number of components
+            rows: Number of rows in the weight matrix
+            cols: Number of columns in the weight matrix
+        """
         super().__init__()
         self.C = C
         self.V = nn.Parameter(torch.empty(rows, C))
@@ -119,11 +127,8 @@ class Component(ABC, nn.Module):
         raise NotImplementedError()
 
 
-class LinearComponent(Component):
-    """A linear transformation made from V and U matrices for SPD.
-
-    The weight matrix W is decomposed as W = U^T @ V^T, where V and U are learned parameters.
-    """
+class LinearComponents(Components):
+    """A floating point linear component. The basic building block of SPD."""
 
     def __init__(
         self,
@@ -162,8 +167,8 @@ class LinearComponent(Component):
         return out
 
 
-class EmbeddingComponent(Component):
-    """An efficient embedding component for SPD that avoids one-hot encoding."""
+class EmbeddingComponents(Components):
+    """Efficient embedding components that avoid one-hot encoding."""
 
     def __init__(
         self,
@@ -177,55 +182,48 @@ class EmbeddingComponent(Component):
 
     @override
     def forward(
-        self, x: Float[Tensor, "batch pos"], mask: Tensor | None
-    ) -> Float[Tensor, "batch pos embedding_dim"]:
-        """Forward through the embedding component using nn.Embedding for efficient lookup
-
-        NOTE: Unlike a LinearComponent, here we alter the mask with an instance attribute rather
-        than passing it in the forward pass. This is just because we only use this component in the
-        newer lm_decomposition.py setup which does monkey-patching of the modules rather than using
-        a SPDModel object.
+        self,
+        x: Int[Tensor, "..."],
+        mask: (Float | Bool)[Tensor, "... C"] | None,
+    ) -> Float[Tensor, "... embedding_dim"]:
+        """Forward through the embedding component using indexing instead of one-hot matmul.
 
         Args:
             x: Input tensor of token indices
+            mask: Tensor which masks parameter components. May be boolean or float.
         """
-        # From https://github.com/pytorch/pytorch/blob/main/torch/_decomp/decompositions.py#L1211
-        component_acts = self.V[x]  # (batch pos C)
+        assert x.dtype == torch.long, "x must be an integer tensor"
+
+        component_acts: Float[Tensor, "... C"] = self.V[x]
 
         if mask is not None:
             component_acts *= mask
 
         out = einops.einsum(
-            component_acts, self.U, "batch pos C, ... C embedding_dim -> batch pos embedding_dim"
+            component_acts, self.U, "... C, ... C embedding_dim -> ... embedding_dim"
         )
         return out
 
 
-# TODO(oli) make this the only public class here
-class ReplacedComponent(nn.Module):
+class ReplacedComponents(nn.Module):
     def __init__(
         self,
-        original: nn.Linear | nn.Embedding,
-        replacement: LinearComponent | EmbeddingComponent,
+        original: nn.Module,
+        components: Components,
     ):
         super().__init__()
-        assert isinstance(original, nn.Linear) == isinstance(replacement, LinearComponent)
         self.original = original
-        self.replacement = replacement
+        self.components = components
 
-        self.forward_mode: Literal["original"] | Literal["replacement"] | None = None
+        self.forward_mode: Literal["original"] | Literal["components"] | None = None
         self.mask: Tensor | None = None
 
     @override
     def forward(self, x: Tensor) -> Tensor:
-        if self.forward_mode is None:
-            raise ValueError("Forward mode not set")
-
         if self.forward_mode == "original":
             assert self.mask is None, "Mask should not be present in original mode"
             return self.original(x)
-        elif self.forward_mode == "replacement":
+        elif self.forward_mode == "components":
             # mask *can* but doesn't *need to* be present here
-            return self.replacement(x, self.mask)
-
+            return self.components(x, self.mask)
         raise ValueError(f"Invalid forward mode: {self.forward_mode}")

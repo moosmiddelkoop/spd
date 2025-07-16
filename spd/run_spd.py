@@ -82,15 +82,15 @@ def optimize(
         # Tie component weights. Assume that the first element is a transpose of the second element
         # NOTE: Tying weights will make your training nondeterministic
         for src_name, tgt_name in tied_weights:
-            tgt = model.replaced_components[tgt_name].replacement
-            src = model.replaced_components[src_name].replacement
+            tgt = model.replaced_components[tgt_name].components
+            src = model.replaced_components[src_name].components
             tgt.U.data = src.V.data.T
             tgt.V.data = src.U.data.T
 
     component_params: list[torch.nn.Parameter] = []
     gate_params: list[torch.nn.Parameter] = []
     for name, component in model.replaced_components.items():
-        component_params.extend(list(component.replacement.parameters()))
+        component_params.extend(list(component.components.parameters()))
         gate_params.extend(list(model.gates[name].parameters()))
 
     assert len(component_params) > 0, "No parameters found in components to optimize"

@@ -6,7 +6,7 @@ from jaxtyping import Float
 from torch import nn
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, LinearComponent, ReplacedComponent
+from spd.models.components import EmbeddingComponents, LinearComponents, ReplacedComponents
 
 
 class SimpleTestModel(nn.Module):
@@ -63,7 +63,7 @@ def test_replaced_modules_sets_and_restores_masks(component_model: ComponentMode
     with cm._replaced_modules(full_masks):
         # All components should now be in replacement‑mode with the given masks
         for name, comp in cm.replaced_components.items():
-            assert comp.forward_mode == "replacement"
+            assert comp.forward_mode == "components"
             assert torch.equal(comp.mask, full_masks[name])  # pyright: ignore [reportArgumentType]
 
     # Back to pristine state
@@ -76,7 +76,7 @@ def test_replaced_modules_sets_and_restores_masks_partial(component_model: Compo
     # Partial masking
     partial_masks = {"linear1": torch.ones(1, cm.C)}
     with cm._replaced_modules(partial_masks):
-        assert cm.replaced_components["linear1"].forward_mode == "replacement"
+        assert cm.replaced_components["linear1"].forward_mode == "components"
         assert torch.equal(cm.replaced_components["linear1"].mask, partial_masks["linear1"])  # pyright: ignore [reportArgumentType]
         # Others fall back to original‑only mode with no masks
         assert cm.replaced_components["linear2"].forward_mode == "original"
@@ -90,8 +90,8 @@ def test_replaced_modules_sets_and_restores_masks_partial(component_model: Compo
 
 def test_replaced_component_forward_linear_matches_modes():
     lin = nn.Linear(6, 4, bias=True)
-    comp = LinearComponent(d_in=6, d_out=4, C=3, bias=lin.bias)
-    rep = ReplacedComponent(original=lin, replacement=comp)
+    comp = LinearComponents(d_in=6, d_out=4, C=3, bias=lin.bias)
+    rep = ReplacedComponents(original=lin, components=comp)
 
     x = torch.randn(5, 6)
 
@@ -103,7 +103,7 @@ def test_replaced_component_forward_linear_matches_modes():
     torch.testing.assert_close(out_orig, expected_orig, rtol=1e-4, atol=1e-5)
 
     # --- Replacement path (with mask) ---
-    rep.forward_mode = "replacement"
+    rep.forward_mode = "components"
     mask = torch.rand(5, 3)
     rep.mask = mask
     out_rep = rep(x)
@@ -117,8 +117,8 @@ def test_replaced_component_forward_embedding_matches_modes():
     C = 2
 
     emb = nn.Embedding(vocab_size, embedding_dim)
-    comp = EmbeddingComponent(vocab_size=vocab_size, embedding_dim=embedding_dim, C=C)
-    rep = ReplacedComponent(original=emb, replacement=comp)
+    comp = EmbeddingComponents(vocab_size=vocab_size, embedding_dim=embedding_dim, C=C)
+    rep = ReplacedComponents(original=emb, components=comp)
 
     batch_size = 4
     seq_len = 7
@@ -132,7 +132,7 @@ def test_replaced_component_forward_embedding_matches_modes():
     torch.testing.assert_close(out_orig, expected_orig, rtol=1e-4, atol=1e-5)
 
     # --- Replacement path (with mask) ---
-    rep.forward_mode = "replacement"
+    rep.forward_mode = "components"
     mask = torch.rand(batch_size, seq_len, C)  # (batch pos C)
     rep.mask = mask
     out_rep = rep(idx)
