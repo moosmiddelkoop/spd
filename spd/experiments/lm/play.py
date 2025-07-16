@@ -87,7 +87,7 @@ logits = comp_model.forward(input_ids).logits
 logger.values(
     {
         "inputs_shape": input_ids.shape,
-        "logits": logits
+        "logits": logits,
         "logits_shape": logits.shape,
     }
 )
