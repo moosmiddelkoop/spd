@@ -7,10 +7,17 @@ wandb_run_name_prefix: ""
 # --- General ---
 seed: 0
 C: 20
+
+sample_config:
+  # sample_type: "uniform"
+  sample_type: "bernoulli"
+  min: 0.5
+sigmoid_type: "normal"
+
 n_mask_samples: 1
 gate_type: "mlp"
 gate_hidden_dims: [16]
-sigmoid_type: "leaky_hard"
+# sigmoid_type: "leaky_hard"
 target_module_patterns: ["linear1", "linear2"]
 
 # --- Loss Coefficients ---

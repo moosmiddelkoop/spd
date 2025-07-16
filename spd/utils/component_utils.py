@@ -1,21 +1,126 @@
-from collections.abc import Mapping
-from typing import cast
+from collections.abc import Callable
+from functools import partial
+from typing import cast, override
 
-import einops
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 from torch.utils.data import DataLoader
 
+from spd.configs import SampleConfig
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
-from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
 from spd.utils.general_utils import extract_batch_data
+
+
+def sample_uniform_to_1(min: Tensor) -> Tensor:
+    return min + (1 - min) * torch.rand_like(min)
+
+
+class BernoulliSTE(torch.autograd.Function):
+    @override
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        sigma: Tensor,
+    ) -> Tensor:
+        ctx.save_for_backward(sigma)
+        return torch.bernoulli(sigma)
+
+    @override
+    @staticmethod
+    def backward(  # pyright: ignore [reportIncompatibleMethodOverride]
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_outputs: Tensor,
+    ) -> tuple[Tensor]:
+        return (grad_outputs.clone(),)
+
+
+def rescaled_bernoulli_ste(x: Tensor, min: float) -> Tensor:
+    input = x * (1 - min) + min
+    return BernoulliSTE.apply(input)  # pyright: ignore [reportReturnType]
+
+
+class GumbelSigmoidSTE(torch.autograd.Function):
+    @override
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        logits: Tensor,
+        tau: float,
+        eps: float = 1e-6,
+    ) -> Tensor:
+        # logits = (x + b)/tau  (caller can pre-scale)
+        uniform = torch.rand_like(logits).clamp_(eps, 1 - eps)
+        gumbel = -torch.log(-torch.log(uniform))
+        y_soft = torch.sigmoid((logits + gumbel) / tau)  # relaxed
+        y_hard = (y_soft > 0.5).float()  # hard 0/1
+        ctx.save_for_backward(y_soft)
+        return y_hard  # always 0 or 1
+
+    @override
+    @staticmethod
+    def backward(  # pyright: ignore [reportIncompatibleMethodOverride]
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_outputs: Tensor,
+    ) -> tuple[Tensor, None, None]:
+        (y_soft,) = ctx.saved_tensors  # pyright: ignore [reportAttributeAccessIssue]
+        # Straight-through: treat y_hard as y_soft for the gradient
+        return grad_outputs * y_soft * (1 - y_soft), None, None
+
+
+def concrete_gate(
+    logits: Tensor,
+    temp: float,
+    eps: float = 1e-6,
+) -> Tensor:
+    return HeavisideSTE.apply(_concrete(logits, temp, eps))  # pyright: ignore [reportReturnType]
+
+
+def hard_concrete_gate(
+    logits: torch.Tensor,
+    temp: float,
+    lower_stretch_bound: float,
+    upper_stretch_bound: float,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    z_soft = _concrete(logits, temp, eps)
+    stretched = z_soft * (upper_stretch_bound - lower_stretch_bound) + lower_stretch_bound
+    clamped = stretched.clamp(min=0.0, max=1.0)
+    return HeavisideSTE.apply(clamped)  # pyright: ignore [reportReturnType]
+
+
+def relaxed_bernoulli_gate(
+    logits: Tensor,
+    temp: float,
+    eps: float = 1e-6,
+) -> Tensor:
+    return torch.distributions.relaxed_bernoulli.RelaxedBernoulli(
+        temp=temp, logits=logits
+    ).rsample()
+
+
+def get_sample_fn(sample_config: SampleConfig) -> Callable[[Tensor], Tensor]:
+    if sample_config.sample_type == "uniform":
+        return sample_uniform_to_1
+    elif sample_config.sample_type == "bernoulli":
+        return partial(rescaled_bernoulli_ste, min=sample_config.min)
+    elif sample_config.sample_type == "concrete":
+        return partial(concrete_gate, temp=sample_config.temp)
+    elif sample_config.sample_type == "hard_concrete":
+        return partial(
+            hard_concrete_gate,
+            temp=sample_config.temp,
+            lower_stretch_bound=sample_config.lower_stretch_bound,
+            upper_stretch_bound=sample_config.upper_stretch_bound,
+        )
+    raise ValueError(f"Invalid sample type: {sample_config.sample_type}")  # pyright: ignore [reportUnreachable]
 
 
 def calc_stochastic_masks(
     causal_importances: dict[str, Float[Tensor, "... C"]],
     n_mask_samples: int,
+    sample_config: SampleConfig,
 ) -> list[dict[str, Float[Tensor, "... C"]]]:
     """Calculate n_mask_samples stochastic masks with the formula `ci + (1 - ci) * rand_unif(0,1)`.
 
@@ -26,11 +131,10 @@ def calc_stochastic_masks(
     Return:
         A list of n_mask_samples dictionaries, each containing the stochastic masks for each layer.
     """
+    sample = get_sample_fn(sample_config)
     stochastic_masks = []
     for _ in range(n_mask_samples):
-        stochastic_masks.append(
-            {layer: ci + (1 - ci) * torch.rand_like(ci) for layer, ci in causal_importances.items()}
-        )
+        stochastic_masks.append({layer: sample(ci) for layer, ci in causal_importances.items()})
     return stochastic_masks
 
 
