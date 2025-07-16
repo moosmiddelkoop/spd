@@ -188,10 +188,10 @@ class TestSPDRun:
         """
         mock_subprocess.return_value = Mock(returncode=0)
 
-        # Use the default sweep_params.yaml file
         main(
             experiments="tms_5-2",
-            sweep=True,
+            # we use the example here bc in CI we don't want to rely on the copy step having run
+            sweep="sweep_params.yaml.example",
             local=True,
             **self._DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
         )
