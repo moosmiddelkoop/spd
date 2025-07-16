@@ -50,7 +50,7 @@ def calc_embedding_recon_loss(
 
         if unembed:
             assert hasattr(model.model, "lm_head"), "Only supports unembedding named lm_head"
-            assert isinstance(model.model.lm_head, nn.Module), "lm_head must be an nn.Module"
+            assert isinstance(model.model.lm_head, nn.Module)
             target_out_unembed = model.model.lm_head(target_out)
             masked_out_unembed = model.model.lm_head(masked_out)
             loss += calc_kl_divergence_lm(pred=masked_out_unembed, target=target_out_unembed)

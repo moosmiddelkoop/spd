@@ -10,10 +10,10 @@ from jaxtyping import Float
 from torch import Tensor
 
 from spd.configs import Config
-from spd.experiments.resid_mlp.models import MLP, ResidualMLP
+from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.plotting import plot_causal_importance_vals
 from spd.utils.general_utils import get_device, set_seed
 from spd.utils.run_utils import get_output_dir
@@ -38,8 +38,8 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
 
     # Get components and gates from model
     # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
@@ -338,16 +338,12 @@ def compute_target_weight_neuron_contributions(
     assert torch.equal(W_E, target_model.W_U.T)
 
     # Stack mlp_in / mlp_out weights across layers so that einsums can broadcast
-    in_weights = []
-    out_weights = []
-    for i in range(len(target_model.layers)):
-        mlp = target_model.layers[i]
-        assert isinstance(mlp, MLP)
-        in_weights.append(mlp.mlp_in.weight)
-        out_weights.append(mlp.mlp_out.weight)
-
-    W_in: Float[Tensor, "n_layers d_mlp d_embed"] = torch.stack(in_weights, dim=0)
-    W_out: Float[Tensor, "n_layers d_embed d_mlp"] = torch.stack(out_weights, dim=0)
+    W_in: Float[Tensor, "n_layers d_mlp d_embed"] = torch.stack(
+        [cast(LinearComponent, layer.mlp_in).weight for layer in target_model.layers], dim=0
+    )
+    W_out: Float[Tensor, "n_layers d_embed d_mlp"] = torch.stack(
+        [cast(LinearComponent, layer.mlp_out).weight for layer in target_model.layers], dim=0
+    )
 
     # Compute connection strengths
     in_conns: Float[Tensor, "n_layers n_features d_mlp"] = einops.einsum(
@@ -698,8 +694,8 @@ def main():
             return mask_name  # Fallback to original if pattern doesn't match
 
         # Generate and save causal importance plots
-        gates: dict[str, Gate | GateMLP] = {
-            k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+        gates: dict[str, GateMLP | VectorGateMLP] = {
+            k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
             for k, v in model.gates.items()
         }
         batch_shape = (1, target_model.config.n_features)

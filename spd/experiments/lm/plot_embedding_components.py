@@ -11,7 +11,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP
+from spd.models.components import EmbeddingComponent, GateMLP, VectorGateMLP
 from spd.utils.component_utils import calc_causal_importances
 
 
@@ -26,8 +26,8 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
         Tensor of shape (vocab_size, C) containing masks for each vocab token
     """
     # We used "-" instead ofGateMLP module names can't have "." in them
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in model.gates.items()
     }
     components: dict[str, EmbeddingComponent] = {
