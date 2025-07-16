@@ -27,9 +27,9 @@ def create_slurm_array_script(
     script_path: Path,
     job_name: str,
     commands: list[str],
+    snapshot_branch: str,
     cpu: bool = False,
     time_limit: str = "24:00:00",
-    snapshot_branch: str | None = None,
     max_concurrent_tasks: int | None = None,
 ) -> None:
     """Create a SLURM job array script with git snapshot for consistent code.
@@ -43,8 +43,6 @@ def create_slurm_array_script(
         snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
         max_concurrent_tasks: Maximum number of array tasks to run concurrently. If None, no limit.
     """
-    if snapshot_branch is None:
-        snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
 
     gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
     slurm_logs_dir = Path.home() / "slurm_logs"
