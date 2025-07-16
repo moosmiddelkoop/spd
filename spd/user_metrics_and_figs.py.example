@@ -13,13 +13,13 @@ from torch import Tensor
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 
 
 def compute_user_metrics(
     model: ComponentModel,
     components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
+    gates: dict[str, GateMLP | VectorGateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     unmasked_component_out: Float[Tensor, "... d_model_out"],
     masked_component_out: Float[Tensor, "... d_model_out"],
@@ -53,7 +53,7 @@ def compute_user_metrics(
 def create_user_figures(
     model: ComponentModel,
     components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
+    gates: dict[str, GateMLP | VectorGateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_model_out"],
     batch: Int[Tensor, "... d_model_in"],
