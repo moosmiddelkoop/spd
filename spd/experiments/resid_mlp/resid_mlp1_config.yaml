@@ -10,7 +10,9 @@ C: 100
 n_mask_samples: 1
 gate_type: "mlp"
 gate_hidden_dims: [16]
-sigmoid_type: "leaky_hard"
+sample_config:
+  sample_type: "hard_concrete"
+sigmoid_type: "normal"
 target_module_patterns:
   - "layers.*.mlp_in"
   - "layers.*.mlp_out"
