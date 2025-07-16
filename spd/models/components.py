@@ -4,7 +4,6 @@ import einops
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
-from torch.nn import functional as F
 
 from spd.utils.module_utils import init_param_
 
@@ -14,16 +13,17 @@ GateType = Literal["mlp", "vector_mlp"]
 class ParallelLinear(nn.Module):
     """C parallel linear layers"""
 
-    def __init__(self, C: int, input_dim: int, output_dim: int):
+    def __init__(self, C: int, input_dim: int, output_dim: int, nonlinearity: str):
         super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
         self.W = nn.Parameter(torch.empty(C, input_dim, output_dim))
         self.b = nn.Parameter(torch.zeros(C, output_dim))
-        init_param_(self.W, fan_val=input_dim, nonlinearity="relu")
+        init_param_(self.W, fan_val=input_dim, nonlinearity=nonlinearity)
 
     @override
     def forward(self, x: Float[Tensor, "... C d_in"]) -> Float[Tensor, "... C d_out"]:
-        x = einops.einsum(x, self.W, "... C d_in, C d_in d_out -> ... C d_out")
-        return F.gelu(x + self.b)
+        return einops.einsum(x, self.W, "... C d_in, C d_in d_out -> ... C d_out") + self.b
 
 
 class GateMLP(nn.Module):
@@ -33,17 +33,21 @@ class GateMLP(nn.Module):
         super().__init__()
 
         self.hidden_dims = hidden_dims
-        dim_pairs = list(zip([1] + hidden_dims, hidden_dims + [1], strict=True))
-        self.parallel_linears = nn.Sequential(
-            *[ParallelLinear(C, in_dim, out_dim) for in_dim, out_dim in dim_pairs]
-        )
+
+        self.layers = nn.Sequential()
+        for i in range(len(hidden_dims)):
+            input_dim = 1 if i == 0 else hidden_dims[i - 1]
+            output_dim = hidden_dims[i]
+            self.layers.append(ParallelLinear(C, input_dim, output_dim, nonlinearity="relu"))
+            self.layers.append(nn.GELU())
+        self.layers.append(ParallelLinear(C, hidden_dims[-1], 1, nonlinearity="linear"))
 
     @override
     def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
-        hidden = einops.rearrange(x, "... C -> ... C 1")
-        out: Float[Tensor, "... C 1"] = self.parallel_linears(hidden)
-        assert out.shape[-1] == 1, "Last dimension should be 1 after the final layer"
-        return out[..., 0]
+        x = einops.rearrange(x, "... C -> ... C 1")
+        x = self.layers(x)
+        assert x.shape[-1] == 1, "Last dimension should be 1 after the final layer"
+        return x[..., 0]
 
 
 class VectorGateMLP(nn.Module):
@@ -53,19 +57,22 @@ class VectorGateMLP(nn.Module):
         super().__init__()
 
         self.hidden_dims = hidden_dims
-        dim_pairs = list(zip([input_dim] + hidden_dims, hidden_dims + [1], strict=True))
 
-        self.parallel_linears = nn.Sequential(
-            *[ParallelLinear(C, in_dim, out_dim) for in_dim, out_dim in dim_pairs]
-        )
+        self.layers = nn.Sequential()
+        for i in range(len(hidden_dims)):
+            input_dim = input_dim if i == 0 else hidden_dims[i - 1]
+            output_dim = hidden_dims[i]
+            self.layers.append(ParallelLinear(C, input_dim, output_dim, nonlinearity="relu"))
+            self.layers.append(nn.GELU())
+
+        self.layers.append(ParallelLinear(C, hidden_dims[-1], 1, nonlinearity="linear"))
 
     @override
     def forward(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... C"]:
         # this 1 will broadcast out to actual C size, but no need to expand out yet
-        hidden = einops.rearrange(x, "... d_in -> ... 1 d_in")
-        out: Float[Tensor, "... C 1"] = self.parallel_linears(hidden)
-        assert out.shape[-1] == 1, "Last dimension should be 1 after the final layer"
-        return out[..., 0]
+        x = self.layers(einops.rearrange(x, "... d_in -> ... 1 d_in"))
+        assert x.shape[-1] == 1, "Last dimension should be 1 after the final layer"
+        return x[..., 0]
 
 
 class LinearComponent(nn.Module):
