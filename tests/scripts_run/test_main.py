@@ -14,15 +14,15 @@ import pytest
 
 from spd.scripts.run import main
 
-__DEFAULT_MAIN_KWARGS: dict[str, str | bool] = dict(
-    override_branch="dev",
-    use_wandb=False,
-    create_report=False,
-)
-
 
 class TestSPDRun:
     """Test spd-run command execution."""
+
+    _DEFAULT_MAIN_KWARGS: dict[str, str | bool] = dict(
+        override_branch="dev",
+        use_wandb=False,
+        create_report=False,
+    )
 
     @pytest.mark.parametrize(
         "experiments,sweep,n_agents,expected_command_count",
@@ -61,7 +61,7 @@ class TestSPDRun:
             sweep=sweep,
             local=False,
             n_agents=n_agents,
-            **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
+            **self._DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
         )
 
         # Assert create_slurm_array_script was called
@@ -130,7 +130,7 @@ class TestSPDRun:
             experiments=experiments,
             sweep=sweep,
             local=True,
-            **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
+            **self._DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
         )
 
         # Calculate expected number of subprocess calls
@@ -169,13 +169,13 @@ class TestSPDRun:
         """
         fake_exp_name = "nonexistent_experiment_please_dont_name_your_experiment_this"
         with pytest.raises(ValueError, match=f"Invalid experiments.*{fake_exp_name}"):
-            main(experiments=fake_exp_name, local=True, **__DEFAULT_MAIN_KWARGS)  # pyright: ignore[reportArgumentType]
+            main(experiments=fake_exp_name, local=True, **self._DEFAULT_MAIN_KWARGS)  # pyright: ignore[reportArgumentType]
 
         with pytest.raises(ValueError, match=f"Invalid experiments.*{fake_exp_name}"):
             main(
                 experiments=f"{fake_exp_name},tms_5-2",
                 local=True,
-                **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
+                **self._DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
             )
 
     @patch("spd.scripts.run.subprocess.run")
@@ -193,7 +193,7 @@ class TestSPDRun:
             experiments="tms_5-2",
             sweep=True,
             local=True,
-            **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
+            **self._DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
         )
 
         # Verify multiple commands were generated (sweep should create multiple runs)
