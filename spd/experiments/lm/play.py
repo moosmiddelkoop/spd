@@ -37,7 +37,8 @@ comp_model = ComponentModel(
     base_model=model,
     target_module_patterns=["model.model.layers.*.mlp.gate_proj"],
     C=17,
-    n_ci_mlp_neurons=0,
+    gate_type="mlp",
+    gate_hidden_dims=[8],
     pretrained_model_output_attr="logits",
 )
 
