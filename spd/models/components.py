@@ -77,7 +77,7 @@ class VectorGateMLPs(nn.Module):
 
 
 class Components(ABC, nn.Module):
-    def __init__(self, C: int, rows: int, cols: int):
+    def __init__(self, C: int, u_dim: int, v_dim: int):
         """
         Base class for all components.
 
@@ -88,8 +88,8 @@ class Components(ABC, nn.Module):
         """
         super().__init__()
         self.C = C
-        self.V = nn.Parameter(torch.empty(rows, C))
-        self.U = nn.Parameter(torch.empty(C, cols))
+        self.V = nn.Parameter(torch.empty(u_dim, C))
+        self.U = nn.Parameter(torch.empty(C, v_dim))
 
     @property
     def weight(self) -> Float[Tensor, "rows cols"]:
@@ -142,7 +142,7 @@ class LinearComponents(Components):
         d_out: int,
         bias: Tensor | None = None,
     ):
-        super().__init__(C, rows=d_out, cols=d_in)  # NOTE: linear weights are (d_out, d_in)
+        super().__init__(C, u_dim=d_out, v_dim=d_in)  # NOTE: linear weights are (d_out, d_in)
         self.d_in = d_in
         self.d_out = d_out
         self.bias = bias
@@ -187,13 +187,13 @@ class EmbeddingComponents(Components):
         vocab_size: int,
         embedding_dim: int,
     ):
-        super().__init__(C, rows=vocab_size, cols=embedding_dim)
+        super().__init__(C, u_dim=vocab_size, v_dim=embedding_dim)
         self.vocab_size: int = vocab_size
         self.embedding_dim: int = embedding_dim
 
     @override
-    def get_inner_acts(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
-        return einops.einsum(x, self.U, "... d_in, d_in C -> ... C")
+    def get_inner_acts(self, x: Int[Tensor, "..."]) -> Float[Tensor, "... C"]:
+        return self.U.T[x]
 
     @override
     def forward(
@@ -209,7 +209,7 @@ class EmbeddingComponents(Components):
         """
         assert x.dtype == torch.long, "x must be an integer tensor"
 
-        component_acts: Float[Tensor, "... C"] = self.V[x]
+        component_acts: Float[Tensor, "... C"] = self.get_inner_acts(x)
 
         if mask is not None:
             component_acts *= mask
