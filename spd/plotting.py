@@ -13,7 +13,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent
 from spd.models.sigmoids import SigmoidTypes
 from spd.utils.component_utils import calc_causal_importances
 
@@ -130,7 +130,7 @@ def _plot_causal_importances_figure(
 def plot_causal_importance_vals(
     model: ComponentModel,
     components: Mapping[str, LinearComponent | EmbeddingComponent],
-    gates: Mapping[str, GateMLP | VectorGateMLP],
+    gates: Mapping[str, GateMLP],
     batch_shape: tuple[int, ...],
     device: str | torch.device,
     input_magnitude: float,

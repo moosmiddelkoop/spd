@@ -1,78 +1,50 @@
-from typing import Literal, override
+from typing import override
 
 import einops
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 from spd.utils.module_utils import init_param_
 
-GateType = Literal["mlp", "vector_mlp"]
-
-
-class ParallelLinear(nn.Module):
-    """C parallel linear layers"""
-
-    def __init__(self, C: int, input_dim: int, output_dim: int, nonlinearity: str):
-        super().__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.W = nn.Parameter(torch.empty(C, input_dim, output_dim))
-        self.b = nn.Parameter(torch.zeros(C, output_dim))
-        init_param_(self.W, fan_val=input_dim, nonlinearity=nonlinearity)
-
-    @override
-    def forward(self, x: Float[Tensor, "... C d_in"]) -> Float[Tensor, "... C d_out"]:
-        return einops.einsum(x, self.W, "... C d_in, C d_in d_out -> ... C d_out") + self.b
-
 
 class GateMLP(nn.Module):
-    """A gate with a hidden layer that maps a scalar input to a scalar output."""
+    """A gate with a hidden layer that maps a single input to a single output."""
 
-    def __init__(self, C: int, hidden_dims: list[int]):
+    def __init__(self, C: int, n_ci_mlp_neurons: int):
         super().__init__()
+        self.n_ci_mlp_neurons = n_ci_mlp_neurons
 
-        self.hidden_dims = hidden_dims
+        self.mlp_in = nn.Parameter(torch.empty((C, n_ci_mlp_neurons)))
+        self.in_bias = nn.Parameter(torch.zeros((C, n_ci_mlp_neurons)))
+        self.mlp_out = nn.Parameter(torch.empty((C, n_ci_mlp_neurons)))
+        self.out_bias = nn.Parameter(torch.zeros((C,)))
 
-        self.layers = nn.Sequential()
-        for i in range(len(hidden_dims)):
-            input_dim = 1 if i == 0 else hidden_dims[i - 1]
-            output_dim = hidden_dims[i]
-            self.layers.append(ParallelLinear(C, input_dim, output_dim, nonlinearity="relu"))
-            self.layers.append(nn.GELU())
-        self.layers.append(ParallelLinear(C, hidden_dims[-1], 1, nonlinearity="linear"))
+        init_param_(self.mlp_in, fan_val=1, nonlinearity="relu")
+        init_param_(self.mlp_out, fan_val=n_ci_mlp_neurons, nonlinearity="linear")
 
     @override
     def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
-        x = einops.rearrange(x, "... C -> ... C 1")
-        x = self.layers(x)
-        assert x.shape[-1] == 1, "Last dimension should be 1 after the final layer"
-        return x[..., 0]
+        hidden = (
+            einops.einsum(
+                x,
+                self.mlp_in,
+                "... C, C n_ci_mlp_neurons -> ... C n_ci_mlp_neurons",
+            )
+            + self.in_bias
+        )
+        hidden = F.gelu(hidden)
 
-
-class VectorGateMLP(nn.Module):
-    """An MLP based gate that maps a vector valued input to a single output."""
-
-    def __init__(self, C: int, input_dim: int, hidden_dims: list[int]):
-        super().__init__()
-
-        self.hidden_dims = hidden_dims
-
-        self.layers = nn.Sequential()
-        for i in range(len(hidden_dims)):
-            input_dim = input_dim if i == 0 else hidden_dims[i - 1]
-            output_dim = hidden_dims[i]
-            self.layers.append(ParallelLinear(C, input_dim, output_dim, nonlinearity="relu"))
-            self.layers.append(nn.GELU())
-
-        self.layers.append(ParallelLinear(C, hidden_dims[-1], 1, nonlinearity="linear"))
-
-    @override
-    def forward(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... C"]:
-        # this 1 will broadcast out to actual C size, but no need to expand out yet
-        x = self.layers(einops.rearrange(x, "... d_in -> ... 1 d_in"))
-        assert x.shape[-1] == 1, "Last dimension should be 1 after the final layer"
-        return x[..., 0]
+        out = (
+            einops.einsum(
+                hidden,
+                self.mlp_out,
+                "... C n_ci_mlp_neurons, C n_ci_mlp_neurons -> ... C",
+            )
+            + self.out_bias
+        )
+        return out
 
 
 class LinearComponent(nn.Module):
@@ -84,8 +56,6 @@ class LinearComponent(nn.Module):
     def __init__(self, d_in: int, d_out: int, C: int, bias: Tensor | None):
         super().__init__()
         self.C = C
-        self.d_in = d_in
-        self.d_out = d_out
 
         self.V = nn.Parameter(torch.empty(d_in, C))
         self.U = nn.Parameter(torch.empty(C, d_out))
@@ -134,8 +104,6 @@ class EmbeddingComponent(nn.Module):
         C: int,
     ):
         super().__init__()
-        self.vocab_size: int = vocab_size
-        self.embedding_dim: int = embedding_dim
         self.C: int = C
 
         self.V: nn.Parameter = nn.Parameter(torch.empty(vocab_size, C))
@@ -151,7 +119,7 @@ class EmbeddingComponent(nn.Module):
     def weight(self) -> Float[Tensor, "vocab_size embedding_dim"]:
         """V @ U"""
         return einops.einsum(
-            self.V, self.U, "vocab_size C, C embedding_dim -> vocab_size embedding_dim"
+            self.V, self.U, "vocab_size C, ... C embedding_dim -> vocab_size embedding_dim"
         )
 
     @override

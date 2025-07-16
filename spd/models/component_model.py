@@ -17,9 +17,7 @@ from spd.configs import Config
 from spd.models.components import (
     EmbeddingComponent,
     GateMLP,
-    GateType,
     LinearComponent,
-    VectorGateMLP,
 )
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
 from spd.utils.general_utils import load_pretrained

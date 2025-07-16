@@ -8,7 +8,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent
 from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
 from spd.utils.general_utils import extract_batch_data
 
@@ -56,9 +56,8 @@ def component_activation_statistics(
 ) -> tuple[dict[str, float], dict[str, Float[Tensor, " C"]]]:
     """Get the number and strength of the masks over the full dataset."""
     # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, GateMLP | VectorGateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
-        for k, v in model.gates.items()
+    gates: dict[str, GateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP, v) for k, v in model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
         k.removeprefix("components.").replace("-", "."): cast(
@@ -117,7 +116,7 @@ def component_activation_statistics(
 def calc_causal_importances(
     pre_weight_acts: dict[str, Float[Tensor, "... d_in"] | Int[Tensor, "... pos"]],
     Vs: Mapping[str, Float[Tensor, "d_in C"]],
-    gates: Mapping[str, GateMLP | VectorGateMLP],
+    gates: Mapping[str, GateMLP],
     detach_inputs: bool = False,
     sigmoid_type: SigmoidTypes = "leaky_hard",
 ) -> tuple[dict[str, Float[Tensor, "... C"]], dict[str, Float[Tensor, "... C"]]]:

@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from spd.configs import Config
 from spd.losses import calc_ce_losses
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent
 from spd.plotting import (
     create_embed_ci_sample_table,
     plot_causal_importance_vals,
@@ -36,7 +36,7 @@ except ImportError:
 def create_metrics(
     model: ComponentModel,
     components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, GateMLP | VectorGateMLP],
+    gates: dict[str, GateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_model_out"],
     batch: Tensor,
@@ -105,7 +105,7 @@ def create_metrics(
 def create_figures(
     model: ComponentModel,
     components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, GateMLP | VectorGateMLP],
+    gates: dict[str, GateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_model_out"],
     batch: Int[Tensor, "... d_model_in"] | Float[Tensor, "... d_model_in"],

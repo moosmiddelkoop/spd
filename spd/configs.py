@@ -14,7 +14,6 @@ from pydantic import (
 )
 
 from spd.log import logger
-from spd.models.components import GateType
 from spd.spd_types import ModelPath, Probability
 
 
@@ -110,8 +109,8 @@ class Config(BaseModel):
         ...,
         description="Number of stochastic masks to sample when using stochastic recon losses",
     )
-    gate_type: GateType = Field(
-        default="vector_mlp",
+    gate_type: Literal["mlp", "vector_mlp"] = Field(
+        default="mlp",
         description="Type of gate used to calculate the causal importance.",
     )
     gate_hidden_dims: list[NonNegativeInt] = Field(
