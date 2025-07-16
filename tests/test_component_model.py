@@ -34,7 +34,8 @@ def test_component_replacement_context_manager():
         base_model=base_model,
         target_module_patterns=target_patterns,
         C=4,
-        n_ci_mlp_neurons=0,
+        gate_type="mlp",
+        gate_hidden_dims=[1],
         pretrained_model_output_attr=None,
     )
 
@@ -155,7 +156,8 @@ def test_component_replacement_nested_contexts():
         base_model=base_model,
         target_module_patterns=["linear1", "linear2"],
         C=2,
-        n_ci_mlp_neurons=0,
+        gate_type="mlp",
+        gate_hidden_dims=[1],
         pretrained_model_output_attr=None,
     )
 

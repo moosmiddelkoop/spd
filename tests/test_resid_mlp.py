@@ -32,7 +32,8 @@ def test_resid_mlp_decomposition_happy_path() -> None:
         seed=0,
         C=10,  # Smaller C for faster testing
         n_mask_samples=1,
-        n_ci_mlp_neurons=8,
+        gate_type="mlp",
+        gate_hidden_dims=[8],
         target_module_patterns=[
             "layers.*.mlp_in",
             "layers.*.mlp_out",

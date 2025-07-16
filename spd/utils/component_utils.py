@@ -8,7 +8,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
 from spd.utils.general_utils import extract_batch_data
 
@@ -56,8 +56,8 @@ def component_activation_statistics(
 ) -> tuple[dict[str, float], dict[str, Float[Tensor, " C"]]]:
     """Get the number and strength of the masks over the full dataset."""
     # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
@@ -117,7 +117,7 @@ def component_activation_statistics(
 def calc_causal_importances(
     pre_weight_acts: dict[str, Float[Tensor, "... d_in"] | Int[Tensor, "... pos"]],
     Vs: Mapping[str, Float[Tensor, "d_in C"]],
-    gates: Mapping[str, Gate | GateMLP],
+    gates: Mapping[str, GateMLP | VectorGateMLP],
     detach_inputs: bool = False,
     sigmoid_type: SigmoidTypes = "leaky_hard",
 ) -> tuple[dict[str, Float[Tensor, "... C"]], dict[str, Float[Tensor, "... C"]]]:
@@ -138,16 +138,24 @@ def calc_causal_importances(
 
     for param_name in pre_weight_acts:
         acts = pre_weight_acts[param_name]
+        gate = gates[param_name]
 
-        if not acts.dtype.is_floating_point:
-            # Embedding layer
-            component_act = Vs[param_name][acts]
+        if isinstance(gate, GateMLP):
+            # need to get the inner activation for GateMLP
+            if not acts.dtype.is_floating_point:
+                # Embedding layer
+                inner_acts = Vs[param_name][acts]
+            else:
+                # Linear layer
+                inner_acts = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
+            gate_input = inner_acts
         else:
-            # Linear layer
-            component_act = einops.einsum(acts, Vs[param_name], "... d_in, d_in C -> ... C")
+            gate_input = acts
 
-        gate_input = component_act.detach() if detach_inputs else component_act
-        gate_output = gates[param_name](gate_input)
+        if detach_inputs:
+            gate_input = gate_input.detach()
+
+        gate_output = gate(gate_input)
 
         if sigmoid_type == "leaky_hard":
             causal_importances[param_name] = SIGMOID_TYPES["lower_leaky_hard"](gate_output)
