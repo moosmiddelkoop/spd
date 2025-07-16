@@ -15,7 +15,7 @@ class ExperimentConfig:
         expected_runtime: Expected runtime of the experiment in minutes. Used for SLURM job names.
     """
 
-    experiment_type: Literal["tms", "resid_mlp", "lm"]
+    experiment_type: Literal["tms", "resid_mlp", "lm", "cis"]
     decomp_script: Path
     config_path: Path
     expected_runtime: int
@@ -70,4 +70,10 @@ EXPERIMENT_REGISTRY: dict[str, ExperimentConfig] = {
     #     config_path=Path("spd/experiments/lm/ss_emb_config.yaml"),
     #     expected_runtime=60,
     # ),
+    "cis_100-40": ExperimentConfig(
+        experiment_type="cis",
+        decomp_script=Path("spd/experiments/cis/cis_decomposition.py"),
+        config_path=Path("spd/experiments/cis/cis_100-40_config.yaml"),
+        expected_runtime=8,
+    ),
 }

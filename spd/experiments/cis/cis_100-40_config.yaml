@@ -1,0 +1,46 @@
+# CIS 100-40 (Computation in Superposition)
+# --- WandB ---
+wandb_project: spd
+wandb_run_name: null
+wandb_run_name_prefix: "cis_100-40_"
+
+# --- General ---
+seed: 0
+C: 20
+n_mask_samples: 1
+n_ci_mlp_neurons: 16
+sigmoid_type: "leaky_hard"
+target_module_patterns: ["W1", "W2"]
+
+# --- Loss Coefficients ---
+faithfulness_coeff: 1.0
+recon_coeff: null
+stochastic_recon_coeff: 1
+recon_layerwise_coeff: null
+stochastic_recon_layerwise_coeff: 1.0
+importance_minimality_coeff: 3e-3
+pnorm: 1.0
+output_loss_type: mse
+
+# --- Training ---
+batch_size: 1024
+steps: 20_000
+lr: 1e-3
+lr_schedule: cosine
+lr_warmup_pct: 0.0
+n_eval_steps: 100
+
+# --- Logging & Saving ---
+image_freq: 5_000
+print_freq: 1000
+save_freq: null
+
+# --- Pretrained model info ---
+pretrained_model_class: "spd.experiments.cis.models.CISModel"
+pretrained_model_path: "wandb:spd/runs/placeholder"  # Will be updated with actual trained model path
+
+# --- Task Specific ---
+task_config:
+  task_name: cis
+  feature_sparsity: 0.9
+  importance_decay: 0.8
