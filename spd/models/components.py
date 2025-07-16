@@ -149,6 +149,7 @@ class LinearComponents(Components):
 
     @override
     def get_inner_acts(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
+        # U is (C, d_in). Multiply this way because we use (out, in) as in nn.Linear
         return einops.einsum(x, self.U, "... d_in, C d_in -> ... C")
 
     @override
@@ -168,6 +169,7 @@ class LinearComponents(Components):
         if mask is not None:
             component_acts *= mask
 
+        # V is (d_out, C). Multiply this way because we use (out, in) as in nn.Linear
         out = einops.einsum(component_acts, self.V, "... C, d_out C -> ... d_out")
 
         if self.bias is not None:
@@ -218,7 +220,7 @@ class EmbeddingComponents(Components):
         return out
 
 
-class ReplacedComponents(nn.Module):
+class ComponentsOrModule(nn.Module):
     def __init__(
         self,
         original: nn.Linear | nn.Embedding,

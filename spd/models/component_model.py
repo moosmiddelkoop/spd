@@ -15,11 +15,11 @@ from wandb.apis.public import Run
 from spd.configs import Config
 from spd.models.components import (
     Components,
+    ComponentsOrModule,
     EmbeddingComponents,
     GateMLPs,
     GateType,
     LinearComponents,
-    ReplacedComponents,
     VectorGateMLPs,
 )
 from spd.models.sigmoids import SIGMOID_TYPES, SigmoidTypes
@@ -54,6 +54,8 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
 
+        # where these did refer to the actual linear / embedding modules, they now refer to the
+        # ComponentsOrModule objects. This still works for hooks
         self.target_module_paths = self._get_target_module_paths(
             target_model, target_module_patterns
         )
@@ -64,7 +66,7 @@ class ComponentModel(nn.Module):
 
         # just keep components_or_modules as a plain dict.
         # state_dict will pick it up via the target_model
-        self.components_or_modules: dict[str, ReplacedComponents] = components_or_modules
+        self.components_or_modules: dict[str, ComponentsOrModule] = components_or_modules
 
         self.gates = self.make_gates(gate_type, C, gate_hidden_dims, components_or_modules)
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
@@ -96,9 +98,9 @@ class ComponentModel(nn.Module):
         target_model: nn.Module,
         target_module_paths: list[str],
         C: int,
-    ) -> dict[str, ReplacedComponents]:
+    ) -> dict[str, ComponentsOrModule]:
         """Create target components for the model."""
-        components_or_modules: dict[str, ReplacedComponents] = {}
+        components_or_modules: dict[str, ComponentsOrModule] = {}
 
         for module_path in target_module_paths:
             module = target_model.get_submodule(module_path)
@@ -121,7 +123,7 @@ class ComponentModel(nn.Module):
                     f"nn.Embedding. Found type: {type(module)}"
                 )
 
-            replacement = ReplacedComponents(original=module, components=component)
+            replacement = ComponentsOrModule(original=module, components=component)
 
             target_model.set_submodule(module_path, replacement)
 
@@ -134,7 +136,7 @@ class ComponentModel(nn.Module):
         gate_type: GateType,
         C: int,
         gate_hidden_dims: list[int],
-        components_or_modules: dict[str, ReplacedComponents],
+        components_or_modules: dict[str, ComponentsOrModule],
     ) -> dict[str, nn.Module]:
         gates: dict[str, nn.Module] = {}
         for module_path, component in components_or_modules.items():

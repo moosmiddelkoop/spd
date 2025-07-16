@@ -6,7 +6,7 @@ from jaxtyping import Float
 from torch import Tensor, nn
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponents, LinearComponents, ReplacedComponents
+from spd.models.components import ComponentsOrModule, EmbeddingComponents, LinearComponents
 
 
 class SimpleTestModel(nn.Module):
@@ -91,7 +91,7 @@ def test_replaced_modules_sets_and_restores_masks_partial(component_model: Compo
 def test_replaced_component_forward_linear_matches_modes():
     lin = nn.Linear(6, 4, bias=True)
     comp = LinearComponents(d_in=6, d_out=4, C=3, bias=lin.bias)
-    rep = ReplacedComponents(original=lin, components=comp)
+    rep = ComponentsOrModule(original=lin, components=comp)
 
     x = torch.randn(5, 6)
 
@@ -118,7 +118,7 @@ def test_replaced_component_forward_embedding_matches_modes():
 
     emb = nn.Embedding(vocab_size, embedding_dim)
     comp = EmbeddingComponents(vocab_size=vocab_size, embedding_dim=embedding_dim, C=C)
-    rep = ReplacedComponents(original=emb, components=comp)
+    rep = ComponentsOrModule(original=emb, components=comp)
 
     batch_size = 4
     seq_len = 7
