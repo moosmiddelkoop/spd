@@ -982,7 +982,7 @@ def main():
 
         # Load models
         model = ComponentModel.from_pretrained(run_id)[0]
-        target_model = model.model
+        target_model = model.target_model
         assert isinstance(target_model, TMSModel)
 
         # Get custom config and name for this run

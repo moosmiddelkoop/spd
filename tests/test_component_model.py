@@ -27,9 +27,9 @@ class SimpleTestModel(nn.Module):
 @pytest.fixture(scope="function")
 def component_model() -> ComponentModel:
     """Return a fresh ``ComponentModel`` for each test."""
-    base_model = SimpleTestModel()
+    target_model = SimpleTestModel()
     return ComponentModel(
-        base_model=base_model,
+        target_model=target_model,
         target_module_patterns=["linear1", "linear2", "embedding"],
         C=4,
         gate_type="mlp",

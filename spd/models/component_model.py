@@ -42,7 +42,7 @@ class ComponentModel(nn.Module):
 
     def __init__(
         self,
-        base_model: nn.Module,
+        target_model: nn.Module,
         target_module_patterns: list[str],
         C: int,
         gate_type: GateType,
@@ -50,11 +50,11 @@ class ComponentModel(nn.Module):
         pretrained_model_output_attr: str | None,
     ):
         super().__init__()
-        self.model = base_model
+        self.target_model = target_model
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
 
-        replaced_components = self.create_components(base_model, target_module_patterns, C)
+        replaced_components = self.create_components(target_model, target_module_patterns, C)
         self.replaced_components = replaced_components
         self._replaced_components = nn.ModuleDict(
             {k.replace(".", "-"): v for k, v in replaced_components.items()}
@@ -137,7 +137,7 @@ class ComponentModel(nn.Module):
 
         If `model_output_attr` is set, return the attribute of the model's output.
         """
-        raw_out = self.model(*args, **kwargs)
+        raw_out = self.target_model(*args, **kwargs)
         if self.pretrained_model_output_attr is None:
             out = raw_out
         else:
@@ -205,7 +205,7 @@ class ComponentModel(nn.Module):
 
         # Register hooks
         for module_name in module_names:
-            module = self.model.get_submodule(module_name)
+            module = self.target_model.get_submodule(module_name)
             assert module is not None, f"Module {module_name} not found"
             handles.append(
                 module.register_forward_pre_hook(partial(cache_hook, param_name=module_name))
@@ -269,10 +269,10 @@ class ComponentModel(nn.Module):
             model_path=config.pretrained_model_path,
             model_name_hf=config.pretrained_model_name_hf,
         )
-        base_model = base_model_raw[0] if isinstance(base_model_raw, tuple) else base_model_raw
+        target_model = base_model_raw[0] if isinstance(base_model_raw, tuple) else base_model_raw
 
         comp_model = ComponentModel(
-            base_model=base_model,
+            target_model=target_model,
             target_module_patterns=config.target_module_patterns,
             C=config.C,
             gate_hidden_dims=config.gate_hidden_dims,

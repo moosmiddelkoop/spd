@@ -34,7 +34,7 @@ def calc_embedding_recon_loss(
     """
 
     # --- original embedding output --------------------------------------------------------- #
-    orig_module = model.model.get_submodule(embed_module_name)
+    orig_module = model.target_model.get_submodule(embed_module_name)
     assert isinstance(orig_module, nn.Embedding), (
         f"Module {embed_module_name} expected to be nn.Embedding, got {type(orig_module)}"
     )
@@ -46,9 +46,9 @@ def calc_embedding_recon_loss(
         masked_out: Float[Tensor, "... d_emb"] = component(batch, mask=mask_info[embed_module_name])
 
         if unembed:
-            assert hasattr(model.model, "lm_head"), "Only supports unembedding named lm_head"
-            target_out_unembed = model.model.lm_head(target_out)  # pyright: ignore[reportCallIssue]
-            masked_out_unembed = model.model.lm_head(masked_out)  # pyright: ignore[reportCallIssue]
+            assert hasattr(model.target_model, "lm_head"), "Only supports unembedding named lm_head"
+            target_out_unembed = model.target_model.lm_head(target_out)  # pyright: ignore[reportCallIssue]
+            masked_out_unembed = model.target_model.lm_head(masked_out)  # pyright: ignore[reportCallIssue]
             loss += calc_kl_divergence_lm(pred=masked_out_unembed, target=target_out_unembed)
         else:
             loss += ((masked_out - target_out) ** 2).sum(dim=-1).mean()

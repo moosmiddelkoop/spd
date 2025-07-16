@@ -64,7 +64,7 @@ def optimize(
     metrics_file = out_dir / "metrics.jsonl" if out_dir is not None else None
 
     model = ComponentModel(
-        base_model=target_model,
+        target_model=target_model,
         target_module_patterns=config.target_module_patterns,
         C=config.C,
         gate_type=config.gate_type,

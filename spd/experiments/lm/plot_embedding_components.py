@@ -25,7 +25,7 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
     assert len(model.replaced_components) == 1, "Expected exactly one embedding component"
     component_name = next(iter(model.replaced_components.keys()))
 
-    vocab_size = model.model.get_parameter("transformer.wte.weight").shape[0]
+    vocab_size = model.target_model.get_parameter("transformer.wte.weight").shape[0]
 
     all_masks = torch.zeros((vocab_size, model.C), device=device)
 

@@ -30,7 +30,7 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
         Dictionary containing causal importances data and metadata
     """
     model, config, _ = ComponentModel.from_pretrained(run_id)
-    target_model = model.model
+    target_model = model.target_model
     assert isinstance(target_model, ResidualMLP | TMSModel), (
         "Target model must be a ResidualMLP or TMSModel"
     )
@@ -629,7 +629,7 @@ def main():
         model, config, _ = ComponentModel.from_pretrained(path)
         model.to(device)
 
-        target_model = model.model
+        target_model = model.target_model
         assert isinstance(target_model, ResidualMLP)
         n_layers = target_model.config.n_layers
 
