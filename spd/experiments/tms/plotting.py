@@ -958,8 +958,6 @@ class TMSPlotter:
 
         output["Mean L2 ratio"] = l2_ratio.mean().item()
         output["Std L2 ratio"] = l2_ratio.std().item()
-        if hasattr(self.analyzer.target_model, "b_final"):
-            output["Mean bias"] = self.analyzer.target_model.b_final.mean().item()
 
         return output
 
