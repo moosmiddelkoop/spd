@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import fire
 import wandb
 
 from spd.configs import Config, TMSTaskConfig
@@ -143,4 +142,5 @@ def main(
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    main(config_path_or_obj="spd/experiments/tms/tms_5-2_config.yaml")
+    # fire.Fire(main)

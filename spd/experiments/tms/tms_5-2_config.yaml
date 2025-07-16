@@ -32,7 +32,7 @@ lr_warmup_pct: 0.0
 n_eval_steps: 100
 
 # --- Logging & Saving ---
-image_freq: 5_000
+image_freq: 500
 print_freq: 1000
 save_freq: null
 
