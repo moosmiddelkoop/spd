@@ -309,7 +309,7 @@ if __name__ == "__main__":
         ),
         feature_sparsity=0.95,  # High sparsity to observe superposition
         importance_decay=0.8,  # I_i = 0.8^i as in the paper
-        batch_size=16384,  # 8192 * 2
+        batch_size=16384,
         steps=100000,
         seed=0,
         lr=1e-3,
@@ -318,6 +318,7 @@ if __name__ == "__main__":
         print_freq=100,
         weight_decay=0.1,
     )
+    # Weight decay wasn't mentioned in the paper but was needed for this implementation to semi-work
 
     set_seed(config.seed)
     run_train(config, device)
