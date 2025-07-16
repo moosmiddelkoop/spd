@@ -100,22 +100,22 @@ class ComponentModel(nn.Module):
                     matched_patterns.add(pattern)
                     if isinstance(module, nn.Linear):
                         d_out, d_in = module.weight.shape
-                        component = LinearComponent(d_in=d_in, d_out=d_out, C=C, bias=module.bias)
+                        component = LinearComponent(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
+                        component.init_from_target_weight(module.weight)
                     elif isinstance(module, nn.Embedding):
                         component = EmbeddingComponent(
+                            C=C,
                             vocab_size=module.num_embeddings,
                             embedding_dim=module.embedding_dim,
-                            C=C,
                         )
+                        # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
+                        component.init_from_target_weight(module.weight)
                     else:
                         raise ValueError(
                             f"Module '{name}' matched pattern '{pattern}' but is not nn.Linear or "
                             f"nn.Embedding. Found type: {type(module)}"
                         )
-                    replaced_component = ReplacedComponent(original=module, replacement=component)
-
-                    # Maybe a `.get_replaced` method
-                    components[name] = replaced_component
+                    components[name] = ReplacedComponent(original=module, replacement=component)
 
         unmatched_patterns = set(target_module_patterns) - matched_patterns
         if unmatched_patterns:

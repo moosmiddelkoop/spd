@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Literal, override
 
 import einops
@@ -75,29 +76,66 @@ class VectorGateMLP(nn.Module):
         return x[..., 0]
 
 
-class LinearComponent(nn.Module):
+class Component(ABC, nn.Module):
+    def __init__(self, C: int, rows: int, cols: int):
+        super().__init__()
+        self.C = C
+        self.V = nn.Parameter(torch.empty(rows, C))
+        self.U = nn.Parameter(torch.empty(C, cols))
+
+    @property
+    def weight(self) -> Float[Tensor, "rows cols"]:
+        """V @ U"""
+        return einops.einsum(self.V, self.U, "rows C, C cols -> rows cols")
+
+    def init_from_target_weight(self, target_weight: Tensor) -> None:
+        """Initialize the V and U matrices.
+        1. Normalize every component to 1.
+        2. Take inner product with original model
+        3. This gives you roughly how much overlap there is with the target model.
+        4. Scale the Us by this value (we can choose either matrix)
+        """
+
+        V = self.V
+        U = self.U
+
+        # Make V and U have unit norm in the d_in and d_out dimensions
+        V.data[:] = torch.randn_like(V.data)
+        U.data[:] = torch.randn_like(U.data)
+        V.data[:] = V.data / V.data.norm(dim=-2, keepdim=True)
+        U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
+
+        # Calculate inner products
+        inner = einops.einsum(U, target_weight, "C d_out, d_out d_in -> C d_in")
+        C_norms = einops.einsum(inner, V, "C d_in, d_in C -> C")
+
+        # Scale U by the inner product.
+        U.data[:] = U.data * C_norms.unsqueeze(-1)
+
+    @override
+    @abstractmethod
+    def forward(self, x: Tensor, mask: Tensor | None) -> Tensor:
+        """Forward pass through the component."""
+        raise NotImplementedError()
+
+
+class LinearComponent(Component):
     """A linear transformation made from V and U matrices for SPD.
 
     The weight matrix W is decomposed as W = U^T @ V^T, where V and U are learned parameters.
     """
 
-    def __init__(self, d_in: int, d_out: int, C: int, bias: Tensor | None):
-        super().__init__()
-        self.C = C
+    def __init__(
+        self,
+        C: int,
+        d_in: int,
+        d_out: int,
+        bias: Tensor | None = None,
+    ):
+        super().__init__(C, rows=d_out, cols=d_in)  # NOTE: linear weights are (d_out, d_in)
         self.d_in = d_in
         self.d_out = d_out
-
-        self.V = nn.Parameter(torch.empty(d_in, C))
-        self.U = nn.Parameter(torch.empty(C, d_out))
         self.bias = bias
-
-        init_param_(self.V, fan_val=d_out, nonlinearity="linear")
-        init_param_(self.U, fan_val=C, nonlinearity="linear")
-
-    @property
-    def weight(self) -> Float[Tensor, "d_out d_in"]:
-        """U^T @ V^T"""
-        return einops.einsum(self.V, self.U, "d_in C, C d_out -> d_out d_in")
 
     @override
     def forward(
@@ -124,32 +162,18 @@ class LinearComponent(nn.Module):
         return out
 
 
-class EmbeddingComponent(nn.Module):
+class EmbeddingComponent(Component):
     """An efficient embedding component for SPD that avoids one-hot encoding."""
 
     def __init__(
         self,
+        C: int,
         vocab_size: int,
         embedding_dim: int,
-        C: int,
     ):
-        super().__init__()
+        super().__init__(C, rows=vocab_size, cols=embedding_dim)
         self.vocab_size: int = vocab_size
         self.embedding_dim: int = embedding_dim
-        self.C: int = C
-
-        self.V: nn.Parameter = nn.Parameter(torch.empty(vocab_size, C))
-        self.U: nn.Parameter = nn.Parameter(torch.empty(C, embedding_dim))
-
-        init_param_(self.V, fan_val=embedding_dim, nonlinearity="linear")
-        init_param_(self.U, fan_val=C, nonlinearity="linear")
-
-    @property
-    def weight(self) -> Float[Tensor, "vocab_size embedding_dim"]:
-        """V @ U"""
-        return einops.einsum(
-            self.V, self.U, "vocab_size C, C embedding_dim -> vocab_size embedding_dim"
-        )
 
     @override
     def forward(
@@ -191,34 +215,6 @@ class ReplacedComponent(nn.Module):
 
         self.forward_mode: Literal["original"] | Literal["replacement"] | None = None
         self.mask: Tensor | None = None
-        self.init_weights_()
-
-    def init_weights_(self) -> None:
-        """Initialize the V and U matrices.
-        1. Normalize every component to 1.
-        2. Take inner product with original model
-        3. This gives you roughly how much overlap there is with the target model.
-        4. Scale the Us by this value (we can choose either matrix)
-        """
-
-        V = self.replacement.V
-        U = self.replacement.U
-        target_weight = self.original.weight
-        if isinstance(self.replacement, EmbeddingComponent):
-            target_weight = target_weight.T  # (d_out d_in)
-
-        # Make V and U have unit norm in the d_in and d_out dimensions
-        V.data[:] = torch.randn_like(V.data)
-        U.data[:] = torch.randn_like(U.data)
-        V.data[:] = V.data / V.data.norm(dim=-2, keepdim=True)
-        U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
-
-        # Calculate inner products
-        inner = einops.einsum(U, target_weight, "C d_out, d_out d_in -> C d_in")
-        C_norms = einops.einsum(inner, V, "C d_in, d_in C -> C")
-
-        # Scale U by the inner product.
-        U.data[:] = U.data * C_norms.unsqueeze(-1)
 
     @override
     def forward(self, x: Tensor) -> Tensor:
