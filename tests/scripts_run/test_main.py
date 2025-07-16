@@ -9,14 +9,13 @@ in test_grid_search.py and test_run_sweep_params.py respectively.
 
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedParameter=false
 
-import importlib.resources
 import json
 from unittest.mock import Mock, patch
 
 import pytest
-import yaml
 
 from spd.configs import Config
+from spd.registry import get_experiment_config_file_contents
 from spd.scripts.run import (
     generate_commands,
     main,
@@ -25,27 +24,11 @@ from spd.scripts.run import (
 
 
 def get_valid_tms_config():
-    """get the *raw* data of a valid TMS experiment config."""
-    import spd.experiments.tms
+    """get the *raw* data of a valid TMS experiment config.
 
-    return yaml.safe_load(
-        importlib.resources.read_text(
-            spd.experiments.tms,
-            "tms_5-2_config.yaml",
-        )
-    )
-
-
-def get_valid_resid_mlp_config():
-    """Get the *raw* data of a valid Residual MLP experiment config."""
-    import spd.experiments.resid_mlp
-
-    return yaml.safe_load(
-        importlib.resources.read_text(
-            spd.experiments.resid_mlp,
-            "resid_mlp1_config.yaml",
-        )
-    )
+    paths in the `EXPERIMENT_REGISTRY` are of the form `Path("spd/experiments/tms/tms_5-2_config.yaml")`
+    """
+    return get_experiment_config_file_contents("tms_5-2")
 
 
 class TestCommandGeneration:
