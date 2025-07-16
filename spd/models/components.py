@@ -77,19 +77,19 @@ class VectorGateMLPs(nn.Module):
 
 
 class Components(ABC, nn.Module):
-    def __init__(self, C: int, u_dim: int, v_dim: int):
+    def __init__(self, C: int, v_dim: int, u_dim: int):
         """
         Base class for all components.
 
         Args:
             C: Number of components
-            rows: Number of rows in the weight matrix
-            cols: Number of columns in the weight matrix
+            v_dim: Number of rows in the weight matrix
+            u_dim: Number of columns in the weight matrix
         """
         super().__init__()
         self.C = C
-        self.V = nn.Parameter(torch.empty(u_dim, C))
-        self.U = nn.Parameter(torch.empty(C, v_dim))
+        self.V = nn.Parameter(torch.empty(v_dim, C))
+        self.U = nn.Parameter(torch.empty(C, u_dim))
 
     @property
     def weight(self) -> Float[Tensor, "rows cols"]:
@@ -103,6 +103,7 @@ class Components(ABC, nn.Module):
         3. This gives you roughly how much overlap there is with the target model.
         4. Scale the Us by this value (we can choose either matrix)
         """
+        target_weight = target_weight.to(self.U.device)
 
         V = self.V
         U = self.U
@@ -114,7 +115,7 @@ class Components(ABC, nn.Module):
         U.data[:] = U.data / U.data.norm(dim=-1, keepdim=True)
 
         # Calculate inner products
-        inner = einops.einsum(U, target_weight.to(U.device), "C cols, rows cols -> C rows")
+        inner = einops.einsum(U, target_weight, "C cols, rows cols -> C rows")
         C_norms = einops.einsum(inner, V, "C rows, rows C -> C")
 
         # Scale U by the inner product.
@@ -142,7 +143,7 @@ class LinearComponents(Components):
         d_out: int,
         bias: Tensor | None = None,
     ):
-        super().__init__(C, u_dim=d_out, v_dim=d_in)  # NOTE: linear weights are (d_out, d_in)
+        super().__init__(C, v_dim=d_out, u_dim=d_in)  # NOTE: linear weights are (d_out, d_in)
         self.d_in = d_in
         self.d_out = d_out
         self.bias = bias
@@ -187,13 +188,13 @@ class EmbeddingComponents(Components):
         vocab_size: int,
         embedding_dim: int,
     ):
-        super().__init__(C, u_dim=vocab_size, v_dim=embedding_dim)
+        super().__init__(C, v_dim=vocab_size, u_dim=embedding_dim)
         self.vocab_size: int = vocab_size
         self.embedding_dim: int = embedding_dim
 
     @override
     def get_inner_acts(self, x: Int[Tensor, "..."]) -> Float[Tensor, "... C"]:
-        return self.U.T[x]
+        return self.V[x]
 
     @override
     def forward(
