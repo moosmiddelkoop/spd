@@ -1,5 +1,4 @@
-RUN = uv run
-
+# setup
 .PHONY: install
 install: copy-templates
 	uv sync --no-dev
@@ -20,24 +19,30 @@ copy-templates:
 		echo "Created spd/scripts/sweep_params.yaml from template"; \
 	fi
 
+
+# checks
 .PHONY: type
 type:
-	SKIP=no-commit-to-branch $(RUN) pre-commit run -a basedpyright
+	basedpyright
 
 .PHONY: format
 format:
 	# Fix all autofixable problems (which sorts imports) then format errors
-	SKIP=no-commit-to-branch $(RUN) pre-commit run -a ruff-lint
-	SKIP=no-commit-to-branch $(RUN) pre-commit run -a ruff-format
+	ruff check --fix
+	ruff format
 
 .PHONY: check
-check:
-	SKIP=no-commit-to-branch $(RUN) pre-commit run -a --hook-stage commit
+check: format type
 
+.PHONY: check-pre-commit
+check-pre-commit:
+	SKIP=no-commit-to-branch pre-commit run -a --hook-stage commit
+
+# tests
 .PHONY: test
 test:
-	$(RUN) pytest tests/
+	pytest tests/
 
 .PHONY: test-all
 test-all:
-	$(RUN) pytest tests/ --runslow
+	pytest tests/ --runslow
