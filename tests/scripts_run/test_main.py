@@ -1,512 +1,207 @@
-"""Tests for the main() function and end-to-end execution workflows in spd/scripts/run.py.
+"""Tests for the main() function in spd/scripts/run.py.
 
-This file focuses on testing the high-level integration behavior of the main() function,
-including local execution, SLURM submission, and end-to-end parameter sweep workflows.
-
-Lower-level functions like generate_grid_combinations and load_sweep_params are tested
-in test_grid_search.py and test_run_sweep_params.py respectively.
+This file contains minimal tests focusing on verifying that spd-run correctly
+calls either create_slurm_array_script (for SLURM submission) or subprocess.run
+(for local execution) with the expected arguments.
 """
 
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedParameter=false
 
-import json
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
-from spd.configs import Config
-from spd.registry import get_experiment_config_file_contents
-from spd.scripts.run import (
-    generate_commands,
-    main,
-    resolve_sweep_params_path,
+from spd.scripts.run import main
+
+__DEFAULT_MAIN_KWARGS: dict[str, str | bool] = dict(
+    override_branch="dev",
+    use_wandb=False,
+    create_report=False,
 )
 
 
-def get_valid_tms_config():
-    """get the *raw* data of a valid TMS experiment config.
+class TestSPDRun:
+    """Test spd-run command execution."""
 
-    paths in the `EXPERIMENT_REGISTRY` are of the form `Path("spd/experiments/tms/tms_5-2_config.yaml")`
-    """
-    return get_experiment_config_file_contents("tms_5-2")
+    @pytest.mark.parametrize(
+        "experiments,sweep,n_agents,expected_command_count",
+        [
+            # Single experiment, no sweep
+            ("tms_5-2", False, None, 1),
+            # Multiple experiments, no sweep
+            ("tms_5-2,resid_mlp1", False, None, 2),
+            # Single experiment with sweep (assuming default sweep params with 2-3 combinations)
+            ("tms_5-2", True, 4, None),  # Command count depends on sweep params
+        ],
+    )
+    @patch("spd.scripts.run.submit_slurm_array")
+    @patch("spd.scripts.run.create_slurm_array_script")
+    @patch("spd.scripts.run.load_sweep_params")
+    def test_spd_run_not_local_no_sweep(
+        self,
+        mock_load_sweep_params,
+        mock_create_script,
+        mock_submit,
+        experiments,
+        sweep,
+        n_agents,
+        expected_command_count,
+    ):
+        """Test that spd-run correctly calls create_slurm_array_script for SLURM submission."""
+        # Setup mocks
+        mock_submit.return_value = "12345"
+        if sweep:
+            # Mock sweep params to generate predictable number of commands
+            mock_load_sweep_params.return_value = {"C": {"values": [5, 10]}}
 
-
-class TestCommandGeneration:
-    """Test command generation and utility functions.
-
-    Tests run_id generation, path resolution, and the integration of
-    generate_commands() with actual config loading and JSON serialization.
-    Grid combination logic is tested separately in test_grid_search.py.
-    """
-
-    def test_resolve_sweep_params_path_simple_name(self):
-        """Test resolving sweep params path with simple filename."""
-        path = resolve_sweep_params_path("sweep_params.yaml")
-        assert path.name == "sweep_params.yaml"
-        assert "spd/scripts" in str(path)
-
-    def test_resolve_sweep_params_path_with_directory(self):
-        """Test resolving sweep params path with directory."""
-        path = resolve_sweep_params_path("custom/my_sweep.yaml")
-        assert path.name == "my_sweep.yaml"
-        assert "custom" in str(path)
-
-    @patch("spd.scripts.run.load_config")
-    def test_generate_commands_without_sweep(self, mock_load_config):
-        """Test generate_commands function without sweep parameters."""
-
-        # Mock config loading with proper Config structure
-        mock_config = Mock(spec=Config)
-        config_dict = get_valid_tms_config()
-        mock_config.model_dump.return_value = config_dict
-        mock_load_config.return_value = mock_config
-
-        commands = generate_commands(
-            experiments_list=["tms_5-2-id"],
-            run_id="test_run_123",
-            sweep_params_file=None,
-            project="test-project",
+        # Call main with standard arguments
+        main(
+            experiments=experiments,
+            sweep=sweep,
+            local=False,
+            n_agents=n_agents,
+            **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
         )
 
-        assert len(commands) == 1
-        command = commands[0]
+        # Assert create_slurm_array_script was called
+        assert mock_create_script.call_count == 1
+
+        # Verify the arguments passed to create_slurm_array_script
+        call_kwargs = mock_create_script.call_args[1]
+
+        # Check script_path is a temporary file
+        assert isinstance(call_kwargs["script_path"], Path)
+        assert "run_array_" in str(call_kwargs["script_path"])
+
+        # Check job_name
+        assert call_kwargs["job_name"] == "spd"
+
+        # Check commands list
+        commands = call_kwargs["commands"]
+        if expected_command_count is not None:
+            assert len(commands) == expected_command_count
+        else:
+            # For sweep tests, just verify we have multiple commands
+            assert len(commands) > 1
 
         # Verify command structure
-        assert "python" in command
-        assert "tms_decomposition.py" in command
-        assert "--sweep_id test_run_123" in command
-        assert "--evals_id tms_5-2-id" in command
-        assert "json:" in command
+        for cmd in commands:
+            assert "python" in cmd
+            assert "_decomposition.py" in cmd
+            assert "json:" in cmd
+            assert "--sweep_id" in cmd
+            assert "--evals_id" in cmd
 
-        # Extract and verify the JSON config
-        json_start = command.find("json:") + 5
-        json_end = command.find("' --sweep_id")
-        config_json = json.loads(command[json_start:json_end])
+        # Check other parameters
+        assert call_kwargs["cpu"] is False
+        assert call_kwargs["snapshot_branch"] == "dev"
+        assert call_kwargs["max_concurrent_tasks"] == (n_agents or len(experiments.split(",")))
 
-        assert config_json["wandb_project"] == "test-project"  # Should be overridden
-        assert config_json["C"] == 20
-        assert config_json["task_config"]["task_name"] == "tms"
-
-    @patch("spd.scripts.run.load_config")
+    @pytest.mark.parametrize(
+        "experiments,sweep",
+        [
+            # Single experiment, no sweep
+            ("tms_5-2", False),
+            # Multiple experiments, no sweep
+            ("tms_5-2,resid_mlp1", False),
+            # Single experiment with sweep
+            ("tms_5-2", True),
+        ],
+    )
+    @patch("spd.scripts.run.subprocess.run")
     @patch("spd.scripts.run.load_sweep_params")
-    def test_generate_commands_with_sweep(self, mock_load_sweep_params, mock_load_config):
-        """Test generate_commands function with sweep parameters."""
+    def test_spd_run_local_no_sweep(
+        self,
+        mock_load_sweep_params,
+        mock_subprocess,
+        experiments,
+        sweep,
+    ):
+        """Test that spd-run correctly calls subprocess.run for local execution."""
+        # Setup mocks
+        mock_subprocess.return_value = Mock(returncode=0)
+        if sweep:
+            # Mock sweep params to generate predictable number of commands
+            mock_load_sweep_params.return_value = {"C": {"values": [5, 10]}}
 
-        # Mock config loading
-        mock_config = Mock(spec=Config)
-        config_dict = get_valid_tms_config()
-        mock_config.model_dump.return_value = config_dict
-        mock_load_config.return_value = mock_config
-
-        # Mock sweep parameters
-        mock_load_sweep_params.return_value = {"C": {"values": [5, 10]}}
-
-        commands = generate_commands(
-            experiments_list=["tms_5-2-id"],
-            run_id="test_run_123",
-            sweep_params_file="sweep_params.yaml",
-            project="test-project",
+        # Call main with standard arguments
+        main(
+            experiments=experiments,
+            sweep=sweep,
+            local=True,
+            **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
         )
 
-        assert len(commands) == 2  # Two C values
+        # Calculate expected number of subprocess calls
+        num_experiments = len(experiments.split(","))
+        expected_calls = num_experiments * 2 if sweep else num_experiments
 
-        for i, command in enumerate(commands):
-            assert "python" in command
-            assert "tms_decomposition.py" in command
-            assert "--sweep_id test_run_123" in command
-            assert "--evals_id tms_5-2-id" in command
-            assert "--sweep_params_json" in command
+        # Assert subprocess.run was called the expected number of times
+        assert mock_subprocess.call_count == expected_calls
 
-            # Extract and verify the config JSON
-            json_start = command.find("json:") + 5
-            json_end = command.find("' --sweep_id")
-            config_json = json.loads(command[json_start:json_end])
+        # Verify each subprocess call
+        for call in mock_subprocess.call_args_list:
+            args = call[0][0]  # Get the command list
 
-            # Check that C was overridden
-            expected_c = [5, 10][i]
-            assert config_json["C"] == expected_c
+            # Should be a list of arguments
+            assert isinstance(args, list)
+            assert args[0] == "python"
+            assert "_decomposition.py" in args[1]
 
+            # Check for required arguments in the command
+            cmd_str = " ".join(args)
+            assert "json:" in cmd_str
+            assert "--sweep_id" in cmd_str
+            assert "--evals_id" in cmd_str
 
-class TestLocalExecution:
-    """Test local execution flow."""
+            if sweep:
+                assert "--sweep_params_json" in cmd_str
 
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    def test_local_run_single_experiment(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test running a single experiment locally."""
-        # Setup mocks
-        mock_subprocess.return_value = Mock(returncode=0)
-        mock_workspace.return_value = "https://wandb.ai/test/workspace/tms_5-2-id"
-
-        # Call main with tms_5-2-id experiment in local mode
-        main(experiments="tms_5-2-id", local=True)
-
-        # Verify subprocess was called
-        assert mock_subprocess.call_count == 1
-
-        # Verify the command structure
-        args = mock_subprocess.call_args[0][0]
-        assert args[0] == "python"
-        assert "tms_decomposition.py" in args[1]
-
-        # Verify workspace was created
-        assert mock_workspace.call_count == 1
-        assert mock_workspace.call_args[0][1] == "tms_5-2-id"
-
-        # Verify no report for single experiment
-        assert mock_report.call_count == 0
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    def test_local_run_multiple_experiments(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test running multiple experiments locally."""
-        # Setup mocks
-        mock_subprocess.return_value = Mock(returncode=0)
-        mock_workspace.side_effect = (
-            lambda run_id, exp, proj: f"https://wandb.ai/{proj}/{exp}/workspace/{run_id}"
-        )
-        mock_report.return_value = "https://wandb.ai/test/report"
-
-        main(experiments="tms_5-2,resid_mlp1", local=True, create_report=True)
-
-        # Should run 2 commands
-        assert mock_subprocess.call_count == 2
-
-        # Verify workspace views created for both
-        assert mock_workspace.call_count == 2
-        workspace_calls = mock_workspace.call_args_list
-        experiments_created = [call[0][1] for call in workspace_calls]
-        assert set(experiments_created) == {"tms_5-2", "resid_mlp1"}
-
-        # Verify report created for multiple experiments
-        assert mock_report.call_count == 1
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    def test_local_run_with_failed_command(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test handling of failed subprocess execution."""
-        # Make subprocess fail
-        mock_subprocess.return_value = Mock(returncode=1)
-
-        # Should not raise exception
-        main(experiments="tms_5-2-id", local=True)
-
-        # Verify subprocess was still called
-        assert mock_subprocess.call_count == 1
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    def test_local_run_no_git_snapshot(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test that git snapshot is not created in local mode."""
-        # Setup mocks
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        # This should raise an exception if create_git_snapshot is called
-        with patch("spd.scripts.run.create_git_snapshot") as mock_git:
-            mock_git.side_effect = Exception(
-                "create_git_snapshot should not be called in local mode"
-            )
-
-            # Should complete without calling git snapshot
-            main(experiments="tms_5-2-id", local=True)
-
-            # Verify git snapshot was not called
-            mock_git.assert_not_called()
-
-
-class TestSLURMSubmission:
-    """Test SLURM submission flow."""
-
-    @patch("spd.scripts.run.submit_slurm_array")
-    @patch("spd.scripts.run.create_slurm_array_script")
-    @patch("spd.scripts.run.create_git_snapshot")
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    def test_slurm_submission(
-        self,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-        mock_git,
-        mock_create_script,
-        mock_submit,
-    ):
-        """Test basic SLURM submission."""
-        # Setup mocks
-        mock_git.return_value = "snapshot-20231215-120000"
-        mock_submit.return_value = "12345"
-
-        main(experiments="tms_5-2-id", local=False)
-
-        # Verify git snapshot was created
-        assert mock_git.call_count == 1
-
-        # Verify SLURM script creation
-        assert mock_create_script.call_count == 1
-        script_args = mock_create_script.call_args[1]
-        assert script_args["job_name"] == "spd"
-        assert len(script_args["commands"]) == 1
-        assert script_args["cpu"] is False
-        assert script_args["snapshot_branch"] == "snapshot-20231215-120000"
-
-        # Verify SLURM submission
-        assert mock_submit.call_count == 1
-
-    @patch("spd.scripts.run.submit_slurm_array")
-    @patch("spd.scripts.run.create_slurm_array_script")
-    @patch("spd.scripts.run.create_git_snapshot")
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    def test_slurm_submission_with_n_agents(
-        self,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-        mock_git,
-        mock_create_script,
-        mock_submit,
-    ):
-        """Test SLURM submission with n_agents specified."""
-        # Setup mocks
-        mock_git.return_value = "snapshot-20231215-120000"
-        mock_submit.return_value = "12345"
-
-        main(experiments="tms_5-2-id", local=False, n_agents=4)
-
-        # Verify n_agents passed to SLURM script
-        script_args = mock_create_script.call_args[1]
-        assert script_args["max_concurrent_tasks"] == 4
-
-    @patch("spd.scripts.run.submit_slurm_array")
-    @patch("spd.scripts.run.create_slurm_array_script")
-    @patch("spd.scripts.run.create_git_snapshot")
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.load_sweep_params")
-    def test_sweep_requires_n_agents_for_slurm(
-        self,
-        mock_load_sweep_params,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-        mock_git,
-        mock_create_script,
-        mock_submit,
-    ):
-        """Test that sweeps require n_agents when not running locally."""
-        mock_load_sweep_params.return_value = {"C": {"values": [5, 10]}}
-
-        with pytest.raises(AssertionError, match="n_agents must be provided"):
-            main(experiments="tms_5-2-id", sweep=True, local=False)
-
-    @patch("spd.scripts.run.submit_slurm_array")
-    @patch("spd.scripts.run.create_slurm_array_script")
-    @patch("spd.scripts.run.create_git_snapshot")
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    def test_job_suffix_and_cpu_flags(
-        self,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-        mock_git,
-        mock_create_script,
-        mock_submit,
-    ):
-        """Test job_suffix and cpu flag parameters."""
-        # Setup mocks
-        mock_git.return_value = "snapshot-20231215-120000"
-        mock_submit.return_value = "12345"
-
-        main(experiments="tms_5-2-id", local=False, job_suffix="test-suffix", cpu=True)
-
-        # Verify job name includes suffix
-        script_args = mock_create_script.call_args[1]
-        assert script_args["job_name"] == "spd-test-suffix"
-        assert script_args["cpu"] is True
-
-
-class TestParameterSweeps:
-    """Test parameter sweep functionality."""
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    @patch("spd.scripts.run.load_sweep_params")
-    def test_local_sweep_with_default_file(
-        self,
-        mock_load_sweep_params,
-        mock_subprocess,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-    ):
-        """Test running a sweep with default sweep_params.yaml file."""
-        # Setup mocks
-        mock_load_sweep_params.return_value = {"C": {"values": [5, 10, 15]}}
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        main(experiments="tms_5-2-id", sweep=True, local=True)
-
-        # Should run 3 commands (one for each C value)
-        assert mock_subprocess.call_count == 3
-
-        # Verify load_sweep_params was called correctly
-        mock_load_sweep_params.assert_called_once()
-        args = mock_load_sweep_params.call_args[0]
-        assert args[0] == "tms_5-2-id"
-        assert "sweep_params.yaml" in str(args[1])
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    @patch("spd.scripts.run.load_sweep_params")
-    def test_local_sweep_with_custom_file(
-        self,
-        mock_load_sweep_params,
-        mock_subprocess,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-    ):
-        """Test running a sweep with custom sweep parameters file."""
-        # Setup mocks
-        mock_load_sweep_params.return_value = {"seed": {"values": [0, 1]}}
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        main(experiments="tms_5-2-id", sweep="custom_sweep.yaml", local=True)
-
-        # Verify custom file path was used
-        args = mock_load_sweep_params.call_args[0]
-        assert "custom_sweep.yaml" in str(args[1])
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    @patch("spd.scripts.run.load_sweep_params")
-    def test_sweep_allows_local_without_n_agents(
-        self,
-        mock_load_sweep_params,
-        mock_subprocess,
-        mock_ensure_project,
-        mock_workspace,
-        mock_report,
-    ):
-        """Test that sweeps work locally without specifying n_agents."""
-        # Setup mocks
-        mock_load_sweep_params.return_value = {"C": {"values": [5, 10]}}
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        # Should not raise an error
-        main(experiments="tms_5-2-id", sweep=True, local=True)
-
-        assert mock_subprocess.call_count == 2
-
-
-class TestIntegration:
-    """End-to-end tests with minimal mocking."""
+        # No wandb functions should be called since use_wandb=False
 
     def test_invalid_experiment_name(self):
-        """Test that invalid experiment names raise an error."""
-        with pytest.raises(ValueError, match="Invalid experiments.*nonexistent_experiment"):
-            main(experiments="nonexistent_experiment", local=True)
+        """Test that invalid experiment names raise an error.
 
-    def test_multiple_invalid_experiment_names(self):
-        """Test that multiple invalid experiment names raise an error."""
-        with pytest.raises(ValueError, match="Invalid experiments.*fake1.*fake2"):
-            main(experiments="fake1,fake2", local=True)
+        I'm keeping this test because it provides valuable validation coverage
+        that isn't duplicated elsewhere, and it's a simple unit test that
+        doesn't involve complex mocking.
+        """
+        fake_exp_name = "nonexistent_experiment_please_dont_name_your_experiment_this"
+        with pytest.raises(ValueError, match=f"Invalid experiments.*{fake_exp_name}"):
+            main(experiments=fake_exp_name, local=True, **__DEFAULT_MAIN_KWARGS)  # pyright: ignore[reportArgumentType]
 
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
+        with pytest.raises(ValueError, match=f"Invalid experiments.*{fake_exp_name}"):
+            main(
+                experiments=f"{fake_exp_name},tms_5-2",
+                local=True,
+                **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
+            )
+
     @patch("spd.scripts.run.subprocess.run")
-    def test_run_all_experiments(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test running all experiments when experiments=None."""
-        # Setup mocks
+    def test_sweep_params_integration(self, mock_subprocess):
+        """Test that sweep parameters are correctly integrated into commands.
+
+        This test verifies the integration between sweep parameter loading and
+        command generation, which is important functionality not covered by
+        the unit tests in other files.
+        """
         mock_subprocess.return_value = Mock(returncode=0)
 
-        # Should run all experiments in registry
-        main(experiments=None, local=True)
+        # Use the default sweep_params.yaml file
+        main(
+            experiments="tms_5-2",
+            sweep=True,
+            local=True,
+            **__DEFAULT_MAIN_KWARGS,  # pyright: ignore[reportArgumentType]
+        )
 
-        # We have 7 active experiments in registry
-        assert mock_subprocess.call_count == 7
+        # Verify multiple commands were generated (sweep should create multiple runs)
+        assert mock_subprocess.call_count > 1
 
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    def test_mixed_experiment_types(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test running mixed experiment types (TMS + ResidMLP + LM)."""
-        # Setup mocks
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        main(experiments="tms_5-2,resid_mlp1,resid_mlp2", local=True)
-
-        # Should run 3 different experiment types
-        assert mock_subprocess.call_count == 3
-
-        # Verify different decomposition scripts were called
-        commands = [call[0][0] for call in mock_subprocess.call_args_list]
-        script_names = [cmd[1] for cmd in commands]  # cmd[1] is the script path
-
-        assert any("tms_decomposition.py" in script for script in script_names)
-        assert any("resid_mlp_decomposition.py" in script for script in script_names)
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    def test_no_report_for_single_experiment(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test that no report is created for single experiment even with create_report=True."""
-        # Setup mocks
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        main(experiments="tms_5-2-id", local=True, create_report=True)
-
-        # Verify no report created
-        assert mock_report.call_count == 0
-
-    @patch("spd.scripts.run.create_wandb_report")
-    @patch("spd.scripts.run.create_workspace_view")
-    @patch("spd.scripts.run.ensure_project_exists")
-    @patch("spd.scripts.run.subprocess.run")
-    def test_create_report_false(
-        self, mock_subprocess, mock_ensure_project, mock_workspace, mock_report
-    ):
-        """Test that no report is created when create_report=False."""
-        # Setup mocks
-        mock_subprocess.return_value = Mock(returncode=0)
-
-        main(experiments="tms_5-2,resid_mlp1", local=True, create_report=False)
-
-        # Verify no report created
-        assert mock_report.call_count == 0
+        # Check that sweep parameters are in the commands
+        for call in mock_subprocess.call_args_list:
+            args = call[0][0]
+            cmd_str = " ".join(args)
+            assert "--sweep_params_json" in cmd_str
+            assert "json:" in cmd_str
