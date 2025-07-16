@@ -91,8 +91,8 @@ class UniformSampleConfig(BaseModel):
 
 
 class BernoulliSampleConfig(BaseModel):
-    sample_type: Literal["bernoulli"] = Field(
-        default="bernoulli",
+    sample_type: Literal["bernoulli_ste"] = Field(
+        default="bernoulli_ste",
         description="Type of sample to use for stochastic reconstruction",
     )
     min: float = Field(
@@ -101,8 +101,8 @@ class BernoulliSampleConfig(BaseModel):
 
 
 class ConcreteSampleConfig(BaseModel):
-    sample_type: Literal["concrete"] = Field(
-        default="concrete",
+    sample_type: Literal["concrete_ste"] = Field(
+        default="concrete_ste",
         description="Type of sample to use for stochastic reconstruction",
     )
     temp: float = Field(
@@ -124,13 +124,9 @@ class HardConcreteSampleConfig(BaseModel):
         default=2 / 3,
         description="Temperature for the concrete distribution",
     )
-    lower_stretch_bound: float = Field(
-        default=-0.1,
-        description="Lower stretch bound for the hard concrete distribution",
-    )
-    upper_stretch_bound: float = Field(
-        default=1.1,
-        description="Upper stretch bound for the hard concrete distribution",
+    bounds: tuple[float, float] = Field(
+        default=(-0.1, 1.1),
+        description="Bounds for the hard concrete distribution",
     )
 
 

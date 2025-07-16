@@ -9,7 +9,7 @@ seed: 0
 C: 20
 
 sample_config:
-  sample_type: "concrete"
+  sample_type: "concrete_ste"
 sigmoid_type: "normal"
 
 n_mask_samples: 1

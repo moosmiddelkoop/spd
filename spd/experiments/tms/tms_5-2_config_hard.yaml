@@ -9,7 +9,7 @@ seed: 0
 C: 20
 
 sample_config:
-  sample_type: "bernoulli_ste"
+  sample_type: "hard_concrete"
 sigmoid_type: "normal"
 
 n_mask_samples: 1

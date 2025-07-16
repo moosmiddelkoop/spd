@@ -68,30 +68,38 @@ def rescaled_binary_concrete_ste(
     #     return y_soft
 
 
-# def relaxed_bernoulli_gate(
-#     logits: Tensor,
-#     temp: float,
-#     eps: float = 1e-6,
-# ) -> Tensor:
-#     return torch.distributions.relaxed_bernoulli.RelaxedBernoulli(
-#         temp=temp, logits=logits
-#     ).rsample()
+def rescaled_binary_hard_concrete_ste(
+    prob: Tensor,
+    temp: float,
+    eps: float = 1e-20,
+    bounds: tuple[float, float] = (-0.1, 1.1),
+) -> Tensor:
+    prob = prob * (1 - 0.5) + 0.5  # rescale to [0.5, 1]
+    prob = torch.clamp(prob, max=1 - 1e-6)
+
+    logit = torch.log(prob / (1 - prob))
+    u = torch.rand_like(logit)
+    logistic = torch.log(u + eps) - torch.log1p(-u + eps)  # logistic noise ~ log(u) - log(1-u)
+    y = torch.sigmoid((logit + logistic) / temp)
+
+    low, high = bounds
+    y = low + (high - low) * y
+    return y.clamp(0, 1)
 
 
 def get_sample_fn(sample_config: SampleConfig) -> Callable[[Tensor], Tensor]:
     if sample_config.sample_type == "uniform":
         return sample_uniform_to_1
-    elif sample_config.sample_type == "bernoulli":
+    elif sample_config.sample_type == "bernoulli_ste":
         return rescaled_bernoulli_ste
-    elif sample_config.sample_type == "concrete":
+    elif sample_config.sample_type == "concrete_ste":
         return partial(rescaled_binary_concrete_ste, temp=sample_config.temp)
-    # elif sample_config.sample_type == "hard_concrete":
-    #     return partial(
-    #         hard_concrete_gate,
-    #         temp=sample_config.temp,
-    #         lower_stretch_bound=sample_config.lower_stretch_bound,
-    #         upper_stretch_bound=sample_config.upper_stretch_bound,
-    #     )
+    elif sample_config.sample_type == "hard_concrete":
+        return partial(
+            rescaled_binary_hard_concrete_ste,
+            temp=sample_config.temp,
+            bounds=sample_config.bounds,
+        )
     raise ValueError(f"Invalid sample type: {sample_config.sample_type}")  # pyright: ignore [reportUnreachable]
 
 
