@@ -86,9 +86,6 @@ def get_experiment_config_file_contents(key: str) -> dict[str, Any]:
 
     import spd
 
-    return yaml.safe_load(
-        importlib.resources.read_text(
-            spd,
-            EXPERIMENT_REGISTRY[key].config_path.as_posix().removeprefix("spd/"),
-        )
-    )
+    # Use the newer files() API for handling nested paths
+    config_path: str = EXPERIMENT_REGISTRY[key].config_path.as_posix().removeprefix("spd/")
+    return yaml.safe_load((importlib.resources.files(spd) / config_path).read_text())
