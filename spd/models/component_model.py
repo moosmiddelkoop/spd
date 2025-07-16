@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any, cast, override
+from typing import Any, Literal, cast, override
 
 import einops
 import torch
@@ -41,7 +41,7 @@ class ComponentModel(nn.Module):
         base_model: nn.Module,
         target_module_patterns: list[str],
         C: int,
-        gate_type: GateType,
+        gate_type: Literal["mlp", "vector_mlp"],
         gate_hidden_dims: list[int],
         pretrained_model_output_attr: str | None,
     ):
@@ -50,35 +50,17 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
         self.components = self.create_target_components(
-            target_module_patterns=target_module_patterns,
-            C=C,
-        )
-        self.gates = self.make_gates(
-            components=self.components,
-            gate_type=gate_type,
-            gate_hidden_dims=gate_hidden_dims,
-            C=C,
+            target_module_patterns=target_module_patterns, C=C
         )
 
-    @staticmethod
-    def make_gates(
-        components: nn.ModuleDict, gate_type: GateType, gate_hidden_dims: list[int], C: int
-    ) -> nn.ModuleDict:
-        gates = nn.ModuleDict()
-        for component_name, component in components.items():
-            component = cast(LinearComponent | EmbeddingComponent, component)
-            if gate_type == "mlp":
-                gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims)
-            else:
-                input_dim = (
-                    component.vocab_size
-                    if isinstance(component, EmbeddingComponent)
-                    else component.d_in
-                )
-                gates[component_name] = VectorGateMLP(
-                    C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims
-                )
-        return gates
+        if gate_type != "mlp":
+            raise ValueError()
+        gate_class = GateMLP
+        gate_kwargs = {"C": C}
+        assert len(gate_hidden_dims) == 1, "Only one hidden dimension is supported for now"
+        gate_kwargs["n_ci_mlp_neurons"] = gate_hidden_dims[0]
+
+        self.gates = nn.ModuleDict({name: gate_class(**gate_kwargs) for name in self.components})
 
     def create_target_components(self, target_module_patterns: list[str], C: int) -> nn.ModuleDict:
         """Create target components for the model."""
