@@ -9,8 +9,8 @@ seed: 0
 C: 20
 
 sample_config:
-  sample_type: "uniform"
-sigmoid_type: "leaky_hard"
+  sample_type: "bernoulli"
+sigmoid_type: "normal"
 
 n_mask_samples: 1
 gate_type: "mlp"

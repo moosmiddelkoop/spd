@@ -96,8 +96,7 @@ class BernoulliSampleConfig(BaseModel):
         description="Type of sample to use for stochastic reconstruction",
     )
     min: float = Field(
-        default=0.0,
-        description="Minimum value for stochastic reconstruction",
+        default=0.5,
     )
 
 
@@ -109,6 +108,9 @@ class ConcreteSampleConfig(BaseModel):
     temp: float = Field(
         default=2 / 3,
         description="Temperature for the concrete distribution",
+    )
+    min: float = Field(
+        default=0.5,
     )
     # potentially add annealing schedule here
 
