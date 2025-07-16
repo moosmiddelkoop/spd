@@ -25,7 +25,7 @@ dependencies = [
     "streamlit",
     "streamlit-antd-components",
     "datasets",
-]
+]   
 
 [dependency-groups]
 dev = [
@@ -34,6 +34,20 @@ dev = [
     "basedpyright",
     "pre-commit",
 ]
+# wip deps for grouping. some of these can probably be removed later.
+dev-grouping = [
+    "scipy>=1.14.1",
+    "scikit-learn",
+    "nbconvert",    
+    "muutils", # custom (by mivanit) utils, using it for debugging
+    "js-embedding-vis", # custom (by mivanit) embedding vis
+    # broken for python >=3.10 ?
+    # "umap-learn>=0.5.7",
+    # RuntimeError: Cannot install on Python version 3.12.10; only versions >=3.6,<3.10 are supported.
+    # help: `llvmlite` (v0.36.0) was included because `spd:dev-grouping` (v0.0.1) depends on `umap-learn` (v0.5.9.post2) which depends on `pynndescent` (v0.5.13) which depends on `llvmlite`
+]
+[tool.uv.sources]
+js_embedding_vis = { git = "https://github.com/mivanit/js-embedding-vis/"}
 
 [project.scripts]
 spd-run = "spd.scripts.run:cli"
