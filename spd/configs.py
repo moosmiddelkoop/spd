@@ -110,9 +110,28 @@ class BernoulliSampleConfig(BaseModel):
     )
 
 
-class ConcreteSampleConfig(BaseModel):
+class ConcreteSTESampleConfig(BaseModel):
     sample_type: Literal["concrete_ste"] = Field(
         default="concrete_ste",
+        description="Type of sample to use for stochastic reconstruction",
+    )
+    temp: float = Field(
+        default=2 / 3,
+        description="Temperature for the concrete distribution",
+    )
+    min: float = Field(
+        default=0.5,
+    )
+    # potentially add annealing schedule here
+    sigmoid_type: SigmoidTypes = Field(
+        default="normal",
+        description="Type of sigmoid to use for causal importance calculation",
+    )
+
+
+class ConcreteSampleConfig(BaseModel):
+    sample_type: Literal["concrete"] = Field(
+        default="concrete",
         description="Type of sample to use for stochastic reconstruction",
     )
     temp: float = Field(
@@ -149,7 +168,11 @@ class HardConcreteSampleConfig(BaseModel):
 
 
 SampleConfig = (
-    UniformSampleConfig | BernoulliSampleConfig | ConcreteSampleConfig | HardConcreteSampleConfig
+    UniformSampleConfig
+    | BernoulliSampleConfig
+    | ConcreteSTESampleConfig
+    | ConcreteSampleConfig
+    | HardConcreteSampleConfig
 )
 
 

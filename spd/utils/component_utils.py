@@ -43,29 +43,31 @@ def rescaled_bernoulli_ste(x: Tensor) -> Tensor:
     return BernoulliSTE.apply(input)  # pyright: ignore [reportReturnType]
 
 
-def rescaled_binary_concrete_ste(
+def binary_concrete(
     prob: Tensor,
     temp: float,
     eps: float = 1e-20,
 ) -> Tensor:
-    prob = prob * (1 - 0.5) + 0.5  # rescale to [0.5, 1]
-    prob = torch.clamp(prob, max=1 - 1e-6)
-
     logit = torch.log(prob / (1 - prob))
-    u = torch.rand_like(logit)
-    logistic = torch.log(u + eps) - torch.log1p(-u + eps)  # logistic noise ~ log(u) - log(1-u)
-    y_soft = torch.sigmoid((logit + logistic) / temp)
+    u = torch.rand_like(logit).clamp(min=eps, max=1 - eps)
+    logistic_noise = torch.log(u) - torch.log1p(-u)  # logistic noise ~ log(u) - log(1-u)
+    y = torch.sigmoid((logit + logistic_noise) / temp)
+    return y
 
-    # hard threshold in forward pass, preserve grad of y_soft
-    y_hard = (y_soft > 0.5).to(y_soft.dtype)
-    return y_hard + (y_soft - y_soft.detach())
 
-    # if training:
-    # else:
-    #     y_soft = prob
-
-    # if not hard:
-    #     return y_soft
+def binary_hard_concrete(
+    prob: Tensor,
+    temp: float,
+    eps: float = 1e-20,
+    bounds: tuple[float, float] = (-0.1, 1.1),
+) -> Tensor:
+    logit = torch.log(prob / (1 - prob))
+    u = torch.rand_like(logit).clamp(min=eps, max=1 - eps)
+    logistic_noise = torch.log(u) - torch.log1p(-u)  # logistic noise ~ log(u) - log(1-u)
+    sigmoid_output = torch.sigmoid((logit + logistic_noise) / temp)
+    low, high = bounds
+    stretched = low + (high - low) * sigmoid_output
+    return stretched.clamp(0, 1)
 
 
 def rescaled_binary_hard_concrete_ste(
@@ -90,13 +92,15 @@ def rescaled_binary_hard_concrete_ste(
 def get_sample_fn(sample_config: SampleConfig) -> Callable[[Tensor], Tensor]:
     if sample_config.sample_type == "uniform":
         return sample_uniform_to_1
-    elif sample_config.sample_type == "bernoulli_ste":
-        return rescaled_bernoulli_ste
-    elif sample_config.sample_type == "concrete_ste":
-        return partial(rescaled_binary_concrete_ste, temp=sample_config.temp)
+    # elif sample_config.sample_type == "bernoulli_ste":
+    #     return rescaled_bernoulli_ste
+    elif sample_config.sample_type == "concrete":
+        return partial(binary_concrete, temp=sample_config.temp)
+    # elif sample_config.sample_type == "concrete_ste":
+    #     return partial(rescaled_binary_concrete_ste, temp=sample_config.temp)
     elif sample_config.sample_type == "hard_concrete":
         return partial(
-            rescaled_binary_hard_concrete_ste,
+            binary_hard_concrete,
             temp=sample_config.temp,
             bounds=sample_config.bounds,
         )
