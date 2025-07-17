@@ -1,7 +1,14 @@
 # %%
 from spd.models.component_model import ComponentModel
 
-component_model, cfg, path = ComponentModel.from_pretrained("wandb:goodfire/spd/runs/0wff20d9")
+component_model, cfg, path = ComponentModel.from_pretrained("wandb:goodfire/spd/runs/dcjm9g2n")
+
+# %%
+from muutils.dbg import dbg, dbg_auto
+
+dbg_auto(component_model)
+dbg_auto(cfg)
+dbg_auto(path)
 
 # %%
 model_path = "wandb:goodfire/spd/runs/0wff20d9"
