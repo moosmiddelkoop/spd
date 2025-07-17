@@ -1,9 +1,10 @@
-from dataclasses import dataclass
-from typing import Any, Callable
 import itertools
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
-import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.colors import LogNorm
