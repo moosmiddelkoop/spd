@@ -101,9 +101,6 @@ class BernoulliSampleConfig(BaseModel):
         default="bernoulli_ste",
         description="Type of sample to use for stochastic reconstruction",
     )
-    min: float = Field(
-        default=0.5,
-    )
     sigmoid_type: SigmoidTypes = Field(
         default="normal",
         description="Type of sigmoid to use for causal importance calculation",
@@ -116,11 +113,8 @@ class ConcreteSTESampleConfig(BaseModel):
         description="Type of sample to use for stochastic reconstruction",
     )
     temp: float = Field(
-        default=2 / 3,
+        default=1.0,
         description="Temperature for the concrete distribution",
-    )
-    min: float = Field(
-        default=0.5,
     )
     # potentially add annealing schedule here
     sigmoid_type: SigmoidTypes = Field(
@@ -135,11 +129,8 @@ class ConcreteSampleConfig(BaseModel):
         description="Type of sample to use for stochastic reconstruction",
     )
     temp: float = Field(
-        default=2 / 3,
+        default=1.0,
         description="Temperature for the concrete distribution",
-    )
-    min: float = Field(
-        default=0.5,
     )
     # potentially add annealing schedule here
     sigmoid_type: SigmoidTypes = Field(
@@ -154,7 +145,7 @@ class HardConcreteSampleConfig(BaseModel):
         description="Type of sample to use for stochastic reconstruction",
     )
     temp: float = Field(
-        default=2 / 3,
+        default=2.0,
         description="Temperature for the concrete distribution",
     )
     bounds: tuple[float, float] = Field(
@@ -162,7 +153,7 @@ class HardConcreteSampleConfig(BaseModel):
         description="Bounds for the hard concrete distribution",
     )
     sigmoid_type: SigmoidTypes = Field(
-        default="normal",
+        default="leaky_hard",
         description="Type of sigmoid to use for causal importance calculation",
     )
 
@@ -199,7 +190,7 @@ class Config(BaseModel):
         description="The number of subcomponents per layer",
     )
     sample_config: SampleConfig = Field(
-        default_factory=lambda: UniformSampleConfig(),
+        default_factory=lambda: HardConcreteSampleConfig(),
         discriminator="sample_type",
         description="Configuration for the sample function used for stochastic reconstruction",
     )
