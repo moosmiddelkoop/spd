@@ -15,10 +15,10 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from spd.configs import Config
-from spd.data_utils import DatasetGeneratedDataLoader
 from spd.models.component_model import ComponentModel
 from spd.models.component_utils import calc_component_acts, calc_masks
-from spd.utils import extract_batch_data
+from spd.utils.data_utils import DatasetGeneratedDataLoader
+from spd.utils.general_utils import extract_batch_data
 
 
 def calc_jaccard_index(
