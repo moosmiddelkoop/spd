@@ -181,6 +181,7 @@ class GroupMerge:
         if component_labels is not None:
             # Import the function here to avoid circular imports
             from spd.clustering.activations import add_component_labeling
+            print(f"Debug: GroupMerge.plot() received {len(component_labels)} component labels")
             add_component_labeling(ax_mat, component_labels, axis='x')
 
         if show_row_sums:

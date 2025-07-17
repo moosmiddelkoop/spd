@@ -13,65 +13,54 @@ from spd.utils.component_utils import calc_causal_importances
 from spd.utils.general_utils import extract_batch_data
 
 
-def add_component_labeling(ax, component_labels: list[str], axis: str = 'x', highlight_modules: bool = True):
-	"""Add component labeling and module highlighting to an axis.
+def add_component_labeling(ax: plt.Axes, component_labels: list[str], axis: str = 'x') -> None:
+	"""Add component labeling using major/minor ticks to show module boundaries.
 	
 	Args:
 		ax: Matplotlib axis to modify
 		component_labels: List of component labels in format "module:index"
 		axis: Which axis to label ('x' or 'y')
-		highlight_modules: Whether to add colored background highlighting for modules
 	"""
 	if not component_labels:
 		return
 		
 	# Extract module information
-	module_changes = []
-	current_module = component_labels[0].split(':')[0]
-	module_labels = []
+	module_changes: list[int] = []
+	current_module: str = component_labels[0].split(':')[0]
+	module_labels: list[str] = []
 	
 	for i, label in enumerate(component_labels):
-		module = label.split(':')[0]
+		module: str = label.split(':')[0]
 		if module != current_module:
 			module_changes.append(i)
 			module_labels.append(current_module)
 			current_module = module
 	module_labels.append(current_module)
 	
-	# Colors for alternating module backgrounds
-	colors = ['lightblue', 'lightgreen', 'lightcoral', 'lightyellow', 'lightpink', 'lightgray']
+	# Set up major and minor ticks
+	# Minor ticks: all component indices
+	minor_ticks: list[int] = list(range(len(component_labels)))
 	
-	# Add colored background regions if requested
-	if highlight_modules:
-		prev_idx = 0
-		for i, change_idx in enumerate(module_changes + [len(component_labels)]):
-			color = colors[i % len(colors)]
-			if axis == 'x':
-				ax.axvspan(prev_idx - 0.5, change_idx - 0.5, alpha=0.2, color=color)
-			else:
-				ax.axhspan(prev_idx - 0.5, change_idx - 0.5, alpha=0.2, color=color)
-			prev_idx = change_idx
+	# Major ticks: module boundaries (start of each module)
+	major_ticks: list[int] = [0] + module_changes
+	major_labels: list[str] = module_labels
 	
-	# Add module labels
-	prev_idx = 0
-	for i, (change_idx, module) in enumerate(zip(module_changes + [len(component_labels)], module_labels, strict=False)):
-		mid_idx = (prev_idx + change_idx) / 2
-		if axis == 'x':
-			ax.text(mid_idx, -0.05, module, transform=ax.get_xaxis_transform(),
-					ha='center', va='top', fontsize=8, rotation=45, 
-					bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
-		else:
-			ax.text(-0.05, mid_idx, module, transform=ax.get_yaxis_transform(),
-					ha='right', va='center', fontsize=8,
-					bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
-		prev_idx = change_idx
-	
-	# Set tick labels if we want to show individual component names
-	# For now, we'll just use indices but could extend this to show component names if needed
 	if axis == 'x':
+		ax.set_xticks(minor_ticks, minor=True)
+		ax.set_xticks(major_ticks)
+		ax.set_xticklabels(major_labels, rotation=45, ha='right')
 		ax.set_xlim(-0.5, len(component_labels) - 0.5)
+		# Style the ticks
+		ax.tick_params(axis='x', which='minor', length=2, width=0.5)
+		ax.tick_params(axis='x', which='major', length=6, width=1.5)
 	else:
+		ax.set_yticks(minor_ticks, minor=True)
+		ax.set_yticks(major_ticks)
+		ax.set_yticklabels(major_labels)
 		ax.set_ylim(-0.5, len(component_labels) - 0.5)
+		# Style the ticks
+		ax.tick_params(axis='y', which='minor', length=2, width=0.5)
+		ax.tick_params(axis='y', which='major', length=6, width=1.5)
 
 
 @torch.no_grad()

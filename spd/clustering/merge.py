@@ -248,7 +248,7 @@ def merge_iteration(
 	plt.plot(merge_costs['max_considered_cost'], label='max considered cost')
 	plt.plot(merge_costs['non_diag_costs_min'], label='non-diag costs min')
 	plt.plot(merge_costs['non_diag_costs_max'], label='non-diag costs max')
-	plt.plot(merge_costs['selected_pair_cost'], label='selected pair cost', marker='o', markersize=3)
+	plt.plot(merge_costs['selected_pair_cost'], label='selected pair cost')
 	plt.xlabel("Iteration")
 	plt.ylabel("Cost")
 	plt.legend()
