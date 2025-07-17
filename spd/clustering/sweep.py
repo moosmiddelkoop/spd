@@ -97,9 +97,11 @@ def plot_evolution_histories(
     lines_by: str = "alpha",
     rows_by: str = "activation_threshold", 
     cols_by: str = "check_threshold",
+    fixed_params: dict[str, Any] | None = None,
     figsize: tuple[int, int] = (15, 10),
     normalize_to_zero: bool = True,
     log_delta: bool = True,
+    log_iterations: bool = False,
 ) -> None:
     """Plot evolution histories with 3D parameter organization."""
     
@@ -118,14 +120,35 @@ def plot_evolution_histories(
         else:
             return f"[{format_value(values[0])}...{format_value(values[-1])}]"
     
-    # Get unique values for each parameter
+    # Check that fixed_params are provided
     all_params = ['activation_threshold', 'check_threshold', 'alpha', 'rank_cost_name']
-    param_values = {param: sorted(list(set(getattr(r, param) for r in results))) for param in all_params}
+    used_params = {lines_by, rows_by, cols_by}
+    unused_params = [p for p in all_params if p not in used_params]
+    
+    if fixed_params is None:
+        raise ValueError(f"Must provide fixed_params to fix unused parameters: {unused_params}")
+    
+    # Check that all unused parameters are fixed
+    missing_fixed = [p for p in unused_params if p not in fixed_params]
+    if missing_fixed:
+        raise ValueError(f"Must fix all unused parameters. Missing: {missing_fixed}")
+    
+    # Filter results by fixed parameters
+    filtered_results = results
+    for param, value in fixed_params.items():
+        filtered_results = [r for r in filtered_results if getattr(r, param) == value]
+    
+    if not filtered_results:
+        raise ValueError(f"No results match fixed parameters: {fixed_params}")
+    
+    # Get unique values for each parameter from filtered results
+    all_params = ['activation_threshold', 'check_threshold', 'alpha', 'rank_cost_name']
+    param_values = {param: sorted(list(set(getattr(r, param) for r in filtered_results))) for param in all_params}
     
     # Get unique values for row/col organization
-    row_values = sorted(list(set(getattr(r, rows_by) for r in results)))
-    col_values = sorted(list(set(getattr(r, cols_by) for r in results)))
-    line_values = sorted(list(set(getattr(r, lines_by) for r in results)))
+    row_values = sorted(list(set(getattr(r, rows_by) for r in filtered_results)))
+    col_values = sorted(list(set(getattr(r, cols_by) for r in filtered_results)))
+    line_values = sorted(list(set(getattr(r, lines_by) for r in filtered_results)))
     
     # Create subplot grid
     n_rows = len(row_values)
@@ -135,8 +158,9 @@ def plot_evolution_histories(
     
     # Create colormap for line parameter
     if isinstance(line_values[0], (int, float)):
-        # Numeric colormap
-        norm = plt.Normalize(vmin=min(line_values), vmax=max(line_values))
+        # Numeric colormap with log scale
+        from matplotlib.colors import LogNorm
+        norm = LogNorm(vmin=min(line_values), vmax=max(line_values))
         cmap = cm.viridis
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
@@ -145,29 +169,25 @@ def plot_evolution_histories(
         colors = cm.viridis(np.linspace(0, 1, len(line_values)))
         color_dict = {val: colors[i] for i, val in enumerate(line_values)}
     
-    # Identify parameters that vary vs are fixed
+    # Create suptitle with separate lines for each dimension
+    title_parts = []
+    
+    # Lines, rows, cols dimensions
+    title_parts.append(f"lines_by: {lines_by} ∈ {format_range(param_values[lines_by])}")
+    title_parts.append(f"rows_by: {rows_by} ∈ {format_range(param_values[rows_by])}")
+    title_parts.append(f"cols_by: {cols_by} ∈ {format_range(param_values[cols_by])}")
+    
+    # Fixed parameters (including explicit fixed_params and automatically fixed ones)
     used_params = {lines_by, rows_by, cols_by}
     other_params = [p for p in all_params if p not in used_params]
-    varied_other = {k: v for k, v in param_values.items() if k in other_params and len(v) > 1}
-    fixed_other = {k: v[0] for k, v in param_values.items() if k in other_params and len(v) == 1}
+    auto_fixed = {k: v[0] for k, v in param_values.items() if k in other_params and len(v) == 1}
+    all_fixed = {**fixed_params, **auto_fixed}
     
-    # Create suptitle with ranges
-    title_parts = []
-    if fixed_other:
-        fixed_str = ", ".join([f"{k}={format_value(v)}" for k, v in fixed_other.items()])
-        title_parts.append(f"Fixed: {fixed_str}")
-    if varied_other:
-        varied_str = ", ".join([f"{k}∈{format_range(v)}" for k, v in varied_other.items()])
-        title_parts.append(f"Varied: {varied_str}")
+    if all_fixed:
+        fixed_str = ", ".join([f"{k}={format_value(v)}" for k, v in all_fixed.items()])
+        title_parts.append(f"fixed values: {fixed_str}")
     
-    # Add rank cost names on separate line if it's not one of the main dimensions
-    if 'rank_cost_name' not in used_params:
-        rank_names = param_values['rank_cost_name']
-        if len(rank_names) > 1:
-            title_parts.append(f"Rank costs: {', '.join(rank_names)}")
-    
-    if title_parts:
-        fig.suptitle('\n'.join(title_parts), fontsize=12)
+    fig.suptitle('\n'.join(title_parts), fontsize=12)
     
     # Fill subplots
     for row_idx, row_val in enumerate(row_values):
@@ -176,7 +196,7 @@ def plot_evolution_histories(
             
             # Get results for this row/col combination
             subset_results = [
-                r for r in results 
+                r for r in filtered_results 
                 if getattr(r, rows_by) == row_val and getattr(r, cols_by) == col_val
             ]
             
@@ -202,15 +222,23 @@ def plot_evolution_histories(
                     else:
                         color = color_dict[line_val]
                     
-                    ax.plot(range(len(values)), values, color=color, 
+                    iterations = range(len(values))
+                    if log_iterations:
+                        iterations = np.array(iterations) + 1  # Start from 1 for log scale
+                    
+                    ax.plot(iterations, values, color=color, 
                            alpha=0.8, linewidth=2)
             
             # Set subplot title and labels
             if row_idx == 0:  # Only first row gets titles
                 ax.set_title(f"{cols_by}\n{format_value(col_val)}")
             
+            if log_iterations:
+                ax.set_xscale('log')
+            
             if row_idx == n_rows - 1:  # Only bottom row gets x-labels
-                ax.set_xlabel("Iteration")
+                xlabel = "log(Iteration)" if log_iterations else "Iteration"
+                ax.set_xlabel(xlabel)
             
             if col_idx == 0:  # Only leftmost column gets y-label
                 # Terse y-label
