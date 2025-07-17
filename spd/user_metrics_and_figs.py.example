@@ -10,6 +10,7 @@ import wandb
 from jaxtyping import Float, Int
 from matplotlib.figure import Figure
 from torch import Tensor
+from torch.utils.data import DataLoader
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
@@ -60,6 +61,7 @@ def create_user_figures(
     device: str | torch.device,
     config: Config,
     step: int,
+    eval_loader: torch.utils.data.DataLoader | None = None,
 ) -> dict[str, Figure]:
     """Create custom figures during SPD optimization.
 
@@ -73,6 +75,7 @@ def create_user_figures(
         device: Device used for computation
         config: The full configuration object
         step: Current training step
+        eval_loader: Optional eval data loader (for experiment-specific data access)
 
     Returns:
         Dict mapping figure names to matplotlib Figure objects

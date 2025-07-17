@@ -22,6 +22,7 @@ from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearCompo
 from spd.utils.component_utils import calc_causal_importances
 from spd.utils.general_utils import (
     extract_batch_data,
+    get_annealed_p,
     get_lr_schedule_fn,
     get_lr_with_warmup,
 )
@@ -41,6 +42,9 @@ def get_common_run_name_suffix(config: Config) -> str:
     if config.embedding_recon_coeff is not None:
         run_suffix += f"embedrecon{config.embedding_recon_coeff:.2e}_"
     run_suffix += f"p{config.pnorm:.2e}_"
+    # Add p-annealing info if active
+    if config.p_anneal_final_p is not None and config.p_anneal_start_frac < 1.0:
+        run_suffix += f"panneal{config.p_anneal_start_frac:.2f}-{config.p_anneal_final_p:.2f}_"
     run_suffix += f"impmin{config.importance_minimality_coeff:.2e}_"
     run_suffix += f"C{config.C}_"
     run_suffix += f"sd{config.seed}_"
@@ -164,6 +168,15 @@ def optimize(
         for layer_name, ci in causal_importances.items():
             alive_components[layer_name] = alive_components[layer_name] | (ci > 0.1).any(dim=(0, 1))
 
+        # Calculate current p value with annealing
+        current_p = get_annealed_p(
+            step=step,
+            steps=config.steps,
+            initial_p=config.pnorm,
+            p_anneal_start_frac=config.p_anneal_start_frac,
+            p_anneal_final_p=config.p_anneal_final_p,
+        )
+
         total_loss, loss_terms = calculate_losses(
             model=model,
             batch=batch,
@@ -174,10 +187,15 @@ def optimize(
             target_out=target_out,
             device=device,
             n_params=n_params,
+            current_p=current_p,
         )
 
         log_data["loss/total"] = total_loss.item()
         log_data.update(loss_terms)
+        
+        # Log current p value if annealing is active
+        if config.p_anneal_final_p is not None and config.p_anneal_start_frac < 1.0:
+            log_data["misc/current_p"] = current_p
 
         with torch.inference_mode():
             # --- Logging --- #
