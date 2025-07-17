@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from spd.clustering.merge import merge_iteration
 
@@ -50,8 +51,8 @@ def run_hyperparameter_sweep(
     
     results = []
     
-    for i, (act_thresh, check_thresh, alpha, (rank_name, rank_func)) in enumerate(param_combinations):
-        print(f"{i+1}/{len(param_combinations)}: {act_thresh = }, {check_thresh = }, {alpha = }, {rank_name = }")
+    for i, (act_thresh, check_thresh, alpha, (rank_name, rank_func)) in tqdm(enumerate(param_combinations), total=len(param_combinations)):
+        # tqdm.write(f"{i+1}/{len(param_combinations)}: {act_thresh = }, {check_thresh = }, {alpha = }, {rank_name = }")
         
         try:
             # Apply activation threshold
@@ -115,10 +116,12 @@ def plot_evolution_histories(
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
     if n_groups == 1:
         axes = [axes]
-    elif n_rows == 1:
-        axes = [axes]
-    else:
+    elif n_rows == 1 and n_cols > 1:
+        axes = list(axes)
+    elif n_rows > 1:
         axes = axes.flatten()
+    else:
+        axes = [axes]
     
     # Color map for different hyperparameter values
     colors = cm.viridis(np.linspace(0, 1, max(4, max(len(group) for group in grouped_results.values()))))
@@ -180,10 +183,12 @@ def create_heatmaps(
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
     if n_rank_costs == 1:
         axes = [axes]
-    elif n_rows == 1:
-        axes = axes if n_cols > 1 else [axes]
-    else:
+    elif n_rows == 1 and n_cols > 1:
+        axes = list(axes)
+    elif n_rows > 1:
         axes = axes.flatten()
+    else:
+        axes = [axes]
     
     for rank_idx, rank_cost_name in enumerate(unique_rank_cost):
         if rank_idx >= len(axes):
