@@ -30,6 +30,7 @@ def create_slurm_array_script(
     time_limit: str = "24:00:00",
     snapshot_branch: str | None = None,
     max_concurrent_tasks: int | None = None,
+    partition: str = "h100-reserved-default",
 ) -> None:
     """Create a SLURM job array script with git snapshot for consistent code.
 
@@ -41,6 +42,7 @@ def create_slurm_array_script(
         time_limit: Time limit for each job (default: 24:00:00)
         snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
         max_concurrent_tasks: Maximum number of array tasks to run concurrently. If None, no limit.
+        partition: SLURM partition to use (default: "all")
     """
     if snapshot_branch is None:
         snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
@@ -68,7 +70,7 @@ def create_slurm_array_script(
         {gpu_config}
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
-        #SBATCH --partition=all
+        #SBATCH --partition={partition}
         #SBATCH --array={array_range}
         #SBATCH --output={slurm_logs_dir}/slurm-%A_%a.out
 
