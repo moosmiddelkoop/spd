@@ -79,7 +79,8 @@ class VectorGateMLPs(nn.Module):
 class Components(ABC, nn.Module):
     def __init__(self, C: int, v_dim: int, u_dim: int):
         """
-        Base class for all components.
+        Base class for components in a single layer (that would replace nn.Linear or nn.Embedding weight matrices).
+        Initializes matrices V (which transforms the input activations) and U (which transforms the output of in_acts @ V)" 
 
         Args:
             C: Number of components
