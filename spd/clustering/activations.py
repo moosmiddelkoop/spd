@@ -13,6 +13,89 @@ from spd.utils.component_utils import calc_causal_importances
 from spd.utils.general_utils import extract_batch_data
 
 
+def plot_activations(
+	activations: dict[str, Float[Tensor, " n_steps C"]],
+	act_concat: Float[Tensor, " n_steps c"],
+	coact: Float[Tensor, " c c"],
+	labels: list[str],
+	save_pdf: bool = False,
+	pdf_prefix: str = "activations",
+	figsize_raw: tuple[int, int] = (12, 4),
+	figsize_concat: tuple[int, int] = (12, 2),
+	figsize_coact: tuple[int, int] = (8, 6),
+) -> None:
+	"""Plot activation visualizations including raw, concatenated, sorted, and coactivations.
+	
+	Args:
+		activations: Dictionary of raw activations by module
+		act_concat: Concatenated activations tensor
+		coact: Coactivation matrix
+		labels: Component labels
+		save_pdf: Whether to save plots as PDFs
+		pdf_prefix: Prefix for PDF filenames
+		figsize_raw: Figure size for raw activations
+		figsize_concat: Figure size for concatenated activations
+		figsize_coact: Figure size for coactivations
+	"""
+	# Raw activations
+	fig1, axs_act = plt.subplots(len(activations), 1, figsize=figsize_raw)
+	if len(activations) == 1:
+		axs_act = [axs_act]
+	for i, (key, act) in enumerate(activations.items()):
+		axs_act[i].matshow(act.T.cpu().numpy(), aspect="auto")
+		axs_act[i].set_ylabel(f"components\n{key}")
+
+	# Concatenated activations
+	fig2, ax2 = plt.subplots(figsize=figsize_concat)
+	im2 = ax2.matshow(act_concat.T.cpu().numpy(), aspect="auto")
+	ax2.set_title("Concatenated Activations")
+	
+	# Add component labeling on y-axis
+	add_component_labeling(ax2, labels, axis='y')
+	
+	plt.colorbar(im2)
+	
+	if save_pdf:
+		fig2.savefig(f"{pdf_prefix}_concatenated.pdf", bbox_inches='tight', dpi=300)
+
+	# Concatenated activations, sorted samples
+	fig3, ax3 = plt.subplots(figsize=figsize_concat)
+	
+	# Compute gram matrix (sample similarity) and sort samples
+	gram_matrix: Float[Tensor, " n_steps n_steps"] = act_concat @ act_concat.T
+	
+	# Use hierarchical clustering approach for better sorting
+	similarity_scores: Float[Tensor, " n_steps"] = gram_matrix.sum(dim=1)
+	sorted_indices: torch.Tensor = torch.argsort(similarity_scores, descending=True)
+	
+	act_concat_sorted: Float[Tensor, " n_steps c"] = act_concat[sorted_indices]
+	
+	im3 = ax3.matshow(torch.log10(act_concat_sorted).T.cpu().numpy(), aspect="auto")
+	ax3.set_title("Concatenated Activations $\\log_{10}$, Sorted Samples")
+	
+	# Add component labeling on y-axis
+	add_component_labeling(ax3, labels, axis='y')
+	
+	plt.colorbar(im3)
+	
+	if save_pdf:
+		fig3.savefig(f"{pdf_prefix}_concatenated_sorted.pdf", bbox_inches='tight', dpi=300)
+
+	# Coactivations
+	fig4, ax4 = plt.subplots(figsize=figsize_coact)
+	im4 = ax4.matshow(coact.cpu().numpy(), aspect="auto")
+	ax4.set_title("Coactivations")
+	
+	# Add component labeling on both axes
+	add_component_labeling(ax4, labels, axis='x')
+	add_component_labeling(ax4, labels, axis='y')
+	
+	plt.colorbar(im4)
+	
+	if save_pdf:
+		fig4.savefig(f"{pdf_prefix}_coactivations.pdf", bbox_inches='tight', dpi=300)
+
+
 def add_component_labeling(ax: plt.Axes, component_labels: list[str], axis: str = 'x') -> None:
 	"""Add component labeling using major/minor ticks to show module boundaries.
 	
@@ -164,39 +247,16 @@ def process_activations(
 	dbg_auto(output)
 
 	if plots:
-		# raw activations
-		fig1, axs_act = plt.subplots(len(activations), 1, figsize=figsize_raw)
-		if len(activations) == 1:
-			axs_act = [axs_act]
-		for i, (key, act) in enumerate(activations.items()):
-			axs_act[i].matshow(act.T.cpu().numpy(), aspect="auto")
-			axs_act[i].set_ylabel(f"components\n{key}")
-
-		# concatenated activations
-		fig2, ax2 = plt.subplots(figsize=figsize_concat)
-		im2 = ax2.matshow(act_concat.T.cpu().numpy(), aspect="auto")
-		ax2.set_title("Concatenated Activations")
-		
-		# Add component labeling on y-axis
-		add_component_labeling(ax2, labels, axis='y')
-		
-		plt.colorbar(im2)
-		
-		if save_pdf:
-			fig2.savefig(f"{pdf_prefix}_concatenated.pdf", bbox_inches='tight', dpi=300)
-
-		# coactivations
-		fig3, ax3 = plt.subplots(figsize=figsize_coact)
-		im3 = ax3.matshow(coact.cpu().numpy(), aspect="auto")
-		ax3.set_title("Coactivations")
-		
-		# Add component labeling on both axes
-		add_component_labeling(ax3, labels, axis='x')
-		add_component_labeling(ax3, labels, axis='y')
-		
-		plt.colorbar(im3)
-		
-		if save_pdf:
-			fig3.savefig(f"{pdf_prefix}_coactivations.pdf", bbox_inches='tight', dpi=300)
+		plot_activations(
+			activations=activations,
+			act_concat=act_concat,
+			coact=coact,
+			labels=labels,
+			save_pdf=save_pdf,
+			pdf_prefix=pdf_prefix,
+			figsize_raw=figsize_raw,
+			figsize_concat=figsize_concat,
+			figsize_coact=figsize_coact,
+		)
 
 	return output
