@@ -1,22 +1,17 @@
-import random
-from collections.abc import Callable
 from typing import Any, cast
-import warnings
 
 import matplotlib.pyplot as plt
 import torch
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Float, Int
 from muutils.dbg import dbg, dbg_auto
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-from spd.experiments.resid_mlp.resid_mlp_dataset import ResidualMLPDataset
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.utils.component_utils import calc_causal_importances
-from spd.utils.data_utils import DatasetGeneratedDataLoader
 from spd.utils.general_utils import extract_batch_data
-from spd.clustering.merge_matrix import GroupMerge
+
 
 @torch.no_grad()
 def component_activations(

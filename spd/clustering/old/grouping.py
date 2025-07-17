@@ -16,7 +16,6 @@ from tqdm import tqdm
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
-from spd.models.component_utils import calc_component_acts, calc_masks
 from spd.utils.data_utils import DatasetGeneratedDataLoader
 from spd.utils.general_utils import extract_batch_data
 
@@ -406,7 +405,7 @@ def get_coactivations(
     coactivations_kwargs: dict[str, Any],
     dataset_kwargs: dict[str, Any] | None = None,
     dataloader_kwargs: dict[str, Any] | None = None,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: str|torch.device = "cpu",
 ) -> CoactivationResults:
     # model
     comp_model: ComponentModel
