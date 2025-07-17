@@ -150,6 +150,7 @@ class GroupMerge:
         figsize: tuple[int, int] = (10, 3),
         show_row_sums: bool | None = None,
         ax: "plt.Axes | None" = None,
+        component_labels: list[str] | None = None,
     ) -> None:
         import matplotlib.pyplot as plt
 
@@ -175,6 +176,12 @@ class GroupMerge:
         ax_mat.set_xlabel("Components")
         ax_mat.set_ylabel("Groups")
         ax_mat.set_title("Merge Matrix")
+        
+        # Add component labeling if component labels are provided
+        if component_labels is not None:
+            # Import the function here to avoid circular imports
+            from spd.clustering.activations import add_component_labeling
+            add_component_labeling(ax_mat, component_labels, axis='x')
 
         if show_row_sums:
             ax_lbl.set_xlim(0, 1)

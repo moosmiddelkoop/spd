@@ -13,6 +13,67 @@ from spd.utils.component_utils import calc_causal_importances
 from spd.utils.general_utils import extract_batch_data
 
 
+def add_component_labeling(ax, component_labels: list[str], axis: str = 'x', highlight_modules: bool = True):
+	"""Add component labeling and module highlighting to an axis.
+	
+	Args:
+		ax: Matplotlib axis to modify
+		component_labels: List of component labels in format "module:index"
+		axis: Which axis to label ('x' or 'y')
+		highlight_modules: Whether to add colored background highlighting for modules
+	"""
+	if not component_labels:
+		return
+		
+	# Extract module information
+	module_changes = []
+	current_module = component_labels[0].split(':')[0]
+	module_labels = []
+	
+	for i, label in enumerate(component_labels):
+		module = label.split(':')[0]
+		if module != current_module:
+			module_changes.append(i)
+			module_labels.append(current_module)
+			current_module = module
+	module_labels.append(current_module)
+	
+	# Colors for alternating module backgrounds
+	colors = ['lightblue', 'lightgreen', 'lightcoral', 'lightyellow', 'lightpink', 'lightgray']
+	
+	# Add colored background regions if requested
+	if highlight_modules:
+		prev_idx = 0
+		for i, change_idx in enumerate(module_changes + [len(component_labels)]):
+			color = colors[i % len(colors)]
+			if axis == 'x':
+				ax.axvspan(prev_idx - 0.5, change_idx - 0.5, alpha=0.2, color=color)
+			else:
+				ax.axhspan(prev_idx - 0.5, change_idx - 0.5, alpha=0.2, color=color)
+			prev_idx = change_idx
+	
+	# Add module labels
+	prev_idx = 0
+	for i, (change_idx, module) in enumerate(zip(module_changes + [len(component_labels)], module_labels, strict=False)):
+		mid_idx = (prev_idx + change_idx) / 2
+		if axis == 'x':
+			ax.text(mid_idx, -0.05, module, transform=ax.get_xaxis_transform(),
+					ha='center', va='top', fontsize=8, rotation=45, 
+					bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+		else:
+			ax.text(-0.05, mid_idx, module, transform=ax.get_yaxis_transform(),
+					ha='right', va='center', fontsize=8,
+					bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+		prev_idx = change_idx
+	
+	# Set tick labels if we want to show individual component names
+	# For now, we'll just use indices but could extend this to show component names if needed
+	if axis == 'x':
+		ax.set_xlim(-0.5, len(component_labels) - 0.5)
+	else:
+		ax.set_ylim(-0.5, len(component_labels) - 0.5)
+
+
 @torch.no_grad()
 def component_activations(
     model: ComponentModel,
@@ -58,6 +119,11 @@ def process_activations(
 	activations: dict[str, Float[Tensor, " n_steps C"]], # module name to sample x component gate activations
 	filter_dead_threshold: float = 0.01,
 	plots: bool = False,
+	save_pdf: bool = False,
+	pdf_prefix: str = "activations",
+	figsize_raw: tuple[int, int] = (12, 4),
+	figsize_concat: tuple[int, int] = (12, 2),
+	figsize_coact: tuple[int, int] = (8, 6),
 ) -> dict[str, Any]:
 	"""get back a dict of coactivations, slices, and concated activations"""
 	
@@ -110,21 +176,38 @@ def process_activations(
 
 	if plots:
 		# raw activations
-		_, axs_act = plt.subplots(len(activations), 1, figsize=(12, 4))
+		fig1, axs_act = plt.subplots(len(activations), 1, figsize=figsize_raw)
+		if len(activations) == 1:
+			axs_act = [axs_act]
 		for i, (key, act) in enumerate(activations.items()):
 			axs_act[i].imshow(act.T.cpu().numpy(), aspect="auto")
 			axs_act[i].set_ylabel(f"components\n{key}")
 
 		# concatenated activations
-		plt.figure(figsize=(12, 2))
-		plt.imshow(act_concat.T.cpu().numpy(), aspect="auto")
-		plt.title("Concatenated Activations")
-		plt.colorbar()
+		fig2, ax2 = plt.subplots(figsize=figsize_concat)
+		im2 = ax2.imshow(act_concat.T.cpu().numpy(), aspect="auto")
+		ax2.set_title("Concatenated Activations")
+		
+		# Add component labeling on y-axis
+		add_component_labeling(ax2, labels, axis='y')
+		
+		plt.colorbar(im2)
+		
+		if save_pdf:
+			fig2.savefig(f"{pdf_prefix}_concatenated.pdf", bbox_inches='tight', dpi=300)
 
 		# coactivations
-		plt.figure(figsize=(8, 6))
-		plt.imshow(coact.cpu().numpy(), aspect="auto")
-		plt.title("Coactivations")
-		plt.colorbar()
+		fig3, ax3 = plt.subplots(figsize=figsize_coact)
+		im3 = ax3.imshow(coact.cpu().numpy(), aspect="auto")
+		ax3.set_title("Coactivations")
+		
+		# Add component labeling on both axes
+		add_component_labeling(ax3, labels, axis='x')
+		add_component_labeling(ax3, labels, axis='y')
+		
+		plt.colorbar(im3)
+		
+		if save_pdf:
+			fig3.savefig(f"{pdf_prefix}_coactivations.pdf", bbox_inches='tight', dpi=300)
 
 	return output

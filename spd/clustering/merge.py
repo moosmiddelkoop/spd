@@ -114,6 +114,11 @@ def merge_iteration(
 	rank_cost: Callable[[float], float] = lambda _: 1.0,
 	plot_every: int = 20,
 	plot_every_min: int = 0,
+	save_pdf: bool = False,
+	pdf_prefix: str = "merge_iteration",
+	component_labels: list[str] | None = None,
+	figsize: tuple[int, int] = (16, 3),
+	figsize_final: tuple[int, int] = (10, 6),
 ):
 	# check shapes
 	c_components: int = coact.shape[0]
@@ -141,6 +146,7 @@ def merge_iteration(
 		non_diag_costs_min=[],
 		non_diag_costs_max=[],
 		max_considered_cost=[],
+		selected_pair_cost=[],
 	)
 
 	# iteration counter
@@ -174,6 +180,9 @@ def merge_iteration(
 		# randomly select one of the considered pairs
 		min_pair: tuple[int, int] = tuple(considered_idxs[random.randint(0, considered_idxs.shape[0] - 1)].tolist())
 		pair_cost: float = costs[min_pair[0], min_pair[1]].item()
+		
+		# Track the selected pair cost
+		merge_costs['selected_pair_cost'].append(pair_cost)
 
 		# merge the pair
 		current_merge, current_coact, current_act_mask = recompute_coacts(
@@ -197,43 +206,54 @@ def merge_iteration(
 
 		if k_groups <= 2:
 			warnings.warn(f"Stopping early at iteration {i} as only {k_groups} groups left")
-			current_merge.plot()
+			current_merge.plot(component_labels=component_labels)
+			if save_pdf:
+				plt.savefig(f"{pdf_prefix}_final_early.pdf", bbox_inches='tight', dpi=300)
 			plt.show()
 			break
 
 		if plot_every and (i >= plot_every_min) and (i % plot_every == 0):
-			# current_merge.plot((5,1))
-			# plt.show()
-			# # _, ax = plt.subplots(figsize=(2, 2))
-			# plt.imshow(current_coact.cpu().numpy(), aspect='equal')
-			# plt.colorbar()
-			# plt.show()
-			# plt.imshow(costs.cpu().numpy(), aspect='equal')
-			# plt.colorbar()
-			# plt.show()
-
 			fig, axs = plt.subplots(
 				1, 3,
-				figsize=(16, 3),
+				figsize=figsize,
 				sharey=True,
 				gridspec_kw={"width_ratios": [2, 1, 1]}
 			)
-			current_merge.plot(ax=axs[0], show=False)
+			
+			# Merge plot
+			current_merge.plot(ax=axs[0], show=False, component_labels=component_labels)
 			axs[0].set_title("Merge")
+			
+			# Coactivations plot
 			axs[1].imshow(current_coact.cpu().numpy(), aspect='equal')
 			axs[1].set_title(f"Coactivations\n[{current_coact.min().item():.4f}, {current_coact.max().item():.4f}]")
+			
+			# Costs plot
 			axs[2].imshow(costs.cpu().numpy(), aspect='equal')
 			axs[2].set_title(f"Costs\n[{costs.min().item():.4f}, {costs.max().item():.4f}]")
+			
 			fig.suptitle(f"Iteration {i} with cost {pair_cost:.4f}")
 			plt.tight_layout()
+			
+			if save_pdf:
+				fig.savefig(f"{pdf_prefix}_iter_{i:03d}.pdf", bbox_inches='tight', dpi=300)
+			
 			plt.show()
 
 		i += 1
 
 
+	# Final cost evolution plot
+	plt.figure(figsize=figsize_final)
 	plt.plot(merge_costs['max_considered_cost'], label='max considered cost')
 	plt.plot(merge_costs['non_diag_costs_min'], label='non-diag costs min')
 	plt.plot(merge_costs['non_diag_costs_max'], label='non-diag costs max')
+	plt.plot(merge_costs['selected_pair_cost'], label='selected pair cost', marker='o', markersize=3)
 	plt.xlabel("Iteration")
 	plt.ylabel("Cost")
 	plt.legend()
+	
+	if save_pdf:
+		plt.savefig(f"{pdf_prefix}_cost_evolution.pdf", bbox_inches='tight', dpi=300)
+	
+	plt.show()
