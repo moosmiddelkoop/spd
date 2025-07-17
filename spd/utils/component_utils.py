@@ -46,7 +46,7 @@ def rescaled_bernoulli_ste(x: Tensor) -> Tensor:
 def binary_concrete(
     prob: Tensor,
     temp: float,
-    eps: float = 1e-20,
+    eps: float = 1e-6,
 ) -> Tensor:
     prob = prob.clamp(min=eps, max=1 - eps)
     logit = torch.log(prob / (1 - prob))
@@ -59,16 +59,12 @@ def binary_concrete(
 def binary_hard_concrete(
     prob: Tensor,
     temp: float,
-    eps: float = 1e-20,
+    eps: float = 1e-6,
     bounds: tuple[float, float] = (-0.1, 1.1),
 ) -> Tensor:
-    logit = torch.log(prob / (1 - prob))
-    u = torch.rand_like(logit).clamp(min=eps, max=1 - eps)
-    logistic_noise = torch.log(u) - torch.log1p(-u)  # logistic noise ~ log(u) - log(1-u)
-    sigmoid_output = torch.sigmoid((logit + logistic_noise) / temp)
     low, high = bounds
-    stretched = low + (high - low) * sigmoid_output
-    return stretched.clamp(0, 1)
+    stretched = low + (high - low) * binary_concrete(prob, temp, eps)
+    return stretched.clamp(0, 1).detach() + stretched - stretched.detach()
 
 
 def rescaled_binary_hard_concrete_ste(
@@ -90,21 +86,32 @@ def rescaled_binary_hard_concrete_ste(
     return y.clamp(0, 1)
 
 
-def get_sample_fn(sample_config: SampleConfig) -> Callable[[Tensor], Tensor]:
+def get_sample_fn(sample_config: SampleConfig, training_pct: float) -> Callable[[Tensor], Tensor]:
     if sample_config.sample_type == "uniform":
         return sample_uniform_to_1
     # elif sample_config.sample_type == "bernoulli_ste":
     #     return rescaled_bernoulli_ste
     elif sample_config.sample_type == "concrete":
-        return partial(binary_concrete, temp=sample_config.temp)
+
+        def sample_fn(x: Tensor) -> Tensor:
+            return binary_concrete(
+                x * 0.5 + 0.5,
+                temp=sample_config.temp * (1 - training_pct)
+            )
+
+        return sample_fn
     # elif sample_config.sample_type == "concrete_ste":
     #     return partial(rescaled_binary_concrete_ste, temp=sample_config.temp)
     elif sample_config.sample_type == "hard_concrete":
-        return partial(
-            binary_hard_concrete,
-            temp=sample_config.temp,
-            bounds=sample_config.bounds,
-        )
+
+        def sample_fn(x: Tensor) -> Tensor:
+            return binary_hard_concrete(
+                x * 0.5 + 0.5,
+                temp=sample_config.temp * (1 - training_pct),
+                bounds=sample_config.bounds,
+            )
+
+        return sample_fn
     raise ValueError(f"Invalid sample type: {sample_config.sample_type}")  # pyright: ignore [reportUnreachable]
 
 
@@ -112,6 +119,7 @@ def calc_stochastic_masks(
     causal_importances: dict[str, Float[Tensor, "... C"]],
     n_mask_samples: int,
     sample_config: SampleConfig,
+    training_pct: float,
 ) -> list[dict[str, Float[Tensor, "... C"]]]:
     """Calculate n_mask_samples stochastic masks with the formula `ci + (1 - ci) * rand_unif(0,1)`.
 
@@ -122,7 +130,7 @@ def calc_stochastic_masks(
     Return:
         A list of n_mask_samples dictionaries, each containing the stochastic masks for each layer.
     """
-    sample = get_sample_fn(sample_config)
+    sample = get_sample_fn(sample_config, training_pct)
     stochastic_masks = []
     for _ in range(n_mask_samples):
         stochastic_masks.append({layer: sample(ci) for layer, ci in causal_importances.items()})

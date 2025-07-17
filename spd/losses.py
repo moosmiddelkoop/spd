@@ -292,6 +292,7 @@ def calculate_losses(
     target_out: Tensor,
     device: str,
     n_params: int,
+    training_pct: float,
 ) -> tuple[Float[Tensor, ""], dict[str, float]]:
     """Calculate all losses and return total loss and individual loss terms.
 
@@ -339,6 +340,7 @@ def calculate_losses(
             causal_importances=causal_importances,
             n_mask_samples=config.n_mask_samples,
             sample_config=config.sample_config,
+            training_pct=training_pct,
         )
         stochastic_recon_loss = torch.tensor(0.0, device=target_out.device)
         for i in range(len(stochastic_masks)):
@@ -374,6 +376,7 @@ def calculate_losses(
             causal_importances=causal_importances,
             n_mask_samples=config.n_mask_samples,
             sample_config=config.sample_config,
+            training_pct=training_pct,
         )
         stochastic_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
             model=model,
@@ -425,6 +428,7 @@ def calculate_losses(
             causal_importances=causal_importances,
             n_mask_samples=config.n_mask_samples,
             sample_config=config.sample_config,
+            training_pct=training_pct,
         )
         assert len(components) == 1, "Only one embedding component is supported"
         component = list(components.values())[0]

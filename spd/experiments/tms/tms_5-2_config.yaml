@@ -11,7 +11,7 @@ n_mask_samples: 1
 gate_type: "mlp"
 gate_hidden_dims: [16]
 sample_config:
-  sample_type: "concrete"
+  sample_type: "uniform"
 target_module_patterns: ["linear1", "linear2"]
 
 # --- Loss Coefficients ---

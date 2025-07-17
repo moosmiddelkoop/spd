@@ -174,6 +174,7 @@ def optimize(
             target_out=target_out,
             device=device,
             n_params=n_params,
+            training_pct=step / config.steps,
         )
 
         log_data["loss/total"] = total_loss.item()
