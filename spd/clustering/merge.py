@@ -10,6 +10,80 @@ from torch import Tensor
 from spd.clustering.merge_matrix import GroupMerge
 
 
+def plot_merge_iteration(
+	current_merge: GroupMerge,
+	current_coact: Float[Tensor, "k_groups k_groups"],
+	costs: Float[Tensor, "k_groups k_groups"],
+	min_pair: tuple[int, int],
+	pair_cost: float,
+	iteration: int,
+	component_labels: list[str] | None = None,
+	figsize: tuple[int, int] = (16, 3),
+	save_pdf: bool = False,
+	pdf_prefix: str = "merge_iteration",
+	tick_spacing: int = 10,
+) -> None:
+	"""Plot merge iteration results with merge tree, coactivations, and costs.
+	
+	Args:
+		current_merge: Current merge state
+		current_coact: Current coactivation matrix
+		costs: Current cost matrix
+		min_pair: Selected merge pair indices
+		pair_cost: Cost of selected merge pair
+		iteration: Current iteration number
+		component_labels: Component labels for axis labeling
+		figsize: Figure size
+		save_pdf: Whether to save as PDF
+		pdf_prefix: Prefix for PDF filename
+		tick_spacing: Spacing for minor ticks
+	"""
+	fig, axs = plt.subplots(
+		1, 3,
+		figsize=figsize,
+		sharey=True,
+		gridspec_kw={"width_ratios": [2, 1, 1]}
+	)
+	
+	# Merge plot
+	current_merge.plot(ax=axs[0], show=False, component_labels=component_labels)
+	axs[0].set_title("Merge")
+	
+	# Coactivations plot
+	axs[1].matshow(current_coact.cpu().numpy(), aspect='equal')
+	coact_min: float = current_coact.min().item()
+	coact_max: float = current_coact.max().item()
+	axs[1].set_title(f"Coactivations\n[{coact_min:.3e}, {coact_max:.3e}]")
+	
+	# Setup ticks for coactivations
+	k_groups: int = current_coact.shape[0]
+	minor_ticks: list[int] = list(range(0, k_groups, tick_spacing))
+	axs[1].set_yticks(minor_ticks, minor=True)
+	axs[1].set_xticks(minor_ticks, minor=True)
+	axs[1].tick_params(axis='x', labelbottom=False)  # Hide x-axis labels
+	axs[1].tick_params(axis='y', labelleft=True)     # Show y-axis labels
+	
+	# Costs plot
+	axs[2].matshow(costs.cpu().numpy(), aspect='equal')
+	costs_min: float = costs.min().item()
+	costs_max: float = costs.max().item()
+	axs[2].set_title(f"Costs\n[{costs_min:.3e}, {costs_max:.3e}]")
+	
+	# Setup ticks for costs
+	axs[2].set_yticks(minor_ticks, minor=True)
+	axs[2].set_xticks(minor_ticks, minor=True)
+	axs[2].tick_params(axis='x', labelbottom=False)  # Hide x-axis labels
+	axs[2].tick_params(axis='y', labelleft=True)     # Show y-axis labels
+	
+	fig.suptitle(f"Iteration {iteration} with cost {pair_cost:.4f}")
+	plt.tight_layout()
+	
+	if save_pdf:
+		fig.savefig(f"{pdf_prefix}_iter_{iteration:03d}.pdf", bbox_inches='tight', dpi=300)
+	
+	plt.show()
+
+
 def compute_merge_costs(
     coact: Bool[Tensor, "k_groups k_groups"],
     merges: GroupMerge,
@@ -119,6 +193,7 @@ def merge_iteration(
 	component_labels: list[str] | None = None,
 	figsize: tuple[int, int] = (16, 3),
 	figsize_final: tuple[int, int] = (10, 6),
+	tick_spacing: int = 10,
 ):
 	# check shapes
 	c_components: int = coact.shape[0]
@@ -213,32 +288,19 @@ def merge_iteration(
 			break
 
 		if plot_every and (i >= plot_every_min) and (i % plot_every == 0):
-			fig, axs = plt.subplots(
-				1, 3,
+			plot_merge_iteration(
+				current_merge=current_merge,
+				current_coact=current_coact,
+				costs=costs,
+				min_pair=min_pair,
+				pair_cost=pair_cost,
+				iteration=i,
+				component_labels=component_labels,
 				figsize=figsize,
-				sharey=True,
-				gridspec_kw={"width_ratios": [2, 1, 1]}
+				save_pdf=save_pdf,
+				pdf_prefix=pdf_prefix,
+				tick_spacing=tick_spacing,
 			)
-			
-			# Merge plot
-			current_merge.plot(ax=axs[0], show=False, component_labels=component_labels)
-			axs[0].set_title("Merge")
-			
-			# Coactivations plot
-			axs[1].matshow(current_coact.cpu().numpy(), aspect='equal')
-			axs[1].set_title(f"Coactivations\n[{current_coact.min().item():.4f}, {current_coact.max().item():.4f}]")
-			
-			# Costs plot
-			axs[2].matshow(costs.cpu().numpy(), aspect='equal')
-			axs[2].set_title(f"Costs\n[{costs.min().item():.4f}, {costs.max().item():.4f}]")
-			
-			fig.suptitle(f"Iteration {i} with cost {pair_cost:.4f}")
-			plt.tight_layout()
-			
-			if save_pdf:
-				fig.savefig(f"{pdf_prefix}_iter_{i:03d}.pdf", bbox_inches='tight', dpi=300)
-			
-			plt.show()
 
 		i += 1
 
