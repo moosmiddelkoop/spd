@@ -68,7 +68,8 @@ fix = true
 [tool.ruff.lint]
 ignore = [
     "F722", # Incompatible with jaxtyping
-    "E731" # I think lambda functions are fine in several places
+    "E731", # I think lambda functions are fine in several places
+    "E501", # there are a lot of long lines in the codebase
 ]
 select = [
     # pycodestyle
