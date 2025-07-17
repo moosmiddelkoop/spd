@@ -48,6 +48,7 @@ def binary_concrete(
     temp: float,
     eps: float = 1e-20,
 ) -> Tensor:
+    prob = prob.clamp(min=eps, max=1 - eps)
     logit = torch.log(prob / (1 - prob))
     u = torch.rand_like(logit).clamp(min=eps, max=1 - eps)
     logistic_noise = torch.log(u) - torch.log1p(-u)  # logistic noise ~ log(u) - log(1-u)
