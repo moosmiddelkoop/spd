@@ -44,3 +44,12 @@ test:
 .PHONY: test-all
 test-all:
 	uv run pytest tests/ --runslow
+
+COVERAGE_DIR=docs/coverage
+
+.PHONY: coverage
+coverage:
+	uv run pytest tests/ --cov=spd --runslow
+	mkdir -p $(COVERAGE_DIR)
+	uv run python -m coverage report -m > $(COVERAGE_DIR)/coverage.txt
+	uv run python -m coverage html --directory=$(COVERAGE_DIR)/html/

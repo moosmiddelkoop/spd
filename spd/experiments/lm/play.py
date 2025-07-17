@@ -6,11 +6,12 @@ from typing import cast
 import torch
 from transformers import AutoTokenizer, LlamaForCausalLM
 
+from spd.log import logger
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, LinearComponent
 
 # %%
-print("Loading base language model ...")
+logger.info("Loading base language model ...")
 
 model_path = "SimpleStories/SimpleStories-1.25M"
 assert model_path is not None, (
@@ -77,21 +78,30 @@ eos_token_id = 1
 
 # # Decode output
 # output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-# print(f"Generated text:\n{output_text}")
+# logger.info(f"Generated text:\n{output_text}")
 
 
 # %%
 
 # logits, _ = ss_model.forward(input_ids, components=gate_proj_components)
 logits = comp_model.forward(input_ids).logits
-print("inputs_shape", input_ids.shape)
-print("logits", logits)
-print("logits shape", logits.shape)
+logger.values(
+    {
+        "inputs_shape": input_ids.shape,
+        "logits": logits,
+        "logits_shape": logits.shape,
+    }
+)
 
 logits = comp_model.forward_with_components(input_ids, components=gate_proj_components)
 
-print("Component logits shape", logits.shape)
-print("Component logits", logits)
+logger.values(
+    {
+        "Component logits shape": logits.shape,
+        "Component logits": logits,
+    }
+)
+
 
 # Create some dummy masks
 masks = {
@@ -101,7 +111,11 @@ masks = {
 
 logits = comp_model.forward_with_components(input_ids, components=gate_proj_components, masks=masks)
 
-print("Masked component logits shape", logits.shape)
-print("Masked component logits", logits)
+logger.values(
+    {
+        "Masked component logits shape": logits.shape,
+        "Masked component logits": logits,
+    }
+)
 #########################################################
 # %%
