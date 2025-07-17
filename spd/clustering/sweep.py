@@ -224,20 +224,20 @@ def plot_evolution_histories(
             
             if col_idx == n_cols - 1:  # Rightmost column gets row value
                 ax.yaxis.set_label_position("right")
-                ax.set_ylabel(f"{rows_by}={format_value(row_val)}", rotation=270, labelpad=15)
+                ax.set_ylabel(f"{rows_by}\n={format_value(row_val)}", rotation=270, labelpad=25)
             
             ax.grid(True, alpha=0.3)
     
     # Add colorbar for line parameter
     if isinstance(line_values[0], (int, float)):
-        cbar = fig.colorbar(sm, ax=axes, orientation='horizontal', fraction=0.05, pad=0.08)
+        cbar = fig.colorbar(sm, ax=axes, orientation='horizontal', fraction=0.05, pad=-0.25)
         cbar.set_label(f"{lines_by}")
     else:
         # Create custom legend for categorical
         from matplotlib.lines import Line2D
         legend_elements = [Line2D([0], [0], color=color_dict[val], lw=2, label=f"{lines_by}={format_value(val)}") 
                           for val in line_values]
-        fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, -0.05), ncol=len(line_values))
+        fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, -0.1), ncol=len(line_values))
     
     plt.tight_layout()
     plt.show()
