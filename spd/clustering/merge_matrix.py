@@ -149,6 +149,7 @@ class GroupMerge:
         show: bool = True,
         figsize: tuple[int, int] = (10, 3),
         show_row_sums: bool | None = None,
+        ax: "plt.Axes | None" = None,
     ) -> None:
         import matplotlib.pyplot as plt
 
@@ -159,12 +160,16 @@ class GroupMerge:
         if show_row_sums is None:
             show_row_sums = k_groups <= 20
 
-        if show_row_sums:
-            fig, (ax_mat, ax_lbl) = plt.subplots(
-                1, 2, figsize=figsize, gridspec_kw={"width_ratios": [10, 1]}
-            )
+        if ax is not None:
+            show_row_sums = False  # don't show row sums if we have an ax to plot on
+            ax_mat = ax
         else:
-            fig, ax_mat = plt.subplots(figsize=figsize)
+            if show_row_sums:
+                fig, (ax_mat, ax_lbl) = plt.subplots(
+                    1, 2, figsize=figsize, gridspec_kw={"width_ratios": [10, 1]}
+                )
+            else:
+                fig, ax_mat = plt.subplots(figsize=figsize)
 
         ax_mat.imshow(merge_matrix.cpu(), aspect="auto", cmap="Blues", interpolation="nearest")
         ax_mat.set_xlabel("Components")
