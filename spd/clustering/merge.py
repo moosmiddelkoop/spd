@@ -200,6 +200,7 @@ def merge_iteration(
 	check_threshold: float = 0.05,
 	pop_component_prob: float = 0.0,
 	rank_cost: Callable[[float], float] = lambda _: 1.0,
+	stopping_condition: Callable[[dict[str, Any]], bool] | None = None,
 	plot_every: int = 20,
 	plot_every_min: int = 0,
 	save_pdf: bool = False,
@@ -294,6 +295,7 @@ def merge_iteration(
 		assert current_coact.shape[1] == k_groups, "Coactivation matrix shape should match number of groups"
 		assert current_act_mask.shape[1] == k_groups, "Activation mask shape should match number of groups"
 
+		# Check stopping conditions
 		if k_groups <= 2:
 			warnings.warn(f"Stopping early at iteration {i} as only {k_groups} groups left")
 			current_merge.plot(component_labels=component_labels)
@@ -301,6 +303,22 @@ def merge_iteration(
 				plt.savefig(f"{pdf_prefix}_final_early.pdf", bbox_inches='tight', dpi=300)
 			plt.show()
 			break
+			
+		# Custom stopping condition
+		if stopping_condition is not None:
+			iteration_stats = {
+				'iteration': i,
+				'k_groups': k_groups,
+				'non_diag_costs_min': merge_costs['non_diag_costs_min'],
+				'non_diag_costs_max': merge_costs['non_diag_costs_max'],
+				'selected_pair_cost': merge_costs['selected_pair_cost'],
+				'max_considered_cost': merge_costs['max_considered_cost'],
+				'current_cost_min': non_diag_costs_range[0],
+				'current_cost_max': non_diag_costs_range[1],
+				'pair_cost': pair_cost,
+			}
+			if stopping_condition(iteration_stats):
+				break
 
 		if plot_every and (i >= plot_every_min) and (i % plot_every == 0):
 			plot_merge_iteration(

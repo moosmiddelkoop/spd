@@ -1,149 +1,94 @@
 
-import matplotlib.pyplot as plt
-import torch
-from muutils.dbg import dbg_auto
-
-from spd.clustering.activations import component_activations, process_activations
-from spd.clustering.merge import compute_merge_costs, merge_iteration
-from spd.clustering.merge_matrix import GroupMerge
-from spd.experiments.resid_mlp.resid_mlp_dataset import ResidualMLPDataset
-from spd.models.component_model import ComponentModel
-from spd.utils.data_utils import DatasetGeneratedDataLoader
-
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple, Union
-import numpy as np
+from typing import Any, Callable
 import itertools
-from concurrent.futures import ProcessPoolExecutor
-import matplotlib.cm as cm
+
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
-import seaborn as sns
+import matplotlib.cm as cm
+import numpy as np
+import torch
+
+from spd.clustering.merge import merge_iteration
 
 @dataclass
 class SweepConfig:
     """Configuration for hyperparameter sweep."""
-    # Core parameters to sweep
     activation_thresholds: list[float]
     check_thresholds: list[float] 
     alphas: list[float]
-    rank_cost_funcs: list[Callable[[float], float]]
-    
-    # Fixed parameters
+    rank_cost_funcs: dict[str, Callable[[float], float]]
     iters: int = 100
-    plot_every: int|None = None  # Disable plotting during sweep
-    
-    # Sweep control
-    max_workers: int = 4
-    
-    def __post_init__(self):
-        """Add names for rank cost functions for plotting."""
-        if not hasattr(self, 'rank_cost_names'):
-            self.rank_cost_names = [f"rank_cost_{i}" for i in range(len(self.rank_cost_funcs))]
 
 @dataclass 
 class SweepResult:
     """Results from a single hyperparameter configuration."""
-    # Hyperparameters
     activation_threshold: float
     check_threshold: float
     alpha: float
     rank_cost_name: str
-    
-    # Results
     non_diag_costs_min: list[float]
     non_diag_costs_max: list[float] 
     max_considered_cost: list[float]
     selected_pair_cost: list[float]
     total_iterations: int
     final_k_groups: int
-    
-    @property
-    def param_str(self) -> str:
-        """String representation of hyperparameters."""
-        return f"thresh={self.activation_threshold:.3f}, check={self.check_threshold:.2f}, α={self.alpha:.2f}, rank={self.rank_cost_name}"
-
-def run_single_sweep(
-    coact_orig: torch.Tensor,
-    activation_mask_orig: torch.Tensor, 
-    activation_threshold: float,
-    check_threshold: float,
-    alpha: float,
-    rank_cost_func: Callable[[float], float],
-    rank_cost_name: str,
-    iters: int = 100,
-) -> SweepResult:
-    """Run merge_iteration for a single hyperparameter configuration."""
-    
-    # Apply activation threshold
-    coact_bool = coact_orig > activation_threshold
-    
-    # Run merge iteration without plotting
-    results = merge_iteration(
-        coact=coact_bool.float().T @ coact_bool.float(),
-        activation_mask=coact_bool,
-        check_threshold=check_threshold,
-        alpha=alpha,
-        rank_cost=rank_cost_func,
-        iters=iters,
-        plot_every=None,  # No plotting during sweep
-        component_labels=None,
-        plot_final=False,
-    )
-    
-    return SweepResult(
-        activation_threshold=activation_threshold,
-        check_threshold=check_threshold, 
-        alpha=alpha,
-        rank_cost_name=rank_cost_name,
-        non_diag_costs_min=results['non_diag_costs_min'],
-        non_diag_costs_max=results['non_diag_costs_max'],
-        max_considered_cost=results['max_considered_cost'],
-        selected_pair_cost=results['selected_pair_cost'],
-        total_iterations=results['total_iterations'],
-        final_k_groups=results['final_k_groups'],
-    )
 
 def run_hyperparameter_sweep(
-    activation_mask: torch.Tensor,
+    raw_activations: torch.Tensor,
     sweep_config: SweepConfig,
 ) -> list[SweepResult]:
     """Run hyperparameter sweep across all parameter combinations."""
     
-    # Generate all parameter combinations
     param_combinations = list(itertools.product(
         sweep_config.activation_thresholds,
         sweep_config.check_thresholds,
         sweep_config.alphas,
-        sweep_config.rank_cost_funcs,
+        sweep_config.rank_cost_funcs.items()
     ))
     
-    print(f"Running sweep with {len(param_combinations)} parameter combinations...")
+    print(f"{len(param_combinations) = }")
     
     results = []
     
-    # Run sweep (sequential for now to avoid complexity with torch/cuda in multiprocessing)
-    for i, (act_thresh, check_thresh, alpha, rank_func) in enumerate(param_combinations):
-        print(f"Running {i+1}/{len(param_combinations)}: "
-              f"act_thresh={act_thresh}, check_thresh={check_thresh}, alpha={alpha}, rank={rank_name}")
+    for i, (act_thresh, check_thresh, alpha, (rank_name, rank_func)) in enumerate(param_combinations):
+        print(f"{i+1}/{len(param_combinations)}: {act_thresh = }, {check_thresh = }, {alpha = }, {rank_name = }")
         
         try:
-            result = run_single_sweep(
-                coact_orig=coact,
-                activation_mask_orig=activation_mask,
+            # Apply activation threshold
+            coact_bool = raw_activations > act_thresh
+            coact = coact_bool.float().T @ coact_bool.float()
+            
+            # Run merge iteration
+            result_dict = merge_iteration(
+                coact=coact,
+                activation_mask=coact_bool,
+                check_threshold=check_thresh,
+                alpha=alpha,
+                rank_cost=rank_func,
+                iters=sweep_config.iters,
+                plot_every=None,
+                plot_final=False,
+                component_labels=None,
+            )
+            
+            results.append(SweepResult(
                 activation_threshold=act_thresh,
                 check_threshold=check_thresh, 
                 alpha=alpha,
-                rank_cost_func=rank_func,
-                iters=sweep_config.iters,
-            )
-            results.append(result)
+                rank_cost_name=rank_name,
+                non_diag_costs_min=result_dict['non_diag_costs_min'],
+                non_diag_costs_max=result_dict['non_diag_costs_max'],
+                max_considered_cost=result_dict['max_considered_cost'],
+                selected_pair_cost=result_dict['selected_pair_cost'],
+                total_iterations=result_dict['total_iterations'],
+                final_k_groups=result_dict['final_k_groups'],
+            ))
         except Exception as e:
-            print(f"Failed for params {act_thresh}, {check_thresh}, {alpha}, {rank_name}: {e}")
-            continue
+            print(f"Failed: {e}")
     
-    print(f"Completed sweep with {len(results)} successful runs")
+    print(f"{len(results) = }")
     return results
+
 
 def plot_evolution_histories(
     results: list[SweepResult], 
@@ -213,29 +158,10 @@ def plot_evolution_histories(
     plt.tight_layout()
     plt.show()
 
-def compute_iterations_until_cost_ratio(
-    result: SweepResult, 
-    cost_ratio_threshold: float = 2.0,
-    metric: str = "non_diag_costs_min"
-) -> int:
-    """Compute iterations until cost reaches ratio times the original cost."""
-    values = getattr(result, metric)
-    if len(values) == 0:
-        return 0
-    
-    original_cost = values[0]
-    target_cost = original_cost * cost_ratio_threshold
-    
-    for i, cost in enumerate(values):
-        if cost >= target_cost:
-            return i
-    
-    return len(values)  # Never reached the threshold
-
 def create_heatmaps(
     results: list[SweepResult],
-    statistic_func: Callable[[SweepResult], float] = lambda r: compute_iterations_until_cost_ratio(r, 2.0),
-    statistic_name: str = "Iterations until 2x cost",
+    statistic_func: Callable[[SweepResult], float],
+    statistic_name: str,
     figsize: tuple[int, int] = (20, 15),
 ) -> None:
     """Create heatmaps showing statistics across hyperparameter combinations."""
@@ -307,3 +233,19 @@ def create_heatmaps(
     
     plt.tight_layout()
     plt.show()
+
+# Stopping condition functions
+def cost_ratio_stopping_condition(ratio: float = 2.0, metric: str = "non_diag_costs_min"):
+    """Create stopping condition for when cost reaches ratio times original."""
+    def condition(stats: dict[str, Any]) -> bool:
+        costs = stats[metric]
+        if len(costs) < 2:
+            return False
+        return costs[-1] >= costs[0] * ratio
+    return condition
+
+def iterations_stopping_condition(max_iters: int):
+    """Create stopping condition for max iterations."""
+    def condition(stats: dict[str, Any]) -> bool:
+        return stats['iteration'] >= max_iters
+    return condition
