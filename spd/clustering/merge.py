@@ -225,11 +225,11 @@ def merge_iteration(
 			axs[0].set_title("Merge")
 			
 			# Coactivations plot
-			axs[1].imshow(current_coact.cpu().numpy(), aspect='equal')
+			axs[1].matshow(current_coact.cpu().numpy(), aspect='equal')
 			axs[1].set_title(f"Coactivations\n[{current_coact.min().item():.4f}, {current_coact.max().item():.4f}]")
 			
 			# Costs plot
-			axs[2].imshow(costs.cpu().numpy(), aspect='equal')
+			axs[2].matshow(costs.cpu().numpy(), aspect='equal')
 			axs[2].set_title(f"Costs\n[{costs.min().item():.4f}, {costs.max().item():.4f}]")
 			
 			fig.suptitle(f"Iteration {i} with cost {pair_cost:.4f}")

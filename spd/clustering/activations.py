@@ -38,8 +38,8 @@ def add_component_labeling(ax: plt.Axes, component_labels: list[str], axis: str 
 	module_labels.append(current_module)
 	
 	# Set up major and minor ticks
-	# Minor ticks: all component indices
-	minor_ticks: list[int] = list(range(len(component_labels)))
+	# Minor ticks: every 10 components
+	minor_ticks: list[int] = list(range(0, len(component_labels), 10))
 	
 	# Major ticks: module boundaries (start of each module)
 	major_ticks: list[int] = [0] + module_changes
@@ -48,7 +48,7 @@ def add_component_labeling(ax: plt.Axes, component_labels: list[str], axis: str 
 	if axis == 'x':
 		ax.set_xticks(minor_ticks, minor=True)
 		ax.set_xticks(major_ticks)
-		ax.set_xticklabels(major_labels, rotation=45, ha='right')
+		ax.set_xticklabels(major_labels)
 		ax.set_xlim(-0.5, len(component_labels) - 0.5)
 		# Style the ticks
 		ax.tick_params(axis='x', which='minor', length=2, width=0.5)
@@ -169,12 +169,12 @@ def process_activations(
 		if len(activations) == 1:
 			axs_act = [axs_act]
 		for i, (key, act) in enumerate(activations.items()):
-			axs_act[i].imshow(act.T.cpu().numpy(), aspect="auto")
+			axs_act[i].matshow(act.T.cpu().numpy(), aspect="auto")
 			axs_act[i].set_ylabel(f"components\n{key}")
 
 		# concatenated activations
 		fig2, ax2 = plt.subplots(figsize=figsize_concat)
-		im2 = ax2.imshow(act_concat.T.cpu().numpy(), aspect="auto")
+		im2 = ax2.matshow(act_concat.T.cpu().numpy(), aspect="auto")
 		ax2.set_title("Concatenated Activations")
 		
 		# Add component labeling on y-axis
@@ -187,7 +187,7 @@ def process_activations(
 
 		# coactivations
 		fig3, ax3 = plt.subplots(figsize=figsize_coact)
-		im3 = ax3.imshow(coact.cpu().numpy(), aspect="auto")
+		im3 = ax3.matshow(coact.cpu().numpy(), aspect="auto")
 		ax3.set_title("Coactivations")
 		
 		# Add component labeling on both axes

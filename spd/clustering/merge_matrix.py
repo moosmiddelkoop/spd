@@ -172,7 +172,7 @@ class GroupMerge:
             else:
                 fig, ax_mat = plt.subplots(figsize=figsize)
 
-        ax_mat.imshow(merge_matrix.cpu(), aspect="auto", cmap="Blues", interpolation="nearest")
+        ax_mat.matshow(merge_matrix.cpu(), aspect="auto", cmap="Blues", interpolation="nearest")
         ax_mat.set_xlabel("Components")
         ax_mat.set_ylabel("Groups")
         ax_mat.set_title("Merge Matrix")
@@ -181,7 +181,6 @@ class GroupMerge:
         if component_labels is not None:
             # Import the function here to avoid circular imports
             from spd.clustering.activations import add_component_labeling
-            print(f"Debug: GroupMerge.plot() received {len(component_labels)} component labels")
             add_component_labeling(ax_mat, component_labels, axis='x')
 
         if show_row_sums:
