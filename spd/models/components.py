@@ -83,8 +83,8 @@ class Components(ABC, nn.Module):
 
         Args:
             C: Number of components
-            v_dim: Number of rows in the weight matrix
-            u_dim: Number of columns in the weight matrix
+            v_dim: Number of rows in the target weight matrix
+            u_dim: Number of columns in the target weight matrix
         """
         super().__init__()
         self.C = C
