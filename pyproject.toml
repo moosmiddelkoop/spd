@@ -39,7 +39,8 @@ dev = [
 dev-grouping = [
     "scipy>=1.14.1",
     "scikit-learn",
-    "nbconvert",    
+    "nbconvert",
+    "seaborn",
     "muutils", # custom (by mivanit) utils, using it for debugging
     "js-embedding-vis", # custom (by mivanit) embedding vis
     # broken for python >=3.10 ?

@@ -208,7 +208,8 @@ def merge_iteration(
 	figsize: tuple[int, int] = (16, 3),
 	figsize_final: tuple[int, int] = (10, 6),
 	tick_spacing: int = 10,
-):
+	plot_final: bool = True,
+) -> dict[str, list[float] | GroupMerge]:
 	# check shapes
 	c_components: int = coact.shape[0]
 	assert coact.shape[1] == c_components, "Coactivation matrix must be square"
@@ -320,16 +321,25 @@ def merge_iteration(
 
 
 	# Final cost evolution plot
-	plt.figure(figsize=figsize_final)
-	plt.plot(merge_costs['max_considered_cost'], label='max considered cost')
-	plt.plot(merge_costs['non_diag_costs_min'], label='non-diag costs min')
-	plt.plot(merge_costs['non_diag_costs_max'], label='non-diag costs max')
-	plt.plot(merge_costs['selected_pair_cost'], label='selected pair cost')
-	plt.xlabel("Iteration")
-	plt.ylabel("Cost")
-	plt.legend()
-	
-	if save_pdf:
-		plt.savefig(f"{pdf_prefix}_cost_evolution.pdf", bbox_inches='tight', dpi=300)
-	
-	plt.show()
+	if plot_final:
+		plt.figure(figsize=figsize_final)
+		plt.plot(merge_costs['max_considered_cost'], label='max considered cost')
+		plt.plot(merge_costs['non_diag_costs_min'], label='non-diag costs min')
+		plt.plot(merge_costs['non_diag_costs_max'], label='non-diag costs max')
+		plt.plot(merge_costs['selected_pair_cost'], label='selected pair cost')
+		plt.xlabel("Iteration")
+		plt.ylabel("Cost")
+		plt.legend()
+		
+		if save_pdf:
+			plt.savefig(f"{pdf_prefix}_cost_evolution.pdf", bbox_inches='tight', dpi=300)
+		
+		plt.show()
+		
+	# Return results for sweep analysis
+	return {
+		**merge_costs,
+		'final_merge': current_merge,
+		'total_iterations': i,
+		'final_k_groups': k_groups,
+	}
