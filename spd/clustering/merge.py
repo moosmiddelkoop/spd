@@ -10,6 +10,18 @@ from torch import Tensor
 from spd.clustering.merge_matrix import GroupMerge
 
 
+def format_scientific_latex(value: float) -> str:
+	"""Format a number in LaTeX scientific notation style."""
+	if value == 0:
+		return r"$0$"
+	
+	import math
+	exponent: int = int(math.floor(math.log10(abs(value))))
+	mantissa: float = value / (10 ** exponent)
+	
+	return f"${mantissa:.2f} \\times 10^{{{exponent}}}$"
+
+
 def plot_merge_iteration(
 	current_merge: GroupMerge,
 	current_coact: Float[Tensor, "k_groups k_groups"],
@@ -53,27 +65,29 @@ def plot_merge_iteration(
 	axs[1].matshow(current_coact.cpu().numpy(), aspect='equal')
 	coact_min: float = current_coact.min().item()
 	coact_max: float = current_coact.max().item()
-	axs[1].set_title(f"Coactivations\n[{coact_min:.3e}, {coact_max:.3e}]")
+	coact_min_str: str = format_scientific_latex(coact_min)
+	coact_max_str: str = format_scientific_latex(coact_max)
+	axs[1].set_title(f"Coactivations\n[{coact_min_str}, {coact_max_str}]")
 	
 	# Setup ticks for coactivations
 	k_groups: int = current_coact.shape[0]
 	minor_ticks: list[int] = list(range(0, k_groups, tick_spacing))
-	axs[1].set_yticks(minor_ticks, minor=True)
-	axs[1].set_xticks(minor_ticks, minor=True)
-	axs[1].tick_params(axis='x', labelbottom=False)  # Hide x-axis labels
-	axs[1].tick_params(axis='y', labelleft=True)     # Show y-axis labels
+	axs[1].set_yticks(minor_ticks)
+	axs[1].set_xticks(minor_ticks)
+	axs[1].set_xticklabels([])  # Remove x-axis tick labels but keep ticks
 	
 	# Costs plot
 	axs[2].matshow(costs.cpu().numpy(), aspect='equal')
 	costs_min: float = costs.min().item()
 	costs_max: float = costs.max().item()
-	axs[2].set_title(f"Costs\n[{costs_min:.3e}, {costs_max:.3e}]")
+	costs_min_str: str = format_scientific_latex(costs_min)
+	costs_max_str: str = format_scientific_latex(costs_max)
+	axs[2].set_title(f"Costs\n[{costs_min_str}, {costs_max_str}]")
 	
 	# Setup ticks for costs
-	axs[2].set_yticks(minor_ticks, minor=True)
-	axs[2].set_xticks(minor_ticks, minor=True)
-	axs[2].tick_params(axis='x', labelbottom=False)  # Hide x-axis labels
-	axs[2].tick_params(axis='y', labelleft=True)     # Show y-axis labels
+	axs[2].set_yticks(minor_ticks)
+	axs[2].set_xticks(minor_ticks)
+	axs[2].set_xticklabels([])  # Remove x-axis tick labels but keep ticks
 	
 	fig.suptitle(f"Iteration {iteration} with cost {pair_cost:.4f}")
 	plt.tight_layout()
