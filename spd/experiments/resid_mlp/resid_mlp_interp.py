@@ -64,7 +64,7 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
         device=device,
         input_magnitude=input_magnitude,
         plot_raw_cis=False,
-        sigmoid_type=config.sigmoid_type,
+        sigmoid_type=config.sample_config.sigmoid_type,
     )
 
     return {
@@ -709,7 +709,7 @@ def main():
             plot_raw_cis=False,
             orientation="vertical",
             title_formatter=format_resid_mlp_title,
-            sigmoid_type=config.sigmoid_type,
+            sigmoid_type=config.sample_config.sigmoid_type,
         )[0]
         figs_causal["causal_importances_upper_leaky"].savefig(
             out_dir / f"causal_importance_upper_leaky_{n_layers}layers_{wandb_id}.png",

@@ -158,7 +158,7 @@ def optimize(
             Vs=Vs,
             gates=gates,
             detach_inputs=False,
-            sigmoid_type=config.sigmoid_type,
+            sigmoid_type=config.sample_config.sigmoid_type,
         )
 
         for layer_name, ci in causal_importances.items():

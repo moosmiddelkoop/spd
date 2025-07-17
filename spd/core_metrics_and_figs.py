@@ -156,7 +156,7 @@ def create_figures(
             batch_shape=batch.shape,
             device=device,
             input_magnitude=0.75,
-            sigmoid_type=config.sigmoid_type,
+            sigmoid_type=config.sample_config.sigmoid_type,
         )
         fig_dict.update(figures)
 

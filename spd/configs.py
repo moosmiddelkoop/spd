@@ -15,6 +15,7 @@ from pydantic import (
 
 from spd.log import logger
 from spd.models.components import GateType
+from spd.models.sigmoids import SigmoidTypes
 from spd.spd_types import ModelPath, Probability
 
 
@@ -83,10 +84,15 @@ class LMTaskConfig(BaseModel):
         description="Name of the dataset split used for evaluation",
     )
 
+
 class UniformSampleConfig(BaseModel):
     sample_type: Literal["uniform"] = Field(
         default="uniform",
         description="Type of sample to use for stochastic reconstruction",
+    )
+    sigmoid_type: SigmoidTypes = Field(
+        default="leaky_hard",
+        description="Type of sigmoid to use for causal importance calculation",
     )
 
 
@@ -97,6 +103,10 @@ class BernoulliSampleConfig(BaseModel):
     )
     min: float = Field(
         default=0.5,
+    )
+    sigmoid_type: SigmoidTypes = Field(
+        default="normal",
+        description="Type of sigmoid to use for causal importance calculation",
     )
 
 
@@ -113,6 +123,10 @@ class ConcreteSampleConfig(BaseModel):
         default=0.5,
     )
     # potentially add annealing schedule here
+    sigmoid_type: SigmoidTypes = Field(
+        default="normal",
+        description="Type of sigmoid to use for causal importance calculation",
+    )
 
 
 class HardConcreteSampleConfig(BaseModel):
@@ -128,12 +142,15 @@ class HardConcreteSampleConfig(BaseModel):
         default=(-0.1, 1.1),
         description="Bounds for the hard concrete distribution",
     )
+    sigmoid_type: SigmoidTypes = Field(
+        default="normal",
+        description="Type of sigmoid to use for causal importance calculation",
+    )
 
 
 SampleConfig = (
     UniformSampleConfig | BernoulliSampleConfig | ConcreteSampleConfig | HardConcreteSampleConfig
 )
-
 
 
 class Config(BaseModel):
@@ -174,10 +191,6 @@ class Config(BaseModel):
     gate_hidden_dims: list[NonNegativeInt] = Field(
         default=[8],
         description="Hidden dimensions for the gate used to calculate the causal importance",
-    )
-    sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard"] = Field(
-        default="leaky_hard",
-        description="Type of sigmoid to use for causal importance calculation",
     )
     target_module_patterns: list[str] = Field(
         ...,
