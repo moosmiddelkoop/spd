@@ -60,15 +60,15 @@ class ComponentModel(nn.Module):
             target_model, target_module_patterns
         )
 
-        components_or_modules = self.create_components_or_modules(
-            target_model, self.target_module_paths, C
+        # We just keep components_or_modules as a plain dict. State_dict will pick the
+        # components up because they're attached to the target_model via set_submodule
+        self.gates = self.make_gates(gate_type, C, gate_hidden_dims, self.components_or_modules)
+        self.components_or_modules = self.create_components_or_modules(
+            target_model=target_model,
+            target_module_paths=self.target_module_paths,
+            C=C,
         )
 
-        # just keep components_or_modules as a plain dict.
-        # state_dict will pick it up via the target_model
-        self.components_or_modules: dict[str, ComponentsOrModule] = components_or_modules
-
-        self.gates = self.make_gates(gate_type, C, gate_hidden_dims, components_or_modules)
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
 
     @property

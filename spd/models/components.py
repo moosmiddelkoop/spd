@@ -216,9 +216,7 @@ class EmbeddingComponents(Components):
         if mask is not None:
             component_acts *= mask
 
-        out = einops.einsum(
-            component_acts, self.U, "... C, ... C embedding_dim -> ... embedding_dim"
-        )
+        out = einops.einsum(component_acts, self.U, "... C, C embedding_dim -> ... embedding_dim")
         return out
 
 
