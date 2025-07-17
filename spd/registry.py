@@ -18,7 +18,7 @@ class ExperimentConfig:
         target_solution: Optional target solution for evaluating SPD convergence.
     """
 
-    experiment_type: Literal["tms", "resid_mlp", "lm"]
+    experiment_type: Literal["tms", "resid_mlp", "lm", "memorization"]
     decomp_script: Path
     config_path: Path
     expected_runtime: int
@@ -117,6 +117,24 @@ EXPERIMENT_REGISTRY: dict[str, ExperimentConfig] = {
     #     config_path=Path("spd/experiments/lm/ss_emb_config.yaml"),
     #     expected_runtime=60,
     # ),
+    "mem_32_1x": ExperimentConfig(
+        experiment_type="memorization",
+        decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
+        config_path=Path("spd/experiments/memorization/decomp_config_32-128-1x_pnl.yaml"),
+        expected_runtime=30,
+    ),
+    "mem_32_2x": ExperimentConfig(
+        experiment_type="memorization",
+        decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
+        config_path=Path("spd/experiments/memorization/decomp_config_32-128-2x_pnl.yaml"),
+        expected_runtime=60,
+    ),
+    "mem_32_2p8x": ExperimentConfig(
+        experiment_type="memorization",
+        decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
+        config_path=Path("spd/experiments/memorization/decomp_config_32-128-2p8x_pnl.yaml"),
+        expected_runtime=90,
+    ),
 }
 
 

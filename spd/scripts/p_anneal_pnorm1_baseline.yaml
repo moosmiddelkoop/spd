@@ -1,0 +1,27 @@
+# Params used for all experiments
+global:
+  pnorm:
+    values: [1] #overwriting here because smallest TMS setting uses pnorm=1
+  seed:
+    values: [0,1,2,3]
+
+tms_5-2-id:  
+  importance_minimality_coeff:
+    values: [3e-2, 1e-2, 3e-3, 1e-3, 3e-4]
+
+tms_40-10-id:
+  importance_minimality_coeff:
+    values: [1e-5, 3e-5, 1e-4, 3e-4, 1e-3]
+
+resid_mlp1:
+  importance_minimality_coeff:
+    values: [1e-6, 3e-6, 1e-5, 3e-5, 1e-4]
+
+resid_mlp2:
+  importance_minimality_coeff:
+    values: [1e-6, 3e-6, 1e-5, 3e-5, 1e-4]
+
+resid_mlp3:
+  importance_minimality_coeff:
+    values: [5e-7, 1.5e-6, 5e-6, 1.5e-5, 5e-5]
+
