@@ -100,7 +100,9 @@ def optimize(
     lr_schedule_fn = get_lr_schedule_fn(config.lr_schedule, config.lr_exponential_halflife)
     logger.info(f"Base LR scheduler created: {config.lr_schedule}")
 
-    n_params = sum(component.weight.numel() for component in model.components.values())
+    n_params = sum(
+        component.original.weight.numel() for component in model.components_or_modules.values()
+    )
 
     data_iter = iter(train_loader)
 

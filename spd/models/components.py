@@ -80,7 +80,7 @@ class Components(ABC, nn.Module):
     def __init__(self, C: int, v_dim: int, u_dim: int):
         """
         Base class for components in a single layer (that would replace nn.Linear or nn.Embedding weight matrices).
-        Initializes matrices V (which transforms the input activations) and U (which transforms the output of in_acts @ V)" 
+        Initializes matrices V (which transforms the input activations) and U (which transforms the output of in_acts @ V)"
 
         Args:
             C: Number of components
@@ -93,9 +93,9 @@ class Components(ABC, nn.Module):
         self.U = nn.Parameter(torch.empty(C, u_dim))
 
     @property
+    @abstractmethod
     def weight(self) -> Float[Tensor, "rows cols"]:
-        """V @ U"""
-        return einops.einsum(self.V, self.U, "rows C, C cols -> rows cols")
+        raise NotImplementedError()
 
     def init_from_target_weight(self, target_weight: Tensor) -> None:
         """Initialize the V and U matrices.
@@ -144,15 +144,20 @@ class LinearComponents(Components):
         d_out: int,
         bias: Tensor | None = None,
     ):
-        super().__init__(C, v_dim=d_out, u_dim=d_in)  # NOTE: linear weights are (d_out, d_in)
+        super().__init__(C, v_dim=d_in, u_dim=d_out)  # NOTE: linear weights are (d_out, d_in)
         self.d_in = d_in
         self.d_out = d_out
         self.bias = bias
 
+    @property
+    @override
+    def weight(self) -> Float[Tensor, "d_out d_in"]:
+        """(V @ U).T. Transposed to match nn.Linear which uses (d_out, d_in)"""
+        return einops.einsum(self.V, self.U, "d_in C, C d_out -> d_out d_in")
+
     @override
     def get_inner_acts(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... d_out"]:
-        # U is (C, d_in). Multiply this way because we use (out, in) as in nn.Linear
-        return einops.einsum(x, self.U, "... d_in, C d_in -> ... C")
+        return einops.einsum(x, self.V, "... d_in, d_in C -> ... C")
 
     @override
     def forward(
@@ -192,6 +197,14 @@ class EmbeddingComponents(Components):
         super().__init__(C, v_dim=vocab_size, u_dim=embedding_dim)
         self.vocab_size: int = vocab_size
         self.embedding_dim: int = embedding_dim
+
+    @property
+    @override
+    def weight(self) -> Float[Tensor, "vocab_size embedding_dim"]:
+        """V @ U"""
+        return einops.einsum(
+            self.V, self.U, "vocab_size C, C embedding_dim -> vocab_size embedding_dim"
+        )
 
     @override
     def get_inner_acts(self, x: Int[Tensor, "..."]) -> Float[Tensor, "... C"]:
