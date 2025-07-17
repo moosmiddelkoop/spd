@@ -54,8 +54,8 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
 
-        # where these did refer to the actual linear / embedding modules, they now refer to the
-        # ComponentsOrModule objects. This still works for hooks
+        # target_module_patterns refer to the actual nn.Linear/nn.Embedding modules in the target model
+        # These target_module_paths refer to the ComponentsOrModule objects in the ComponentModel
         self.target_module_paths = self._get_target_module_paths(
             target_model, target_module_patterns
         )
