@@ -49,8 +49,9 @@ def calc_embedding_recon_loss(
 
         if unembed:
             assert hasattr(model.target_model, "lm_head"), "Only supports unembedding named lm_head"
-            target_out_unembed = model.target_model.lm_head(target_out)  # pyright: ignore[reportCallIssue]
-            masked_out_unembed = model.target_model.lm_head(masked_out)  # pyright: ignore[reportCallIssue]
+            assert isinstance(model.target_model.lm_head, nn.Module)
+            target_out_unembed = model.target_model.lm_head(target_out)
+            masked_out_unembed = model.target_model.lm_head(masked_out)
             loss += calc_kl_divergence_lm(pred=masked_out_unembed, target=target_out_unembed)
         else:
             loss += ((masked_out - target_out) ** 2).sum(dim=-1).mean()

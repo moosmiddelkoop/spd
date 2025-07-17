@@ -3,7 +3,7 @@ https://colab.research.google.com/github/anthropics/toy-models-of-superposition/
 """
 
 from pathlib import Path
-from typing import Literal, Self, cast
+from typing import Literal, Self
 
 import einops
 import matplotlib.pyplot as plt
@@ -183,15 +183,13 @@ def get_model_and_dataloader(
         config.fixed_identity_hidden_layers or config.fixed_random_hidden_layers
     ) and model.hidden_layers is not None:
         for i in range(model.config.n_hidden_layers):
+            layer = model.hidden_layers[i]
+            assert isinstance(layer, nn.Linear)
             if config.fixed_identity_hidden_layers:
-                cast(nn.Linear, model.hidden_layers[i]).weight.data[:, :] = torch.eye(
-                    model.config.n_hidden, device=device
-                )
+                layer.weight.data[:, :] = torch.eye(model.config.n_hidden, device=device)
             elif config.fixed_random_hidden_layers:
-                cast(nn.Linear, model.hidden_layers[i]).weight.data[:, :] = torch.randn_like(
-                    cast(nn.Linear, model.hidden_layers[i]).weight
-                )
-            cast(nn.Linear, model.hidden_layers[i]).weight.requires_grad = False
+                layer.weight.data[:, :] = torch.randn_like(layer.weight)
+            layer.weight.requires_grad = False
 
     dataset = SparseFeatureDataset(
         n_features=config.tms_model_config.n_features,
