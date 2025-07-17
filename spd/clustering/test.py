@@ -1,33 +1,36 @@
 # %%
-from spd.models.component_model import ComponentModel
+import torch
+from muutils.dbg import dbg_auto
 
-component_model, cfg, path = ComponentModel.from_pretrained("wandb:goodfire/spd/runs/dcjm9g2n")
+from spd.experiments.resid_mlp.resid_mlp_dataset import ResidualMLPDataset
+from spd.models.component_model import ComponentModel
+from spd.utils.data_utils import DatasetGeneratedDataLoader
+
+DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # %%
-from muutils.dbg import dbg, dbg_auto
+component_model, cfg, path = ComponentModel.from_pretrained("wandb:goodfire/spd/runs/dcjm9g2n")
 
 dbg_auto(component_model)
 dbg_auto(cfg)
 dbg_auto(path)
+dir(component_model)
 
 # %%
-model_path = "wandb:goodfire/spd/runs/0wff20d9"
-mlp_decomp_paths = [
-    "wandb:spd-resid-mlp/runs/xh0qlbkj",  # 1e-6
-    "wandb:spd-resid-mlp/runs/kkpzirac",  # 3e-6
-    "wandb:spd-resid-mlp/runs/ziro93xq",  # Best. 1e-5
-    "wandb:spd-resid-mlp/runs/pnxu3d22",  # 1e-4
-    "wandb:spd-resid-mlp/runs/aahzg3zu",  # 1e-3
-]
+dataset = ResidualMLPDataset(
+    n_features=component_model.config.n_features,
+    feature_probability=cfg.task_config.feature_probability,
+    device=DEVICE,
+    calc_labels=False,  # Our labels will be the output of the target model
+    label_type=None,
+    act_fn_name=None,
+    label_fn_seed=None,
+    label_coeffs=None,
+    data_generation_type=cfg.task_config.data_generation_type,
+    # synced_inputs=synced_inputs,
+)
 
-tms_decomp_paths = [
-    "wandb:spd-tms/runs/f63itpo1",
-    "wandb:spd-tms/runs/8bxfjeu5",
-    "wandb:spd-tms/runs/xq1ivc6b",
-    "wandb:spd-tms/runs/xyq22lbc",
-]
-
-component_model, cfg, path = ComponentModel.from_pretrained(tms_decomp_paths[0])
+train_loader = DatasetGeneratedDataLoader(dataset, batch_size=cfg.batch_size, shuffle=False)
 
 
 # %% Set device and disable gradients
