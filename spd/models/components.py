@@ -41,7 +41,7 @@ class GateMLP(nn.Module):
             self.layers.append(ParallelLinear(C, input_dim, output_dim, nonlinearity="relu"))
             self.layers.append(nn.GELU())
         self.layers.append(ParallelLinear(C, hidden_dims[-1], 1, nonlinearity="linear"))
-        cast(ParallelLinear, self.layers[-1]).b.data.fill_(-1.5)
+        # cast(ParallelLinear, self.layers[-1]).b.data.fill_(.5)
 
     @override
     def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
