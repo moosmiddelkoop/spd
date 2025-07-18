@@ -13,7 +13,7 @@ n_mask_samples: 1
 gate_type: "vector_mlp"
 gate_hidden_dims: [8]
 sample_config:
-  sample_type: "uniform"
+  sample_type: "hard_concrete_anneal"
 target_module_patterns: ["transformer.h.3.mlp.c_fc"]
 
 # --- Loss Coefficients ---

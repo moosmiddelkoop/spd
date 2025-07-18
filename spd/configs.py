@@ -101,9 +101,6 @@ class BernoulliSampleConfig(BaseModel):
         default="bernoulli_ste",
         description="Type of sample to use for stochastic reconstruction",
     )
-    min: float = Field(
-        default=0.5,
-    )
     sigmoid_type: SigmoidTypes = Field(
         default="normal",
         description="Type of sigmoid to use for causal importance calculation",
@@ -116,11 +113,8 @@ class ConcreteSTESampleConfig(BaseModel):
         description="Type of sample to use for stochastic reconstruction",
     )
     temp: float = Field(
-        default=2 / 3,
+        default=1.0,
         description="Temperature for the concrete distribution",
-    )
-    min: float = Field(
-        default=0.5,
     )
     # potentially add annealing schedule here
     sigmoid_type: SigmoidTypes = Field(
@@ -134,12 +128,13 @@ class ConcreteSampleConfig(BaseModel):
         default="concrete",
         description="Type of sample to use for stochastic reconstruction",
     )
-    temp: float = Field(
-        default=2 / 3,
+    temp_start: float = Field(
+        default=1.0,
         description="Temperature for the concrete distribution",
     )
-    min: float = Field(
-        default=0.5,
+    temp_end: float = Field(
+        default=0.1,
+        description="Temperature for the concrete distribution",
     )
     # potentially add annealing schedule here
     sigmoid_type: SigmoidTypes = Field(
@@ -149,12 +144,16 @@ class ConcreteSampleConfig(BaseModel):
 
 
 class HardConcreteSampleConfig(BaseModel):
-    sample_type: Literal["hard_concrete"] = Field(
-        default="hard_concrete",
+    sample_type: Literal["hard_concrete_anneal"] = Field(
+        default="hard_concrete_anneal",
         description="Type of sample to use for stochastic reconstruction",
     )
-    temp: float = Field(
-        default=2 / 3,
+    temp_start: float = Field(
+        default=1.0,
+        description="Temperature for the concrete distribution",
+    )
+    temp_end: float = Field(
+        default=0.1,
         description="Temperature for the concrete distribution",
     )
     bounds: tuple[float, float] = Field(
@@ -162,7 +161,7 @@ class HardConcreteSampleConfig(BaseModel):
         description="Bounds for the hard concrete distribution",
     )
     sigmoid_type: SigmoidTypes = Field(
-        default="normal",
+        default="leaky_hard",
         description="Type of sigmoid to use for causal importance calculation",
     )
 
@@ -199,7 +198,7 @@ class Config(BaseModel):
         description="The number of subcomponents per layer",
     )
     sample_config: SampleConfig = Field(
-        default_factory=lambda: UniformSampleConfig(),
+        default_factory=lambda: HardConcreteSampleConfig(),
         discriminator="sample_type",
         description="Configuration for the sample function used for stochastic reconstruction",
     )
@@ -274,6 +273,10 @@ class Config(BaseModel):
     lr: PositiveFloat = Field(..., description="Learning rate for optimiser")
     steps: PositiveInt = Field(..., description="Total number of optimisation steps")
     batch_size: PositiveInt = Field(..., description="Mini-batch size used for optimisation")
+    gradient_accumulation_steps: PositiveInt = Field(
+        default=1,
+        description="Number of steps to accumulate gradients over before updating parameters",
+    )
     lr_schedule: Literal["linear", "constant", "cosine", "exponential"] = Field(
         default="constant",
         description="Type of learning-rate schedule to apply",
