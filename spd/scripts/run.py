@@ -35,23 +35,6 @@ from spd.utils.git_utils import create_git_snapshot
 from spd.utils.slurm_utils import create_slurm_array_script, submit_slurm_array
 from spd.utils.wandb_utils import ensure_project_exists
 
-
-def generate_run_name(
-    param_combo: dict[str, Any],
-) -> str:
-    def serialize(d: dict[str, Any]) -> str:
-        parts = []
-        for k, v in d.items():
-            if isinstance(v, dict):
-                parts.append(serialize(v))
-            else:
-                parts.append(f"{k}-{v}")
-        return "_".join(parts)
-
-    out = serialize(param_combo)
-    return out
-
-
 WORKSPACE_TEMPLATES = {
     "default": "https://wandb.ai/goodfire/spd?nw=css034maye",
     "tms_5-2": "https://wandb.ai/goodfire/spd?nw=css034maye",
@@ -303,8 +286,8 @@ def create_wandb_report(
             run_comparer_height = 10
             panels.append(
                 wr.RunComparer(
-                diff_only=True,
-                layout=wr.Layout(x=0, y=y, w=REPORT_TOTAL_WIDTH, h=run_comparer_height),
+                    diff_only=True,
+                    layout=wr.Layout(x=0, y=y, w=REPORT_TOTAL_WIDTH, h=run_comparer_height),
                 )
             )
             y += run_comparer_height
