@@ -22,11 +22,11 @@ copy-templates:
 
 # checks
 .PHONY: type
-type:
+type: temp-user-metrics
 	basedpyright
 
 .PHONY: format
-format:
+format: temp-user-metrics
 	# Fix all autofixable problems (which sorts imports) then format errors
 	ruff check --fix
 	ruff format
@@ -40,11 +40,11 @@ check-pre-commit:
 
 # tests
 .PHONY: test
-test:
+test: temp-user-metrics
 	pytest tests/
 
 .PHONY: test-all
-test-all:
+test-all: temp-user-metrics
 	pytest tests/ --runslow
 
 COVERAGE_DIR=docs/coverage
@@ -55,3 +55,17 @@ coverage:
 	mkdir -p $(COVERAGE_DIR)
 	uv run python -m coverage report -m > $(COVERAGE_DIR)/coverage.txt
 	uv run python -m coverage html --directory=$(COVERAGE_DIR)/html/
+
+# making sure `spd/user_metrics_and_figs.py.template` is checked
+# by copying it to a temporary directory
+TEMP_DIR = tests/.temp
+
+.PHONY: temp-user-metrics-clean
+temp-user-metrics-clean:
+	rm -rf $(TEMP_DIR)
+
+.PHONY: temp-user-metrics-copy
+temp-user-metrics-copy: temp-user-metrics-clean
+	mkdir -p $(TEMP_DIR)
+	cp spd/user_metrics_and_figs.py.example $(TEMP_DIR)/user_metrics_and_figs.py
+	echo "Created temporary $(TEMP_DIR)/user_metrics_and_figs.py from template for testing purposes"
