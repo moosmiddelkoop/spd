@@ -46,6 +46,7 @@ class ComponentModel(nn.Module):
         gate_type: GateType,
         gate_hidden_dims: list[int],
         pretrained_model_output_attr: str | None,
+        gate_bias: float,
     ):
         super().__init__()
         self.model = base_model
@@ -60,17 +61,22 @@ class ComponentModel(nn.Module):
             gate_type=gate_type,
             gate_hidden_dims=gate_hidden_dims,
             C=C,
+            gate_bias=gate_bias,
         )
 
     @staticmethod
     def make_gates(
-        components: nn.ModuleDict, gate_type: GateType, gate_hidden_dims: list[int], C: int
+        components: nn.ModuleDict,
+        gate_type: GateType,
+        gate_hidden_dims: list[int],
+        C: int,
+        gate_bias: float = 0.0,
     ) -> nn.ModuleDict:
         gates = nn.ModuleDict()
         for component_name, component in components.items():
             component = cast(LinearComponent | EmbeddingComponent, component)
             if gate_type == "mlp":
-                gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims)
+                gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims, bias=gate_bias)
             else:
                 input_dim = (
                     component.vocab_size
@@ -78,7 +84,7 @@ class ComponentModel(nn.Module):
                     else component.d_in
                 )
                 gates[component_name] = VectorGateMLP(
-                    C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims
+                    C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims, bias=gate_bias
                 )
         return gates
 
@@ -293,6 +299,7 @@ class ComponentModel(nn.Module):
             gate_hidden_dims=config.gate_hidden_dims,
             gate_type=config.gate_type,
             pretrained_model_output_attr=config.pretrained_model_output_attr,
+            gate_bias=config.sample_config.gate_bias,
         )
         comp_model.load_state_dict(model_weights)
         return comp_model, config, out_dir
