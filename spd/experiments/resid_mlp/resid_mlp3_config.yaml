@@ -11,7 +11,7 @@ n_mask_samples: 1
 gate_type: "mlp"
 gate_hidden_dims: [128]
 sample_config:
-  sample_type: "uniform"
+  sample_type: "hard_concrete_anneal"
 target_module_patterns:
   - "layers.*.mlp_in"
   - "layers.*.mlp_out"
