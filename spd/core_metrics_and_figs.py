@@ -204,6 +204,7 @@ def create_figures(
             device=device,
             config=config,
             step=step,
+            eval_loader=eval_loader,
         )
         fig_dict.update(user_figures)
     return fig_dict
