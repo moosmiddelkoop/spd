@@ -85,7 +85,7 @@ def swish_hard_sigmoid(
 
 def scaled_sigmoid(x: Tensor, epsilon: float = 0.01) -> Tensor:
     """A sigmoid function that maps input to range (-epsilon, 1+epsilon).
-    
+
     Standard sigmoid maps to (0, 1), this version scales the output to
     (-epsilon, 1+epsilon) for better gradient flow.
     """

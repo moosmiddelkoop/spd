@@ -14,9 +14,13 @@ from torch import Tensor, nn
 from wandb.apis.public import Run
 
 from spd.log import logger
-from spd.utils.run_utils import check_run_exists
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
-from spd.utils.wandb_utils import download_wandb_file, fetch_latest_wandb_checkpoint, fetch_wandb_run_dir
+from spd.utils.run_utils import check_run_exists
+from spd.utils.wandb_utils import (
+    download_wandb_file,
+    fetch_latest_wandb_checkpoint,
+    fetch_wandb_run_dir,
+)
 
 
 class MemorizationPaths(BaseModel):
@@ -42,10 +46,10 @@ class SingleLayerMemorizationMLP(nn.Module):
     def __init__(self, config: MemorizationConfig):
         super().__init__()
         self.config = config
-        
+
         self.linear = nn.Linear(config.d_model, config.d_hidden, bias=config.use_bias)
         self.output = nn.Linear(config.d_hidden, config.d_model, bias=config.use_bias)
-        
+
         if config.act_fn_name == "gelu":
             self.act_fn = F.gelu
         elif config.act_fn_name == "relu":

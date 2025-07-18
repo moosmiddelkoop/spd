@@ -4,20 +4,20 @@ from pathlib import Path
 from typing import Any
 
 import fire
-import torch
 import wandb
 from jaxtyping import Float
 from torch import Tensor
 
 from spd.configs import Config, MemorizationTaskConfig
-from spd.utils.data_utils import DatasetGeneratedDataLoader
 from spd.experiments.memorization.memorization_dataset import KeyValueMemorizationDataset
 from spd.experiments.memorization.models import SingleLayerMemorizationMLP
 from spd.log import logger
 from spd.run_spd import get_common_run_name_suffix, optimize
-from spd.utils.run_utils import get_output_dir, save_file
+from spd.utils.data_utils import DatasetGeneratedDataLoader
 from spd.utils.general_utils import get_device, load_config, set_seed
+from spd.utils.run_utils import get_output_dir, save_file
 from spd.utils.wandb_utils import init_wandb
+
 
 def get_run_name(config: Config, n_pairs: int, d_model: int, d_hidden: int) -> str:
     """Generate a run name based on the config."""
@@ -38,7 +38,7 @@ def save_target_model_info(
 ) -> None:
     save_file(memorization_model.state_dict(), out_dir / "memorization.pth")
     save_file(memorization_train_config_dict, out_dir / "memorization_train_config.yaml")
-    
+
     # Save key-value pairs as JSON
     keys, values = key_value_pairs
     kv_data = {
@@ -53,7 +53,11 @@ def save_target_model_info(
         wandb.save(str(out_dir / "key_value_pairs.json"), base_path=out_dir, policy="now")
 
 
-def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None, sweep_id: str | None = None) -> None:
+def main(
+    config_path_or_obj: Path | str | Config,
+    evals_id: str | None = None,
+    sweep_id: str | None = None,
+) -> None:
     device = get_device()
     logger.info(f"Using device: {device}")
 
@@ -77,8 +81,10 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None, s
     logger.info(config)
 
     assert config.pretrained_model_path, "pretrained_model_path must be set"
-    target_model, target_model_train_config_dict, key_value_pairs = SingleLayerMemorizationMLP.from_pretrained(
-        config.pretrained_model_path,
+    target_model, target_model_train_config_dict, key_value_pairs = (
+        SingleLayerMemorizationMLP.from_pretrained(
+            config.pretrained_model_path,
+        )
     )
     target_model = target_model.to(device)
     target_model.eval()
@@ -113,7 +119,7 @@ def main(config_path_or_obj: Path | str | Config, evals_id: str | None = None, s
         device=device,
         key_value_pairs=(keys.to(device), values.to(device)),
     )
-    
+
     train_loader = DatasetGeneratedDataLoader(dataset, batch_size=config.batch_size, shuffle=False)
     eval_loader = DatasetGeneratedDataLoader(dataset, batch_size=config.batch_size, shuffle=False)
 

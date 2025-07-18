@@ -1,17 +1,15 @@
 """Plotting utilities for memorization experiments."""
 
 import torch
-from jaxtyping import Float
 from matplotlib import pyplot as plt
-from torch import Tensor
 
 from spd.models.component_model import ComponentModel
-from spd.utils.component_utils import calc_causal_importances
 from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.plotting import (
     _plot_causal_importances_figure,
     plot_UV_matrices,
 )
+from spd.utils.component_utils import calc_causal_importances
 from spd.utils.target_ci_solutions import permute_to_identity_hungarian
 
 
@@ -27,10 +25,10 @@ def create_memorization_plot_results(
     **_,
 ) -> dict[str, plt.Figure]:
     """Create plotting results for memorization decomposition experiments.
-    
+
     Similar to create_toy_model_plot_results, but uses actual keys from the dataset
     instead of identity inputs.
-    
+
     Args:
         model: The ComponentModel
         components: Dictionary of components
@@ -41,12 +39,12 @@ def create_memorization_plot_results(
         return_raw_cis: Whether to include raw permuted CIs in the results
         n_keys_to_plot: Number of keys to plot (defaults to min(n_pairs, d_model))
         **_: Additional keyword arguments (ignored)
-        
+
     Returns:
         Dictionary of figures (and raw CIs if return_raw_cis=True)
     """
     fig_dict = {}
-    
+
     # Determine how many keys to plot
     n_pairs = dataset.n_pairs
     d_model = dataset.d_model
@@ -54,34 +52,36 @@ def create_memorization_plot_results(
         n_keys_to_plot = n_pairs
     else:
         n_keys_to_plot = min(n_keys_to_plot, n_pairs)
-    
+
     # Get a batch of keys from the dataset
     # We'll use the first n_keys_to_plot keys for visualization
     keys = dataset.keys[:n_keys_to_plot].to(device)
-    
+
     # Forward pass through the model to get pre-weight activations
     pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
         keys, module_names=list(components.keys())
     )[1]
     Vs = {module_name: v.V for module_name, v in components.items()}
-    
+
     # Calculate causal importances
     ci_raw, ci_upper_leaky_raw = calc_causal_importances(
         pre_weight_acts=pre_weight_acts, Vs=Vs, gates=gates, detach_inputs=False
     )
-    
+
     # Permute to make it closer to identity for visualization
     ci = {}
     ci_upper_leaky = {}
     all_perm_indices = {}
-    
+
     for k in ci_raw:
         ci[k], _ = permute_to_identity_hungarian(ci_vals=ci_raw[k])
-        ci_upper_leaky[k], all_perm_indices[k] = permute_to_identity_hungarian(ci_vals=ci_upper_leaky_raw[k])
-    
+        ci_upper_leaky[k], all_perm_indices[k] = permute_to_identity_hungarian(
+            ci_vals=ci_upper_leaky_raw[k]
+        )
+
     # Create figures
     figures = {}
-    
+
     # Plot raw causal importances (blue)
     ci_fig = _plot_causal_importances_figure(
         ci_vals=ci,
@@ -93,7 +93,7 @@ def create_memorization_plot_results(
         title_formatter=None,
     )
     figures["causal_importances"] = ci_fig
-    
+
     # Plot upper leaky causal importances (red)
     ci_upper_leaky_fig = _plot_causal_importances_figure(
         ci_vals=ci_upper_leaky,
@@ -105,19 +105,19 @@ def create_memorization_plot_results(
         title_formatter=None,
     )
     figures["causal_importances_upper_leaky"] = ci_upper_leaky_fig
-    
+
     # Add raw permuted CIs if requested
     if return_raw_cis:
         figures["raw_ci_permuted"] = ci
         figures["raw_ci_upper_leaky_permuted"] = ci_upper_leaky
-    
+
     fig_dict.update(figures)
-    
+
     # Plot UV matrices
     fig_dict["UV_matrices"] = plot_UV_matrices(
         components=components, all_perm_indices=all_perm_indices
     )
-    
+
     # Add a figure showing which keys were used for plotting
     # fig, ax = plt.subplots(figsize=(8, 6), constrained_layout=True, dpi=300)
     # keys_np = keys.detach().cpu().numpy()
@@ -129,5 +129,5 @@ def create_memorization_plot_results(
     # ax.xaxis.set_label_position("bottom")
     # fig.colorbar(im, ax=ax)
     # fig_dict["keys_used"] = fig
-    
+
     return fig_dict

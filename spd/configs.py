@@ -122,7 +122,9 @@ class Config(BaseModel):
         description="Number of hidden neurons in the MLP used to calculate the causal importance."
         "If 0, use a single-layer gate.",
     )
-    sigmoid_type: Literal["normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard", "scaled"] = Field(
+    sigmoid_type: Literal[
+        "normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard", "scaled"
+    ] = Field(
         default="leaky_hard",
         description="Type of sigmoid to use for causal importance calculation",
     )
@@ -259,10 +261,12 @@ class Config(BaseModel):
     )
 
     # --- Task Specific ---
-    task_config: TMSTaskConfig | ResidualMLPTaskConfig | LMTaskConfig | MemorizationTaskConfig = Field(
-        ...,
-        discriminator="task_name",
-        description="Nested task-specific configuration selected by the `task_name` discriminator",
+    task_config: TMSTaskConfig | ResidualMLPTaskConfig | LMTaskConfig | MemorizationTaskConfig = (
+        Field(
+            ...,
+            discriminator="task_name",
+            description="Nested task-specific configuration selected by the `task_name` discriminator",
+        )
     )
 
     DEPRECATED_CONFIG_KEYS: ClassVar[list[str]] = []

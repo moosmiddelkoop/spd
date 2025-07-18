@@ -8,16 +8,16 @@ import torch
 import wandb
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict, PositiveFloat, PositiveInt
-from torch import Tensor, nn
+from torch import Tensor
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from spd.utils.data_utils import DatasetGeneratedDataLoader
 from spd.experiments.memorization.memorization_dataset import KeyValueMemorizationDataset
 from spd.experiments.memorization.models import MemorizationConfig, SingleLayerMemorizationMLP
 from spd.log import logger
-from spd.utils.run_utils import get_output_dir, save_file
+from spd.utils.data_utils import DatasetGeneratedDataLoader
 from spd.utils.general_utils import get_device, load_config, set_seed
+from spd.utils.run_utils import get_output_dir, save_file
 from spd.utils.wandb_utils import init_wandb
 
 
@@ -27,7 +27,7 @@ def evaluate_memorization(
     values: Float[Tensor, "n_pairs d_model"],
 ) -> dict[str, float | Tensor]:
     """Evaluate memorization performance on all key-value pairs.
-    
+
     Returns:
         Dictionary with metrics:
         - avg_mse: Average MSE across all pairs
@@ -43,17 +43,17 @@ def evaluate_memorization(
     with torch.no_grad():
         predicted_values = model(keys)
         per_pair_mse = ((predicted_values - values) ** 2).sum(dim=1)
-        
+
         avg_mse = per_pair_mse.mean().item()
         worst_mse = per_pair_mse.max().item()
         worst_idx = per_pair_mse.argmax().item()
-        
+
         # Calculate fraction memorized at different thresholds
         frac_memorized_1e1 = (per_pair_mse < 1e-1).float().mean().item()
         frac_memorized_1e2 = (per_pair_mse < 1e-2).float().mean().item()
         frac_memorized_1e3 = (per_pair_mse < 1e-3).float().mean().item()
         frac_memorized_1e4 = (per_pair_mse < 1e-4).float().mean().item()
-        
+
     return {
         "avg_mse": avg_mse,
         "worst_mse": worst_mse,
@@ -72,7 +72,9 @@ class MemorizationTrainConfig(BaseModel):
     seed: int = 0
     # Memorization model parameters (flattened from MemorizationConfig)
     n_pairs: PositiveInt | None = None
-    n_pairs_multiplier: PositiveFloat | None = None  # If set, n_pairs = n_pairs_multiplier * d_hidden
+    n_pairs_multiplier: PositiveFloat | None = (
+        None  # If set, n_pairs = n_pairs_multiplier * d_hidden
+    )
     d_model: PositiveInt
     d_hidden: PositiveInt
     act_fn_name: str = "relu"
@@ -121,14 +123,12 @@ def train(
         wandb.save(str(out_dir / "key_value_pairs.json"), base_path=out_dir, policy="now")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
-    
+
     # Setup learning rate scheduler
     if config.lr_schedule == "cosine":
         # For cosine schedule with warmup
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, 
-            T_max=config.steps - config.lr_warmup_steps,
-            eta_min=0.0
+            optimizer, T_max=config.steps - config.lr_warmup_steps, eta_min=0.0
         )
     else:
         scheduler = None
@@ -141,27 +141,29 @@ def train(
         optimizer.zero_grad()
         keys: Float[Tensor, "batch d_model"] = keys.to(device)
         values: Float[Tensor, "batch d_model"] = values.to(device)
-        
+
         predicted_values = model(keys)
         loss = F.mse_loss(predicted_values, values)
-        
+
         loss.backward()
         optimizer.step()
-        
+
         # Handle learning rate schedule
         if config.lr_schedule == "cosine":
             if step < config.lr_warmup_steps:
                 # Linear warmup
                 warmup_lr = config.lr * (step + 1) / config.lr_warmup_steps
                 for param_group in optimizer.param_groups:
-                    param_group['lr'] = warmup_lr
+                    param_group["lr"] = warmup_lr
             else:
                 # Cosine annealing after warmup
                 scheduler.step()
-        
+
         if step % config.print_freq == 0:
             # Evaluate on all pairs
-            metrics = evaluate_memorization(model, dataloader.dataset.keys, dataloader.dataset.values)
+            metrics = evaluate_memorization(
+                model, dataloader.dataset.keys, dataloader.dataset.values
+            )
             tqdm.write(
                 f"step {step}: loss={loss.item():.2e}, "
                 f"avg_mse={metrics['avg_mse']:.2e}, "
@@ -177,14 +179,14 @@ def train(
                     "frac_memorized_1e-2": metrics["frac_memorized_1e-2"],
                     "frac_memorized_1e-3": metrics["frac_memorized_1e-3"],
                     "frac_memorized_1e-4": metrics["frac_memorized_1e-4"],
-                    "lr": optimizer.param_groups[0]['lr'],
+                    "lr": optimizer.param_groups[0]["lr"],
                 }
                 # Log histogram every 5000 steps to avoid too much data
                 if step % 5000 == 0:
                     log_dict["mse_histogram"] = wandb.Histogram(metrics["per_pair_mse"])
                 wandb.log(log_dict, step=step)
             model.train()  # Set back to training mode
-        
+
         step += 1
         pbar.update(1)
 
@@ -196,25 +198,27 @@ def train(
 
     # Calculate final losses by testing each key-value pair
     final_metrics = evaluate_memorization(model, dataloader.dataset.keys, dataloader.dataset.values)
-    
-    print(f"Final metrics:")
+
+    print("Final metrics:")
     print(f"  Average MSE: {final_metrics['avg_mse']:.6f}")
     print(f"  Worst MSE: {final_metrics['worst_mse']:.6f} (pair {final_metrics['worst_idx']})")
     print(f"  Fraction memorized (MSE < 1e-1): {final_metrics['frac_memorized_1e-1']:.3f}")
     print(f"  Fraction memorized (MSE < 1e-2): {final_metrics['frac_memorized_1e-2']:.3f}")
     print(f"  Fraction memorized (MSE < 1e-3): {final_metrics['frac_memorized_1e-3']:.3f}")
     print(f"  Fraction memorized (MSE < 1e-4): {final_metrics['frac_memorized_1e-4']:.3f}")
-    
+
     if config.wandb_project:
-        wandb.log({
-            "final_avg_mse": final_metrics["avg_mse"],
-            "final_worst_mse": final_metrics["worst_mse"],
-            "final_frac_memorized_1e-1": final_metrics["frac_memorized_1e-1"],
-            "final_frac_memorized_1e-2": final_metrics["frac_memorized_1e-2"],
-            "final_frac_memorized_1e-3": final_metrics["frac_memorized_1e-3"],
-            "final_frac_memorized_1e-4": final_metrics["frac_memorized_1e-4"],
-        })
-    
+        wandb.log(
+            {
+                "final_avg_mse": final_metrics["avg_mse"],
+                "final_worst_mse": final_metrics["worst_mse"],
+                "final_frac_memorized_1e-1": final_metrics["frac_memorized_1e-1"],
+                "final_frac_memorized_1e-2": final_metrics["frac_memorized_1e-2"],
+                "final_frac_memorized_1e-3": final_metrics["frac_memorized_1e-3"],
+                "final_frac_memorized_1e-4": final_metrics["frac_memorized_1e-4"],
+            }
+        )
+
     return torch.tensor(final_metrics["avg_mse"])
 
 
@@ -222,14 +226,16 @@ def run_train(config: MemorizationTrainConfig, device: str) -> Float[Tensor, ""]
     # Calculate n_pairs from multiplier if provided
     if config.n_pairs_multiplier is not None:
         n_pairs = int(config.n_pairs_multiplier * config.d_hidden)
-        logger.info(f"Calculated n_pairs={n_pairs} from n_pairs_multiplier={config.n_pairs_multiplier} * d_hidden={config.d_hidden}")
+        logger.info(
+            f"Calculated n_pairs={n_pairs} from n_pairs_multiplier={config.n_pairs_multiplier} * d_hidden={config.d_hidden}"
+        )
     else:
         n_pairs = config.n_pairs
-    
+
     # Log the actual n_pairs to wandb
     if config.wandb_project and wandb.run is not None:
         wandb.config.update({"n_pairs": n_pairs}, allow_val_change=True)
-    
+
     # Create MemorizationConfig from flattened parameters
     model_cfg = MemorizationConfig(
         n_pairs=n_pairs,
@@ -268,26 +274,26 @@ def run_train(config: MemorizationTrainConfig, device: str) -> Float[Tensor, ""]
 
 def main(config_path: Path | str | MemorizationTrainConfig) -> None:
     """Main entry point for training memorization model.
-    
+
     Args:
         config_path: Path to YAML config file or config object
     """
     device = get_device()
     logger.info(f"Using device: {device}")
-    
+
     # Load config from file or object
     config = load_config(config_path, config_model=MemorizationTrainConfig)
-    
+
     # Initialize wandb and merge sweep parameters
     if config.wandb_project:
         config = init_wandb(config, config.wandb_project, tags=["memorization-train"])
-    
+
     set_seed(config.seed)
     logger.info(config)
-    
+
     # Run training
     run_train(config, device)
-    
+
     if config.wandb_project:
         wandb.finish()
 

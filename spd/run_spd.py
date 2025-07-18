@@ -192,7 +192,7 @@ def optimize(
 
         log_data["loss/total"] = total_loss.item()
         log_data.update(loss_terms)
-        
+
         # Log current p value if annealing is active
         if config.p_anneal_final_p is not None and config.p_anneal_start_frac < 1.0:
             log_data["misc/current_p"] = current_p

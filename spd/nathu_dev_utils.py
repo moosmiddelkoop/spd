@@ -1,15 +1,13 @@
 """Simple utilities for pulling data from wandb runs and sweeps."""
 
 import json
+import re
 
+import matplotlib.pyplot as plt
 import pandas as pd
-import torch
 import wandb
 from tqdm import tqdm
 
-from spd.utils.wandb_utils import download_wandb_file, fetch_wandb_run_dir
-import matplotlib.pyplot as plt
-import re 
 
 def get_experiment_df(
     sweep_run_id, experiment_name: str, project: str, download_ci_masks: bool = False
@@ -26,16 +24,16 @@ def get_experiment_df(
         DataFrame with columns: wandb_run_id, run_name, state, config.*, summary.*
     """
     api = wandb.Api()
-    
+
     # Handle single or multiple run IDs
     run_ids = [sweep_run_id] if isinstance(sweep_run_id, str) else sweep_run_id
-    
+
     all_data = []
-    
+
     for run_id in run_ids:
         filters = {"tags": {"$all": [run_id, experiment_name]}}
         runs = list(api.runs(project, filters=filters))
-        
+
         for run in tqdm(runs, desc=f"{experiment_name} - {run_id}"):
             row = {
                 "wandb_run_id": run.id,
@@ -44,21 +42,20 @@ def get_experiment_df(
                 "tags": run.tags,
                 "sweep_run_id": run_id,  # Track which sweep this came from
             }
-            
+
             # Add config values
             if run.config:
                 for k, v in run.config.items():
                     row[f"config.{k}"] = v
-            
+
             # Add summary values
             if run.summary:
                 for k, v in run.summary.items():
                     row[f"summary.{k}"] = v
-            
-            all_data.append(row)
-    
-    return pd.DataFrame(all_data)
 
+            all_data.append(row)
+
+    return pd.DataFrame(all_data)
 
 
 def get_varying_columns(df, prefix="config", blacklist=["config.seed"]):
@@ -224,24 +221,26 @@ def optimize_over_old(
         return get_optimal_rows(df)
     # Apply optimization to each group (empty group_cols means one group)
     result_df = (
-        df.groupby(group_cols, dropna=False).apply(get_optimal_rows, include_groups=True).reset_index(drop=True)
+        df.groupby(group_cols, dropna=False)
+        .apply(get_optimal_rows, include_groups=True)
+        .reset_index(drop=True)
     )
 
     return result_df
 
 
 def optimize_over(
-    df: pd.DataFrame, 
-    metric: str, 
-    params: list[str], 
-    minimize: bool = True, 
+    df: pd.DataFrame,
+    metric: str,
+    params: list[str],
+    minimize: bool = True,
     verbose: bool = False,
-    aggregate_cols: str | list[str] | None = None
+    aggregate_cols: str | list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Find optimal hyperparameters for each unique combination of other varying config columns.
-    
-    If aggregate_cols is provided, aggregates over those columns (e.g., seeds) before 
+
+    If aggregate_cols is provided, aggregates over those columns (e.g., seeds) before
     optimization, then returns the unaggregated data with optimal parameters.
 
     WARNING: Only considers columns starting with 'config' when determining grouping columns.
@@ -261,12 +260,11 @@ def optimize_over(
 
     Example:
         >>> # Find best params averaging over seeds, return all seed runs
-        >>> df_best = optimize_over(df, "loss", ["config.lr"], 
-        ...                        aggregate_cols="config.seed")
+        >>> df_best = optimize_over(df, "loss", ["config.lr"], aggregate_cols="config.seed")
     """
     # Store original df if we're aggregating
     original_df = df.copy() if aggregate_cols else None
-    
+
     # Aggregate if requested
     if aggregate_cols:
         if verbose:
@@ -274,7 +272,7 @@ def optimize_over(
         working_df = aggregate_over(df, aggregate_cols)
     else:
         working_df = df
-    
+
     # Validate inputs
     if metric not in working_df.columns:
         raise ValueError(f"Metric column '{metric}' not found in DataFrame")
@@ -318,7 +316,9 @@ def optimize_over(
     else:
         # Apply optimization to each group
         opt_df = (
-            working_df.groupby(group_cols, dropna=False).apply(get_optimal_rows, include_groups=True).reset_index(drop=True)
+            working_df.groupby(group_cols, dropna=False)
+            .apply(get_optimal_rows, include_groups=True)
+            .reset_index(drop=True)
         )
 
     # If we aggregated, return the unaggregated data with optimal parameters
@@ -326,66 +326,63 @@ def optimize_over(
         # Get columns that define optimal configurations
         if isinstance(aggregate_cols, str):
             aggregate_cols = [aggregate_cols]
-        
+
         # All varying columns from original data except those we aggregated over
         varying_cols = get_varying_columns(original_df, blacklist=aggregate_cols)
-        
+
         # Columns that define each group (excluding the params we optimized)
         group_cols = [col for col in varying_cols if col not in params]
-        
+
         # Merge columns = group columns + optimized params
         merge_cols = group_cols + params
-        
+
         # Merge original data with optimal configurations
         result_df = original_df.merge(
-            opt_df[merge_cols + ['optimal_hparams']], 
-            on=merge_cols, 
-            how='inner'
+            opt_df[merge_cols + ["optimal_hparams"]], on=merge_cols, how="inner"
         )
-        
+
         if verbose:
             print(f"\nReturning {len(result_df)} unaggregated runs with optimal parameters")
             print(f"(from {len(original_df)} total runs)")
-        
+
         return result_df
     else:
         return opt_df
-    
 
 
 def prettify_column_name(col_name: str) -> str:
     """Convert column names like 'summary.loss/faithfulness' to 'Faithfulness Loss'"""
     try:
         # Remove common prefixes
-        name = re.sub(r'^(summary\.|config\.|metrics\.)', '', col_name)
-        
+        name = re.sub(r"^(summary\.|config\.|metrics\.)", "", col_name)
+
         # Handle target solution error with tolerance patterns
-        if 'target_solution_error/total' in name:
-            if name == 'target_solution_error/total':
-                return 'Target Solution Error\n(tolerance=0.1)'
-            elif 'total_0p2' in name:
-                return 'Target Solution Error\n(tolerance=0.2)'
+        if "target_solution_error/total" in name:
+            if name == "target_solution_error/total":
+                return "Target Solution Error\n(tolerance=0.1)"
+            elif "total_0p2" in name:
+                return "Target Solution Error\n(tolerance=0.2)"
             # Add more tolerance patterns as needed
-        
+
         # Handle other special patterns
         replacements = {
-            'loss/': '',
-            '_': ' ',
-            '/': ' ',
-            'stochastic recon': 'Stochastic Reconstruction',
-            'target solution error': 'Target Solution Error',
+            "loss/": "",
+            "_": " ",
+            "/": " ",
+            "stochastic recon": "Stochastic Reconstruction",
+            "target solution error": "Target Solution Error",
         }
-        
+
         for old, new in replacements.items():
             name = name.replace(old, new)
-        
+
         # Title case
         name = name.title()
-        
+
         # Add "Loss" suffix if it was in the original but got removed
-        if 'loss/' in col_name.lower() and 'Loss' not in name:
-            name += ' Loss'
-        
+        if "loss/" in col_name.lower() and "Loss" not in name:
+            name += " Loss"
+
         return name
     except Exception as e:
         print(f"Error prettifying column name '{col_name}': {e}")
@@ -395,8 +392,8 @@ def prettify_column_name(col_name: str) -> str:
 def format_group_label(group_col: str, group_value) -> str:
     """Format group label as 'param_name = value'"""
     # Extract just the parameter name (remove config. prefix)
-    param_name = group_col.split('.')[-1] if '.' in group_col else group_col
-    
+    param_name = group_col.split(".")[-1] if "." in group_col else group_col
+
     # Format the value (handle floats nicely)
     if isinstance(group_value, float):
         # Use fewer decimal places if it's a round number
@@ -406,15 +403,16 @@ def format_group_label(group_col: str, group_value) -> str:
             value_str = f"{group_value:.3g}"
     else:
         value_str = str(group_value)
-    
+
     return f"{param_name} = {value_str}"
 
 
-def plot_scatter_grid(df, x_col, y_cols, group_col='config.sigmoid_type', 
-                      log_y_cols=None, figsize=None, title=""):
+def plot_scatter_grid(
+    df, x_col, y_cols, group_col="config.sigmoid_type", log_y_cols=None, figsize=None, title=""
+):
     """
     Create scatter plot grid with automatic prettification and formatted legend labels.
-    
+
     Args:
         df: DataFrame with data to plot
         x_col: Column for x-axis
@@ -427,120 +425,124 @@ def plot_scatter_grid(df, x_col, y_cols, group_col='config.sigmoid_type',
     n_plots = len(y_cols)
     if figsize is None:
         figsize = (6 * n_plots, 6)
-    
+
     if log_y_cols is None:
         # Auto-detect: use log scale for anything with "loss" in the name
-        log_y_cols = [col for col in y_cols if 'loss' in col.lower()]
-    
+        log_y_cols = [col for col in y_cols if "loss" in col.lower()]
+
     fig, axes = plt.subplots(1, n_plots, figsize=figsize)
     if n_plots == 1:
         axes = [axes]
-    
+
     x_label = prettify_column_name(x_col)
-    
-    for ax, y_col in zip(axes, y_cols):
+
+    for ax, y_col in zip(axes, y_cols, strict=False):
         # Plot each group
         for group in sorted(df[group_col].unique()):  # Sort for consistent ordering
             group_df = df[df[group_col] == group]
             label = format_group_label(group_col, group)
-            ax.scatter(group_df[x_col], group_df[y_col], 
-                      label=label, alpha=0.7, s=50)  # s=50 for slightly larger points
-        
+            ax.scatter(
+                group_df[x_col], group_df[y_col], label=label, alpha=0.7, s=50
+            )  # s=50 for slightly larger points
+
         # Labels and formatting
         ax.set_xlabel(x_label)
         ax.set_ylabel(prettify_column_name(y_col))
-        ax.set_title(f'{prettify_column_name(y_col)} vs {x_label}')
-        
+        ax.set_title(f"{prettify_column_name(y_col)} vs {x_label}")
+
         if y_col in log_y_cols:
-            ax.set_yscale('log')
-            ax.set_ylabel(ax.get_ylabel() + ' (log scale)')
-        
+            ax.set_yscale("log")
+            ax.set_ylabel(ax.get_ylabel() + " (log scale)")
+
         ax.legend()
-    
+
     if title:
         fig.suptitle(title, fontsize=14)
     plt.tight_layout()
     plt.show()
 
 
-
-def plot_metrics_by_group(df, y_cols, group_col='group_name', suptitle=None, group_order=None, ):
+def plot_metrics_by_group(
+    df,
+    y_cols,
+    group_col="group_name",
+    suptitle=None,
+    group_order=None,
+):
     """Create bar plots for each metric grouped by group_name."""
-    
+
     fig, axs = plt.subplots(
         nrows=1,
         ncols=len(y_cols),
         figsize=(4 * len(y_cols), 5),
     )
-    
+
     # Get groups in specified order or sorted
     if group_order is not None:
         groups = group_order
     else:
         groups = sorted(df[group_col].unique())
-    
-    colors = [f'C{i}' for i in range(len(groups))]
-    
+
+    colors = [f"C{i}" for i in range(len(groups))]
+
     # First pass: collect data and find y-limits for target solution error plots
-    target_solution_ylims = [float('inf'), float('-inf')]
+    target_solution_ylims = [float("inf"), float("-inf")]
     all_plot_data = []
-    
+
     for i, (y_col, y_label) in enumerate(y_cols.items()):
         # Calculate stats for each group
         x_pos = []
         means = []
         stds = []
-        
+
         for j, group in enumerate(groups):
             group_data = df[df[group_col] == group][y_col]
             means.append(group_data.mean())
             stds.append(group_data.std())
             x_pos.append(j)
-        
+
         all_plot_data.append((x_pos, means, stds, y_col, y_label))
-        
+
         # Track min/max for target solution error plots
-        if 'target_solution_error' in y_col:
+        if "target_solution_error" in y_col:
             # Calculate the range including error bars
-            lower_bounds = [m - s for m, s in zip(means, stds)]
-            upper_bounds = [m + s for m, s in zip(means, stds)]
+            lower_bounds = [m - s for m, s in zip(means, stds, strict=False)]
+            upper_bounds = [m + s for m, s in zip(means, stds, strict=False)]
             target_solution_ylims[0] = min(target_solution_ylims[0], min(lower_bounds))
             target_solution_ylims[1] = max(target_solution_ylims[1], max(upper_bounds))
-    
+
     # Second pass: create the plots
     for i, (x_pos, means, stds, y_col, y_label) in enumerate(all_plot_data):
         ax = axs[i]
-        
+
         # Create bars
-        bars = ax.bar(x_pos, means, yerr=stds, capsize=5, 
-                      color=colors, alpha=0.8, width=0.6)
-        
+        bars = ax.bar(x_pos, means, yerr=stds, capsize=5, color=colors, alpha=0.8, width=0.6)
+
         # Formatting
         ax.set_title(y_label, fontsize=16)
         ax.set_xticks(x_pos)
-        ax.set_xticklabels(groups, rotation=0, ha='center')
+        ax.set_xticklabels(groups, rotation=0, ha="center")
         # Remove top and right spines
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
         # Apply different scales based on column type
-        if 'loss' in y_col:
+        if "loss" in y_col:
             # Log scale for loss columns
-            ax.set_yscale('log')
-        elif 'target_solution_error' in y_col:
+            ax.set_yscale("log")
+        elif "target_solution_error" in y_col:
             # Integer scale for target solution error columns
             ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
             # Set shared y-limits for target solution error plots
             ax.set_ylim(target_solution_ylims[0] * 0.9, target_solution_ylims[1] * 1.1)
-    
+
     # Add legend below the plots
-    fig.legend(bars, groups, loc='lower center', bbox_to_anchor=(0.5, -0.1), 
-               ncol=len(groups))
-    
+    fig.legend(bars, groups, loc="lower center", bbox_to_anchor=(0.5, -0.1), ncol=len(groups))
+
     # Add suptitle if provided
     if suptitle:
-        fig.suptitle(suptitle, y=1.02, fontsize=20, fontweight='bold')
-    
+        fig.suptitle(suptitle, y=1.02, fontsize=20, fontweight="bold")
+
     plt.tight_layout()
     plt.subplots_adjust(wspace=0.4)  # Increase horizontal spacing
     return fig, axs
