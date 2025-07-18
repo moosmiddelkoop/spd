@@ -1,6 +1,7 @@
 import random
 import warnings
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 
 import matplotlib.pyplot as plt
 import torch
