@@ -4,8 +4,7 @@ Generate clustering analysis report with figures.
 This script runs the analysis from the dev.ipynb notebook and saves all figures.
 """
 
-import os
-from pathlib import Path                    
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -192,7 +191,7 @@ result_with_stop = merge_iteration(
     pdf_prefix=str(FIGURES_DIR / "merge_with_stopping"),
 )
 
-print(f"\nMerge with stopping condition completed:")
+print("\nMerge with stopping condition completed:")
 print(f"  Total iterations: {result_with_stop['total_iterations']}")
 print(f"  Final groups: {result_with_stop['final_k_groups']}")
 
