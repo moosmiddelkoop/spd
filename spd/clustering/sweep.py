@@ -294,99 +294,345 @@ def plot_evolution_histories(
     plt.show()
 
 
-def setup_heatmap_axes() -> tuple[plt.Figure, list[plt.Axes]]:
-    """Set up figure and axes for heatmaps with proper handling of edge cases."""
-    def _handle_axes_array(axes_obj: Any, n_items: int, n_rows: int, n_cols: int) -> list[plt.Axes]:
-        if n_items == 1:
-            return [axes_obj]
-        elif n_rows == 1 and n_cols > 1:
-            return list(axes_obj)
-        elif n_rows > 1:
-            return axes_obj.flatten()
-        else:
-            return [axes_obj]
+def detect_most_variable_params(results: list[SweepResult]) -> tuple[str, str]:
+    """Detect which parameters have the most variation for smart defaults."""
+    all_params: list[str] = ['activation_threshold', 'check_threshold', 'alpha', 'rank_cost_name']
+    param_values: dict[str, list[Any]] = get_unique_param_values(results)
     
-    return _handle_axes_array
+    # Count unique values for each parameter
+    param_counts: dict[str, int] = {param: len(param_values[param]) for param in all_params}
+    
+    # Sort by number of unique values (most variable first)
+    sorted_params: list[tuple[str, int]] = sorted(param_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    # Return top 2 most variable parameters
+    if len(sorted_params) >= 2:
+        return sorted_params[0][0], sorted_params[1][0]
+    else:
+        return 'activation_threshold', 'check_threshold'
 
 
-def create_heatmap_data(results: list[SweepResult], rank_cost_name: str, 
-                       unique_act_thresh: list[float], unique_check_thresh: list[float],
-                       statistic_func: Callable[[SweepResult], float]) -> np.ndarray:
-    """Create heatmap data by averaging statistic across alpha values."""
-    rank_results: list[SweepResult] = [r for r in results if r.rank_cost_name == rank_cost_name]
-    heatmap_data: np.ndarray = np.full((len(unique_act_thresh), len(unique_check_thresh)), np.nan)
+def create_multiple_heatmaps(
+    results: list[SweepResult],
+    statistics: list[tuple[Callable[[SweepResult], float], str]],
+    fixed_params: dict[str, Any],
+    x_by: str = "check_threshold",
+    y_by: str = "activation_threshold",
+    **kwargs: Any
+) -> dict[str, dict[str, Any]]:
+    """Create multiple heatmaps with same parameters but different statistics.
     
-    for act_idx, act_thresh in enumerate(unique_act_thresh):
-        for check_idx, check_thresh in enumerate(unique_check_thresh):
-            matching_results: list[SweepResult] = [
-                r for r in rank_results 
-                if r.activation_threshold == act_thresh and r.check_threshold == check_thresh
-            ]
-            if matching_results:
-                stat_values: list[float] = [statistic_func(r) for r in matching_results]
-                heatmap_data[act_idx, check_idx] = np.mean(stat_values)
+    Args:
+        results: List of sweep results
+        statistics: List of (statistic_func, statistic_name) tuples
+        fixed_params: Parameters to fix
+        x_by: Parameter for x-axis
+        y_by: Parameter for y-axis
+        **kwargs: Additional arguments passed to create_heatmaps
+        
+    Returns:
+        Dictionary mapping statistic names to heatmap results
+    """
+    heatmap_results: dict[str, dict[str, Any]] = {}
     
-    return heatmap_data
+    for stat_func, stat_name in statistics:
+        heatmap_results[stat_name] = create_heatmaps(
+            results=results,
+            fixed_params=fixed_params,
+            statistic_func=stat_func,
+            statistic_name=stat_name,
+            x_by=x_by,
+            y_by=y_by,
+            **kwargs
+        )
+    
+    return heatmap_results
 
 
 def create_heatmaps(
     results: list[SweepResult],
+    fixed_params: dict[str, Any],
     statistic_func: Callable[[SweepResult], float],
     statistic_name: str,
-    figsize: tuple[int, int] = (20, 15),
-) -> None:
-    """Create heatmaps showing statistics across hyperparameter combinations."""
+    x_by: str = "check_threshold",
+    y_by: str = "activation_threshold",
+    aggregation: str = "mean",
+    log_scale: bool = False,
+    normalize: bool = False,
+    cmap: str = "viridis",
+    figsize: tuple[int, int] = (12, 8),
+    show_sample_counts: bool = False,
+) -> dict[str, Any]:
+    """Create flexible heatmaps showing statistics across hyperparameter combinations.
     
-    unique_act_thresh: list[float] = sorted(list(set(r.activation_threshold for r in results)))
-    unique_check_thresh: list[float] = sorted(list(set(r.check_threshold for r in results))) 
-    unique_alpha: list[float] = sorted(list(set(r.alpha for r in results)))
-    unique_rank_cost: list[str] = sorted(list(set(r.rank_cost_name for r in results)))
+    Args:
+        results: List of sweep results
+        fixed_params: Parameters to fix (remaining 2 will be heatmap axes)
+        statistic_func: Function to extract statistic from SweepResult
+        statistic_name: Name for plot titles and labels
+        x_by: Parameter for x-axis
+        y_by: Parameter for y-axis  
+        aggregation: How to aggregate multiple values ('mean', 'median', 'min', 'max', 'std')
+        log_scale: Apply log transform to statistic values
+        normalize: Normalize values to [0,1] range
+        cmap: Colormap name
+        figsize: Figure size
+        show_sample_counts: Overlay sample count text on cells
+        
+    Returns:
+        Dictionary with heatmap data and metadata
+    """
     
-    n_rank_costs: int = len(unique_rank_cost)
-    n_cols: int = min(2, n_rank_costs)
-    n_rows: int = (n_rank_costs + n_cols - 1) // n_cols
+    # Validate parameters
+    all_params: list[str] = ['activation_threshold', 'check_threshold', 'alpha', 'rank_cost_name']
+    used_params: set[str] = {x_by, y_by}
     
-    fig: plt.Figure
-    axes_obj: Any
-    fig, axes_obj = plt.subplots(n_rows, n_cols, figsize=figsize)
+    if len(used_params) != 2:
+        raise ValueError(f"x_by and y_by must be different. Got: {x_by}, {y_by}")
     
-    handle_axes = setup_heatmap_axes()
-    axes: list[plt.Axes] = handle_axes(axes_obj, n_rank_costs, n_rows, n_cols)
+    if not used_params.issubset(all_params):
+        raise ValueError(f"x_by and y_by must be from {all_params}")
     
-    for rank_idx, rank_cost_name in enumerate(unique_rank_cost):
-        if rank_idx >= len(axes):
-            break
+    # Filter results by fixed parameters
+    filtered_results: list[SweepResult] = filter_results_by_params(results, fixed_params)
+    if not filtered_results:
+        raise ValueError(f"No results match fixed parameters: {fixed_params}")
+    
+    # Get unique values for heatmap axes
+    param_values: dict[str, list[Any]] = get_unique_param_values(filtered_results)
+    x_values: list[Any] = param_values[x_by]
+    y_values: list[Any] = param_values[y_by]
+    
+    # Create heatmap data
+    heatmap_data: np.ndarray = np.full((len(y_values), len(x_values)), np.nan)
+    sample_counts: np.ndarray = np.zeros((len(y_values), len(x_values)), dtype=int)
+    
+    for y_idx, y_val in enumerate(y_values):
+        for x_idx, x_val in enumerate(x_values):
+            matching_results: list[SweepResult] = [
+                r for r in filtered_results 
+                if getattr(r, x_by) == x_val and getattr(r, y_by) == y_val
+            ]
             
-        ax: plt.Axes = axes[rank_idx]
-        heatmap_data: np.ndarray = create_heatmap_data(
-            results, rank_cost_name, unique_act_thresh, unique_check_thresh, statistic_func
-        )
-        
-        im = ax.imshow(heatmap_data, aspect='auto', cmap='viridis')
-        ax.set_xticks(range(len(unique_check_thresh)))
-        ax.set_xticklabels([f"{x:.3g}" for x in unique_check_thresh])
-        ax.set_yticks(range(len(unique_act_thresh)))
-        ax.set_yticklabels([f"{x:.3g}" for x in unique_act_thresh])
-        ax.set_xlabel("Check Threshold")
-        ax.set_ylabel("Activation Threshold")
-        
-        title: str = f"{statistic_name}\\n{rank_cost_name}"
-        if len(unique_alpha) > 1:
-            alpha_range: str = (f"[{unique_alpha[0]:.3g}...{unique_alpha[-1]:.3g}]" 
-                              if len(unique_alpha) > 2 
-                              else f"[{unique_alpha[0]:.3g}, {unique_alpha[-1]:.3g}]")
-            title += f"\\n(avg over α∈{alpha_range})"
-        ax.set_title(title)
-        
-        plt.colorbar(im, ax=ax)
+            if matching_results:
+                stat_values: list[float] = [statistic_func(r) for r in matching_results]
+                sample_counts[y_idx, x_idx] = len(stat_values)
+                
+                if aggregation == "mean":
+                    heatmap_data[y_idx, x_idx] = np.mean(stat_values)
+                elif aggregation == "median":
+                    heatmap_data[y_idx, x_idx] = np.median(stat_values)
+                elif aggregation == "min":
+                    heatmap_data[y_idx, x_idx] = np.min(stat_values)
+                elif aggregation == "max":
+                    heatmap_data[y_idx, x_idx] = np.max(stat_values)
+                elif aggregation == "std":
+                    heatmap_data[y_idx, x_idx] = np.std(stat_values)
+                else:
+                    raise ValueError(f"Unknown aggregation: {aggregation}")
     
-    # Hide empty subplots
-    for i in range(n_rank_costs, len(axes)):
-        axes[i].set_visible(False)
+    # Apply transformations
+    plot_data: np.ndarray = heatmap_data.copy()
+    
+    if log_scale:
+        # Handle negative/zero values for log scale
+        min_positive: float = np.nanmin(plot_data[plot_data > 0]) if np.any(plot_data > 0) else 1e-10
+        plot_data = np.where(plot_data > 0, plot_data, min_positive)
+        plot_data = np.log10(plot_data)
+    
+    if normalize:
+        min_val: float = np.nanmin(plot_data)
+        max_val: float = np.nanmax(plot_data)
+        if max_val > min_val:
+            plot_data = (plot_data - min_val) / (max_val - min_val)
+    
+    # Create plot
+    fig: plt.Figure
+    ax: plt.Axes
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    im = ax.imshow(plot_data, aspect='auto', cmap=cmap, origin='lower')
+    
+    # Set ticks and labels
+    ax.set_xticks(range(len(x_values)))
+    ax.set_xticklabels([format_value(x) for x in x_values])
+    ax.set_yticks(range(len(y_values)))
+    ax.set_yticklabels([format_value(y) for y in y_values])
+    
+    ax.set_xlabel(x_by.replace('_', ' ').title())
+    ax.set_ylabel(y_by.replace('_', ' ').title())
+    
+    # Create title
+    title_parts: list[str] = [statistic_name]
+    if aggregation != "mean":
+        title_parts.append(f"({aggregation})")
+    if log_scale:
+        title_parts.append("(log scale)")
+    if normalize:
+        title_parts.append("(normalized)")
+    
+    if fixed_params:
+        fixed_str: str = ", ".join([f"{k}={format_value(v)}" for k, v in fixed_params.items()])
+        title_parts.append(f"\nFixed: {fixed_str}")
+    
+    ax.set_title(" ".join(title_parts))
+    
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar_label: str = statistic_name
+    if log_scale:
+        cbar_label = f"log₁₀({cbar_label})"
+    cbar.set_label(cbar_label)
+    
+    # Optionally show sample counts
+    if show_sample_counts:
+        for y_idx in range(len(y_values)):
+            for x_idx in range(len(x_values)):
+                count: int = sample_counts[y_idx, x_idx]
+                if count > 0:
+                    ax.text(x_idx, y_idx, str(count), ha='center', va='center',
+                           color='white', fontsize=8, weight='bold')
     
     plt.tight_layout()
     plt.show()
+    
+    return {
+        'heatmap_data': heatmap_data,
+        'plot_data': plot_data,
+        'sample_counts': sample_counts,
+        'x_values': x_values,
+        'y_values': y_values,
+        'x_by': x_by,
+        'y_by': y_by,
+        'fixed_params': fixed_params,
+        'statistic_name': statistic_name,
+        'aggregation': aggregation,
+    }
 
+
+# Example statistic functions for common analyses
+def get_convergence_rate(result: SweepResult) -> float:
+    """Calculate convergence rate as slope of cost evolution."""
+    costs: list[float] = result.non_diag_costs_min
+    if len(costs) < 2:
+        return 0.0
+    
+    # Use simple linear regression to get slope
+    x: np.ndarray = np.arange(len(costs))
+    y: np.ndarray = np.array(costs)
+    
+    if np.std(x) == 0:
+        return 0.0
+    
+    slope: float = np.corrcoef(x, y)[0, 1] * (np.std(y) / np.std(x))
+    return slope
+
+def get_cost_reduction_ratio(result: SweepResult) -> float:
+    """Calculate ratio of final cost to initial cost."""
+    costs: list[float] = result.non_diag_costs_min
+    if len(costs) < 2:
+        return 1.0
+    
+    initial_cost: float = costs[0]
+    final_cost: float = costs[-1]
+    
+    if initial_cost == 0:
+        return 1.0
+    
+    return final_cost / initial_cost
+
+def get_merge_efficiency(result: SweepResult) -> float:
+    """Calculate groups merged per iteration."""
+    if result.total_iterations == 0:
+        return 0.0
+    
+    # Assume we start with ~200 components (typical case)
+    # This could be made more accurate by tracking initial component count
+    initial_groups: int = 200  # Rough estimate
+    groups_merged: int = initial_groups - result.final_k_groups
+    
+    return groups_merged / result.total_iterations
+
+def get_early_convergence(threshold_ratio: float = 0.1) -> Callable[[SweepResult], float]:
+    """Create function to detect early convergence iterations."""
+    def _early_convergence(result: SweepResult) -> float:
+        costs: list[float] = result.non_diag_costs_min
+        if len(costs) < 3:
+            return len(costs)
+        
+        initial_cost: float = costs[0]
+        
+        for i, cost in enumerate(costs[1:], 1):
+            if initial_cost > 0 and (cost / initial_cost) <= threshold_ratio:
+                return i
+        
+        return len(costs)
+    
+    return _early_convergence
+
+def get_cost_variance(result: SweepResult) -> float:
+    """Calculate variance in selected pair costs (measure of stability)."""
+    costs: list[float] = result.selected_pair_cost
+    if len(costs) < 2:
+        return 0.0
+    
+    return float(np.var(costs))
+
+# Common statistic collections for easy use
+BASIC_STATISTICS = [
+    (lambda r: r.final_k_groups, "Final Groups"),
+    (lambda r: r.total_iterations, "Total Iterations"),
+    (get_cost_reduction_ratio, "Cost Reduction Ratio"),
+    (get_merge_efficiency, "Merge Efficiency"),
+]
+
+ADVANCED_STATISTICS = [
+    (get_convergence_rate, "Convergence Rate"),
+    (get_early_convergence(0.1), "Early Convergence (10%)"),
+    (get_cost_variance, "Cost Variance"),
+    (lambda r: r.non_diag_costs_min[-1] if r.non_diag_costs_min else 0, "Final Cost"),
+]
+
+ALL_STATISTICS = BASIC_STATISTICS + ADVANCED_STATISTICS
+
+
+def create_smart_heatmap(
+    results: list[SweepResult],
+    statistic_func: Callable[[SweepResult], float],
+    statistic_name: str,
+    **kwargs: Any
+) -> dict[str, Any]:
+    """Create heatmap with smart parameter selection and defaults."""
+    
+    # Detect most variable parameters
+    x_param, y_param = detect_most_variable_params(results)
+    
+    # Create fixed_params for remaining parameters
+    all_params: list[str] = ['activation_threshold', 'check_threshold', 'alpha', 'rank_cost_name']
+    remaining_params: list[str] = [p for p in all_params if p not in {x_param, y_param}]
+    
+    param_values: dict[str, list[Any]] = get_unique_param_values(results)
+    
+    # Use median/middle values for fixed parameters
+    fixed_params: dict[str, Any] = {}
+    for param in remaining_params:
+        values: list[Any] = param_values[param]
+        if isinstance(values[0], (int, float)):
+            # Use median for numeric parameters
+            fixed_params[param] = values[len(values) // 2]
+        else:
+            # Use first value for categorical parameters
+            fixed_params[param] = values[0]
+    
+    return create_heatmaps(
+        results=results,
+        fixed_params=fixed_params,
+        statistic_func=statistic_func,
+        statistic_name=statistic_name,
+        x_by=x_param,
+        y_by=y_param,
+        **kwargs
+    )
 
 # Simple stopping condition examples using lambdas
 def cost_ratio_condition(ratio: float, metric: str) -> Callable[[dict[str, Any]], bool]:
