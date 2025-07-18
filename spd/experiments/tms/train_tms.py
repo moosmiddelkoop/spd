@@ -12,6 +12,7 @@ import torch
 import wandb
 from matplotlib import collections as mc
 from pydantic import BaseModel, ConfigDict, PositiveInt, model_validator
+from torch import Tensor, nn
 from tqdm import tqdm, trange
 
 from spd.experiments.tms.models import TMSModel, TMSModelConfig
@@ -64,7 +65,7 @@ def cosine_decay_lr(step: int, steps: int) -> float:
 
 def train(
     model: TMSModel,
-    dataloader: DatasetGeneratedDataLoader[tuple[torch.Tensor, torch.Tensor]],
+    dataloader: DatasetGeneratedDataLoader[tuple[Tensor, Tensor]],
     log_wandb: bool,
     importance: float,
     steps: int,
@@ -175,22 +176,20 @@ def plot_cosine_similarity_distribution(
 
 def get_model_and_dataloader(
     config: TMSTrainConfig, device: str
-) -> tuple[TMSModel, DatasetGeneratedDataLoader[tuple[torch.Tensor, torch.Tensor]]]:
+) -> tuple[TMSModel, DatasetGeneratedDataLoader[tuple[Tensor, Tensor]]]:
     model = TMSModel(config=config.tms_model_config)
     model.to(device)
     if (
         config.fixed_identity_hidden_layers or config.fixed_random_hidden_layers
     ) and model.hidden_layers is not None:
         for i in range(model.config.n_hidden_layers):
+            layer = model.hidden_layers[i]
+            assert isinstance(layer, nn.Linear)
             if config.fixed_identity_hidden_layers:
-                model.hidden_layers[i].weight.data[:, :] = torch.eye(
-                    model.config.n_hidden, device=device
-                )
+                layer.weight.data[:, :] = torch.eye(model.config.n_hidden, device=device)
             elif config.fixed_random_hidden_layers:
-                model.hidden_layers[i].weight.data[:, :] = torch.randn_like(
-                    model.hidden_layers[i].weight
-                )
-            model.hidden_layers[i].weight.requires_grad = False
+                layer.weight.data[:, :] = torch.randn_like(layer.weight)
+            layer.weight.requires_grad = False
 
     dataset = SparseFeatureDataset(
         n_features=config.tms_model_config.n_features,
