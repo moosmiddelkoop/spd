@@ -62,12 +62,12 @@ class ComponentModel(nn.Module):
 
         # We just keep components_or_modules as a plain dict. State_dict will pick the
         # components up because they're attached to the target_model via set_submodule
-        self.gates = self.make_gates(gate_type, C, gate_hidden_dims, self.components_or_modules)
         self.components_or_modules = self.create_components_or_modules(
             target_model=target_model,
             target_module_paths=self.target_module_paths,
             C=C,
         )
+        self.gates = self.make_gates(gate_type, C, gate_hidden_dims, self.components_or_modules)
 
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
 
@@ -78,12 +78,15 @@ class ComponentModel(nn.Module):
     def _get_target_module_paths(
         self, model: nn.Module, target_module_patterns: list[str]
     ) -> list[str]:
+        names_out: list[str] = []
         matched_patterns: set[str] = set()
         for name, _ in model.named_modules():
             for pattern in target_module_patterns:
                 if fnmatch.fnmatch(name, pattern):
                     print(f"Matched {name} to {pattern}")
                     matched_patterns.add(pattern)
+                    names_out.append(name)
+
         unmatched_patterns = set(target_module_patterns) - matched_patterns
         if unmatched_patterns:
             raise ValueError(
@@ -91,7 +94,7 @@ class ComponentModel(nn.Module):
                 f"{sorted(unmatched_patterns)}"
             )
 
-        return list(matched_patterns)
+        return names_out
 
     @staticmethod
     def create_components_or_modules(
@@ -108,7 +111,7 @@ class ComponentModel(nn.Module):
             if isinstance(module, nn.Linear):
                 d_out, d_in = module.weight.shape
                 component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
-                component.init_from_target_weight(module.weight)
+                component.init_from_target_weight(module.weight.T)
             elif isinstance(module, nn.Embedding):
                 component = EmbeddingComponents(
                     C=C,

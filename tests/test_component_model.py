@@ -89,25 +89,30 @@ def test_replaced_modules_sets_and_restores_masks_partial(component_model: Compo
 
 
 def test_replaced_component_forward_linear_matches_modes():
-    lin = nn.Linear(6, 4, bias=True)
-    comp = LinearComponents(d_in=6, d_out=4, C=3, bias=lin.bias)
-    rep = ComponentsOrModule(original=lin, components=comp)
+    B = 5
+    C = 3
+    input_dim = 6
+    output_dim = 4
 
-    x = torch.randn(5, 6)
+    original = nn.Linear(input_dim, output_dim, bias=True)
+    components = LinearComponents(d_in=input_dim, d_out=output_dim, C=3, bias=original.bias)
+    components_or_module = ComponentsOrModule(original=original, components=components)
+
+    x = torch.randn(B, input_dim)
 
     # --- Original path ---
-    rep.forward_mode = "original"
-    rep.mask = None
-    out_orig = rep(x)
-    expected_orig = lin(x)
+    components_or_module.forward_mode = "original"
+    components_or_module.mask = None
+    out_orig = components_or_module(x)
+    expected_orig = original(x)
     torch.testing.assert_close(out_orig, expected_orig, rtol=1e-4, atol=1e-5)
 
     # --- Replacement path (with mask) ---
-    rep.forward_mode = "components"
-    mask = torch.rand(5, 3)
-    rep.mask = mask
-    out_rep = rep(x)
-    expected_rep = comp(x, mask)
+    mask = torch.rand(B, C)
+    components_or_module.forward_mode = "components"
+    components_or_module.mask = mask
+    out_rep = components_or_module(x)
+    expected_rep = components(x, mask)
     torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
 
 

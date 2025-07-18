@@ -103,6 +103,10 @@ class Components(ABC, nn.Module):
         2. Take inner product with original model
         3. This gives you roughly how much overlap there is with the target model.
         4. Scale the Us by this value (we can choose either matrix)
+
+        args:
+            target_weight: The weight matrix of the original model. In the orientation of V @ U.
+            Note that this is the transpose of the orientation of the weight matrix in the original code.
         """
         target_weight = target_weight.to(self.U.device)
 
@@ -177,7 +181,7 @@ class LinearComponents(Components):
             component_acts *= mask
 
         # V is (d_out, C). Multiply this way because we use (out, in) as in nn.Linear
-        out = einops.einsum(component_acts, self.V, "... C, d_out C -> ... d_out")
+        out = einops.einsum(component_acts, self.U, "... C, C d_out -> ... d_out")
 
         if self.bias is not None:
             out += self.bias
