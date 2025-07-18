@@ -120,7 +120,7 @@ def initialize(model_path: ModelPath) -> AppData:
             }
 
         # Map over the streaming dataset and return an iterator
-        return map(tokenize_and_prepare, iter(dataset))
+        return map(tokenize_and_prepare, iter(dataset))  # pyright: ignore[reportArgumentType]
 
     target_layer_names = sorted(ss_model.target_module_paths)
 
