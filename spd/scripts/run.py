@@ -48,19 +48,23 @@ WORKSPACE_TEMPLATES = {
 
 
 def generate_run_name(
-    param_combo: dict[str, Any],
+    params: dict[str, Any],
 ) -> str:
-    def serialize(d: dict[str, Any]) -> str:
-        parts = []
-        for k, v in d.items():
-            if isinstance(v, dict):
-                parts.append(serialize(v))
-            else:
-                parts.append(f"{k}-{v}")
-        return "_".join(parts)
+    """Generate a run name based on the present parameters.
 
-    out = serialize(param_combo)
-    return out
+    Uses only leaf-node parameters.
+    Example:
+        >>> params = {"a": {"b": 1}, "c": 2}
+        >>> generate_run_name(params)
+        "b-1_c-2"
+    """
+    parts = []
+    for k, v in params.items():
+        if isinstance(v, dict):
+            parts.append(generate_run_name(v))
+        else:
+            parts.append(f"{k}-{v}")
+    return "_".join(parts)
 
 
 def generate_run_id() -> str:
