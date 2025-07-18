@@ -22,11 +22,11 @@ copy-templates:
 
 # checks
 .PHONY: type
-type: temp-user-metrics
+type: temp-user-metrics-copy
 	basedpyright
 
 .PHONY: format
-format: temp-user-metrics
+format: temp-user-metrics-copy
 	# Fix all autofixable problems (which sorts imports) then format errors
 	ruff check --fix
 	ruff format
@@ -40,11 +40,11 @@ check-pre-commit:
 
 # tests
 .PHONY: test
-test: temp-user-metrics
+test:
 	pytest tests/
 
 .PHONY: test-all
-test-all: temp-user-metrics
+test-all:
 	pytest tests/ --runslow
 
 COVERAGE_DIR=docs/coverage
@@ -59,6 +59,7 @@ coverage:
 # making sure `spd/user_metrics_and_figs.py.template` is checked
 # by copying it to a temporary directory
 TEMP_DIR = tests/.temp
+USER_METRICS_FNAME = user_metrics_and_figs.py
 
 .PHONY: temp-user-metrics-clean
 temp-user-metrics-clean:
@@ -67,5 +68,6 @@ temp-user-metrics-clean:
 .PHONY: temp-user-metrics-copy
 temp-user-metrics-copy: temp-user-metrics-clean
 	mkdir -p $(TEMP_DIR)
-	cp spd/user_metrics_and_figs.py.example $(TEMP_DIR)/user_metrics_and_figs.py
-	echo "Created temporary $(TEMP_DIR)/user_metrics_and_figs.py from template for testing purposes"
+	cp spd/$(USER_METRICS_FNAME).example $(TEMP_DIR)/$(USER_METRICS_FNAME)
+	echo "# THIS FILE IS A TEMPORARY COPY FOR TESTING PURPOSES, DONT EDIT IT" >> $(TEMP_DIR)/$(USER_METRICS_FNAME)
+	echo "Created temporary $(TEMP_DIR)/$(USER_METRICS_FNAME) from template for testing purposes"
