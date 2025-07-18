@@ -60,6 +60,7 @@ def main(
         assert wandb.run, "wandb.run must be initialized before training"
         if config.wandb_run_name:
             wandb.run.name = config.wandb_run_name
+
     logger.info(f"Output directory: {out_dir}")
 
     # --- Save Config --- #

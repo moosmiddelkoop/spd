@@ -742,10 +742,7 @@ class HiddenLayerPlotter:
         # Ensure axs is iterable even for single subplot
         from matplotlib.axes import Axes as AxesType
 
-        if isinstance(axs, AxesType):
-            axs_list = [axs]
-        else:
-            axs_list = list(axs)
+        axs_list: list[AxesType] = [axs] if isinstance(axs, AxesType) else list(axs)
 
         # Plot heatmaps
         self._plot_heatmaps(fig, axs_list, all_weights, subnets_order, n_subnets)

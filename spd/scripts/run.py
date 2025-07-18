@@ -64,6 +64,26 @@ WORKSPACE_TEMPLATES = {
 }
 
 
+def generate_run_name(
+    params: dict[str, Any],
+) -> str:
+    """Generate a run name based on the present parameters.
+
+    Uses only leaf-node parameters.
+    Example:
+        >>> params = {"a": {"b": 1}, "c": 2}
+        >>> generate_run_name(params)
+        "b-1_c-2"
+    """
+    parts = []
+    for k, v in params.items():
+        if isinstance(v, dict):
+            parts.append(generate_run_name(v))
+        else:
+            parts.append(f"{k}-{v}")
+    return "_".join(parts)
+
+
 def generate_run_id() -> str:
     """Generate a unique run ID based on timestamp."""
     return f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -195,11 +215,16 @@ def create_workspace_view(run_id: str, experiment_name: str, project: str = "spd
 
 
 # report generation still pretty basic, needs more work
-def create_wandb_report(run_id: str, experiments_list: list[str], project: str = "spd") -> str:
+def create_wandb_report(
+    report_title: str,
+    run_id: str,
+    experiments_list: list[str],
+    project: str = "spd",
+) -> str:
     """Create a W&B report for the run."""
     report = wr.Report(
         project=project,
-        title=f"SPD Run Report - {run_id}",
+        title=report_title,
         description=f"Experiments: {', '.join(experiments_list)}",
     )
 
@@ -326,13 +351,10 @@ def generate_commands(
                 # Apply parameter overrides
                 base_config_dict = base_config.model_dump(mode="json")
                 config_dict_with_overrides = apply_nested_updates(base_config_dict, param_combo)
-                # Also override the wandb project
+                # Also override the wandb project and run name
                 config_dict_with_overrides["wandb_project"] = project
-
-                # Generate run name for this experiment and parameter combination
-                run_name = generate_run_name(param_combo)
-                config_dict_with_overrides["wandb_run_name"] = run_name
-
+                wandb_run_name = f"{experiment}-{generate_run_name(param_combo)}"
+                config_dict_with_overrides["wandb_run_name"] = wandb_run_name
                 config_with_overrides = Config(**config_dict_with_overrides)
 
                 # Convert to JSON string
@@ -366,6 +388,7 @@ def main(
     job_suffix: str | None = None,
     cpu: bool = False,
     project: str = "spd",
+    report_title: str | None = None,
 ) -> None:
     """SPD runner for experiments with optional parameter sweeps.
 
@@ -449,7 +472,12 @@ def main(
     # Create report if requested
     report_url = None
     if create_report and len(experiments_list) > 1:
-        report_url = create_wandb_report(run_id, experiments_list, project)
+        report_url = create_wandb_report(
+            report_title=report_title or f"SPD Run Report - {run_id}",
+            run_id=run_id,
+            experiments_list=experiments_list,
+            project=project,
+        )
 
     # Print clean summary after wandb messages
     print("\n" + "=" * 60)
