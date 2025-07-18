@@ -35,6 +35,23 @@ from spd.utils.git_utils import create_git_snapshot
 from spd.utils.slurm_utils import create_slurm_array_script, submit_slurm_array
 from spd.utils.wandb_utils import ensure_project_exists
 
+
+def generate_run_name(
+    param_combo: dict[str, Any],
+) -> str:
+    def serialize(d: dict[str, Any]) -> str:
+        parts = []
+        for k, v in d.items():
+            if isinstance(v, dict):
+                parts.append(serialize(v))
+            else:
+                parts.append(f"{k}-{v}")
+        return "_".join(parts)
+
+    out = serialize(param_combo)
+    return out
+
+
 WORKSPACE_TEMPLATES = {
     "default": "https://wandb.ai/goodfire/spd?nw=css034maye",
     "tms_5-2": "https://wandb.ai/goodfire/spd?nw=css034maye",
@@ -311,6 +328,11 @@ def generate_commands(
                 config_dict_with_overrides = apply_nested_updates(base_config_dict, param_combo)
                 # Also override the wandb project
                 config_dict_with_overrides["wandb_project"] = project
+
+                # Generate run name for this experiment and parameter combination
+                run_name = generate_run_name(param_combo)
+                config_dict_with_overrides["wandb_run_name"] = run_name
+
                 config_with_overrides = Config(**config_dict_with_overrides)
 
                 # Convert to JSON string
@@ -465,7 +487,10 @@ def main(
         print(f"Array Job ID: {array_job_id}")
         print(f"Total tasks: {len(commands)}")
         print(f"Max concurrent tasks: {n_agents}")
-        print(f"View logs in: ~/slurm_logs/slurm-{array_job_id}_*.out")
+        print(
+            f"View logs in: ~/slurm_logs/slurm-{array_job_id}_*.out\n"
+            f"  e.g. tail -f ~/slurm_logs/slurm-{array_job_id}_0.out"
+        )
 
 
 def cli():
