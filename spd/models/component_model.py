@@ -121,14 +121,14 @@ class ComponentModel(nn.Module):
             ...     target_module_paths,
             ...     C=2,
             ... )
-            >>> target_model
+            >>> print(target_model)
             MyModel(
                 (linear): ComponentsOrModule(
                     (original): Linear(in_features=10, out_features=10, bias=True),
                     (components): LinearComponents(C=2, d_in=10, d_out=10, bias=True),
                 )
             )
-            >>> components_or_modules
+            >>> print(components_or_modules)
             {
                 "linear": ComponentsOrModule(
                     (original): Linear(in_features=10, out_features=10, bias=True),
@@ -142,7 +142,8 @@ class ComponentModel(nn.Module):
             C: The number of components to use.
 
         Returns:
-            A reference dictionary mapping module paths to ComponentsOrModule objects.
+            A dictionary mapping module paths to the newly inserted ComponentsOrModule objects
+            within target_model.
         """
         components_or_modules: dict[str, ComponentsOrModule] = {}
 
