@@ -29,7 +29,11 @@ def calc_stochastic_masks(
     stochastic_masks = []
     for _ in range(n_mask_samples):
         stochastic_masks.append(
-            {layer: ci + (1 - ci) * torch.rand_like(ci) for layer, ci in causal_importances.items()}
+            {
+                # layer: ci + (1 - ci) * torch.randint_like(ci, 0, 2).float()
+                layer: ci + (1 - ci) * torch.rand_like(ci)
+                for layer, ci in causal_importances.items()
+            }
         )
     return stochastic_masks
 
@@ -160,7 +164,7 @@ def calc_causal_importances(
         if sigmoid_type == "leaky_hard":
             causal_importances[param_name] = SIGMOID_TYPES["lower_leaky_hard"](gate_output)
             causal_importances_upper_leaky[param_name] = SIGMOID_TYPES["upper_leaky_hard"](
-                gate_output
+                0.1 + gate_output
             )
         else:
             # For other sigmoid types, use the same function for both
