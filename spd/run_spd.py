@@ -263,7 +263,7 @@ def optimize(
         # --- Backward Pass & Optimize --- #
         # Skip gradient step if we are at the last step (last step just for plotting and logging)
         if step != config.steps:
-            total_loss.backward(retain_graph=True)
+            total_loss.backward()
             if config.wandb_project:
                 grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
                 for param in component_params + gate_params:
