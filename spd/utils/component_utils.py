@@ -1,5 +1,4 @@
 from collections.abc import Callable, Mapping
-from functools import partial
 from typing import cast, override
 
 import einops
@@ -59,31 +58,16 @@ def binary_concrete(
 def binary_hard_concrete(
     prob: Tensor,
     temp: float,
+    bounds: tuple[float, float],
     eps: float = 1e-6,
-    bounds: tuple[float, float] = (-0.1, 1.1),
 ) -> Tensor:
     low, high = bounds
     stretched = low + (high - low) * binary_concrete(prob, temp, eps)
-    return stretched.clamp(0, 1).detach() + stretched - stretched.detach()
+    return stretched.clamp(0, 1)
 
 
-def rescaled_binary_hard_concrete_ste(
-    prob: Tensor,
-    temp: float,
-    eps: float = 1e-20,
-    bounds: tuple[float, float] = (-0.1, 1.1),
-) -> Tensor:
-    prob = prob * (1 - 0.5) + 0.5  # rescale to [0.5, 1]
-    prob = torch.clamp(prob, max=1 - 1e-6)
-
-    logit = torch.log(prob / (1 - prob))
-    u = torch.rand_like(logit)
-    logistic = torch.log(u + eps) - torch.log1p(-u + eps)  # logistic noise ~ log(u) - log(1-u)
-    y = torch.sigmoid((logit + logistic) / temp)
-
-    low, high = bounds
-    y = low + (high - low) * y
-    return y.clamp(0, 1)
+def linear_interpolate(a: float, b: float, pc: float) -> float:
+    return a * (1 - pc) + b * pc
 
 
 def get_sample_fn(sample_config: SampleConfig, training_pct: float) -> Callable[[Tensor], Tensor]:
@@ -94,22 +78,23 @@ def get_sample_fn(sample_config: SampleConfig, training_pct: float) -> Callable[
     elif sample_config.sample_type == "concrete":
 
         def sample_fn(x: Tensor) -> Tensor:
-            return binary_concrete(
-                x * 0.5 + 0.5,
-                temp=sample_config.temp * (1 - training_pct)
+            temp = linear_interpolate(
+                sample_config.temp_start, sample_config.temp_end, training_pct
             )
+            reprojected_x = x * 0.5 + 0.5
+            return binary_concrete(reprojected_x, temp)
 
         return sample_fn
     # elif sample_config.sample_type == "concrete_ste":
     #     return partial(rescaled_binary_concrete_ste, temp=sample_config.temp)
-    elif sample_config.sample_type == "hard_concrete":
+    elif sample_config.sample_type == "hard_concrete_anneal":
 
         def sample_fn(x: Tensor) -> Tensor:
-            return binary_hard_concrete(
-                x * 0.5 + 0.5,
-                temp=sample_config.temp * (1 - training_pct),
-                bounds=sample_config.bounds,
+            temp = linear_interpolate(
+                sample_config.temp_start, sample_config.temp_end, training_pct
             )
+            reprojected_x = x * 0.5 + 0.5
+            return binary_hard_concrete(reprojected_x, temp, sample_config.bounds)
 
         return sample_fn
     raise ValueError(f"Invalid sample type: {sample_config.sample_type}")  # pyright: ignore [reportUnreachable]
