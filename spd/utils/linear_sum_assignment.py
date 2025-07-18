@@ -1,3 +1,5 @@
+# ruff: noqa
+
 # SciPy implementation of Hungarian Algorithm
 # Copied from: https://github.com/scipy/scipy/blob/v0.18.1/scipy/optimize/_hungarian.py
 #

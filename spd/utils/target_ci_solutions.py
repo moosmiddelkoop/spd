@@ -109,13 +109,13 @@ def permute_to_dense(
 class TargetCIPattern(ABC):
     """Base class for target patterns."""
 
-    def _verify_inputs(self, ci_array: torch.Tensor) -> None:
+    def _verify_inputs(self, ci_array: Float[Tensor, "batch C"]) -> None:
         """Verify that input is a 2D torch tensor."""
         if ci_array.ndim != 2:
             raise ValueError(f"Expected 2D tensor, got shape {ci_array.shape}")
 
     @abstractmethod
-    def distance_from(self, ci_array: torch.Tensor, tolerance: float = 0.1) -> int:
+    def distance_from(self, ci_array: Float[Tensor, "batch C"], tolerance: float = 0.1) -> int:
         """Discrete distance: count of elements deviating from expected pattern.
 
         Uses a tolerance threshold to avoid sensitivity to small values from
@@ -125,7 +125,9 @@ class TargetCIPattern(ABC):
         pass
 
     @abstractmethod
-    def permute_for_display(self, ci_array: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def permute_for_display(
+        self, ci_array: Float[Tensor, "batch C"]
+    ) -> tuple[Float[Tensor, "batch C"], Int[Tensor, " C"]]:
         """Permute the causal importance array for optimal display of this pattern.
 
         Args:
@@ -149,14 +151,14 @@ class IdentityCIPattern(TargetCIPattern):
         self,
         n_features: int,
         apply_permutation: bool = True,
-        method: Literal["hungarian", "greedy"] = "hungarian",
+        method: Literal["hungarian", "greedy", "auto"] = "auto",
     ):
         self.n_features = n_features
         self.apply_permutation = apply_permutation
         self.method = method
 
     @override
-    def _verify_inputs(self, ci_array: torch.Tensor) -> None:
+    def _verify_inputs(self, ci_array: Float[Tensor, "batch C"]) -> None:
         super()._verify_inputs(ci_array)
         n, c = ci_array.shape
         if n != self.n_features:
@@ -165,16 +167,15 @@ class IdentityCIPattern(TargetCIPattern):
             raise ValueError(f"Expected at least {self.n_features} components, got {c}")
 
     @override
-    def distance_from(self, ci_array: torch.Tensor, tolerance: float = 0.1) -> int:
+    def distance_from(self, ci_array: Float[Tensor, "batch C"], tolerance: float = 0.1) -> int:
         self._verify_inputs(ci_array)
         if self.apply_permutation:
-            if self.method == "hungarian":
+            if self.method == "hungarian" or (self.method == "auto" and min(ci_array.shape) < 500):
                 ci_array = permute_to_identity_hungarian(ci_array)[0]
             else:
                 ci_array = permute_to_identity_greedy(ci_array)[0]
-        n, c = ci_array.shape
-        size = min(n, c)
 
+        size = min(ci_array.shape)
         # Off-diagonal errors + on-diagonal errors
         mask = torch.ones_like(ci_array, dtype=torch.bool)
         mask[:size, :size].fill_diagonal_(False)
@@ -183,41 +184,63 @@ class IdentityCIPattern(TargetCIPattern):
         return int(off_diag_errors + on_diag_errors)
 
     @override
-    def permute_for_display(self, ci_array: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def permute_for_display(
+        self, ci_array: Float[Tensor, "batch C"]
+    ) -> tuple[Float[Tensor, "batch C"], Int[Tensor, " C"]]:
         """Permute to show identity pattern."""
-        if self.method == "hungarian":
+        if self.method == "hungarian" or (self.method == "auto" and min(ci_array.shape) < 500):
             return permute_to_identity_hungarian(ci_array)
         else:
             return permute_to_identity_greedy(ci_array)
 
 
 class DenseCIPattern(TargetCIPattern):
-    """Dense columns pattern: at most K components should be active.
+    """Dense columns pattern: exactly K components should be active.
 
-    Expects sparsity where only K columns (components) have non-zero entries.
-    Counts the number of entries in excess columns that exceed the tolerance.
+    Expects sparsity where exactly K columns (components) have non-zero entries.
+
+    Args:
+        k: Number of columns that should be active
+        min_entries: Minimum number of strong activations (> 1-tolerance)
+                    required for a column to be considered "active"
+
+    Error computation:
+        - For first k columns: count how many are missing required strong activations
+        - For remaining columns: count any activations (should be completely inactive)
+        - Total error = active_column_deficits + inactive_column_violations
     """
 
-    def __init__(self, k: int):
+    def __init__(self, k: int, min_entries: int = 1):
         self.k = k
+        self.min_entries = min_entries
 
     @override
-    def _verify_inputs(self, ci_array: torch.Tensor) -> None:
+    def _verify_inputs(self, ci_array: Float[Tensor, "batch C"]) -> None:
         super()._verify_inputs(ci_array)
         _, c = ci_array.shape
         if c < self.k:
             raise ValueError(f"Expected at least {self.k} columns, got {c}")
 
     @override
-    def distance_from(self, ci_array: torch.Tensor, tolerance: float = 0.1) -> int:
+    def distance_from(self, ci_array: Float[Tensor, "batch C"], tolerance: float = 0.1) -> int:
         self._verify_inputs(ci_array)
-        column_sums = (torch.clamp(ci_array, 0, 1) > tolerance).sum(dim=0)
-        # torch.kthvalue returns the kth smallest, so we need to sort descending first
-        sorted_sums, _ = torch.sort(column_sums, descending=True)
-        return int(sorted_sums[self.k :].sum())
+        sorted_ci = permute_to_dense(ci_array)[0]
+
+        strong_activations_per_column = (sorted_ci >= 1 - tolerance).sum(dim=0)
+        missing_strong_activations = torch.clamp(
+            self.min_entries - strong_activations_per_column, min=0
+        )
+        first_k_column_error = missing_strong_activations[: self.k].sum().item()
+
+        weak_activations_per_column = (sorted_ci > tolerance).sum(dim=0)
+        inactive_column_error = weak_activations_per_column[self.k :].sum().item()
+
+        return int(first_k_column_error + inactive_column_error)
 
     @override
-    def permute_for_display(self, ci_array: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def permute_for_display(
+        self, ci_array: Float[Tensor, "batch C"]
+    ) -> tuple[Float[Tensor, "batch C"], Int[Tensor, " C"]]:
         """Permute to show dense columns pattern."""
         return permute_to_dense(ci_array)
 
@@ -267,7 +290,9 @@ class TargetCISolution:
 
         return result
 
-    def distance_from(self, ci_arrays: dict[str, torch.Tensor], tolerance: float = 0.1) -> int:
+    def distance_from(
+        self, ci_arrays: dict[str, Float[Tensor, "batch C"]], tolerance: float = 0.1
+    ) -> int:
         """Total number of elements that are off across all modules."""
         expanded_targets = self.expand_module_targets(list(ci_arrays.keys()))
 
@@ -277,8 +302,8 @@ class TargetCISolution:
         )
 
     def permute_to_target(
-        self, ci_vals: dict[str, torch.Tensor]
-    ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+        self, ci_vals: dict[str, Float[Tensor, "batch C"]]
+    ) -> tuple[dict[str, Float[Tensor, "batch C"]], dict[str, Int[Tensor, " C"]]]:
         """Permute causal importance matrices to best display their target patterns.
 
         Args:
@@ -308,7 +333,7 @@ class TargetCISolution:
 
 
 def compute_target_metrics(
-    causal_importances: dict[str, torch.Tensor],
+    causal_importances: dict[str, Float[Tensor, "batch C"]],
     target_solution: TargetCISolution,
     tolerance: float = 0.1,
 ) -> dict[str, float]:
