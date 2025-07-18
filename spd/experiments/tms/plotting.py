@@ -7,12 +7,14 @@ sparse decompositions, including vector plots, network diagrams, and weight heat
 from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import zip_longest
+from typing import cast
 
 import matplotlib.collections as mc
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import torch
+import torch.nn as nn
 from jaxtyping import Float
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap
@@ -21,7 +23,7 @@ from torch import Tensor
 
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
-from spd.models.components import LinearComponent
+from spd.models.components import Components
 from spd.settings import REPO_ROOT
 
 
@@ -64,11 +66,10 @@ class TMSAnalyzer:
 
     def extract_subnets(self) -> Float[Tensor, "n_subnets n_features n_hidden"]:
         """Extract subnet weights from the component model."""
-        linear1_component = self.comp_model.components["linear1"]
+        linear1_components = self.comp_model.components["linear1"]
 
-        assert isinstance(linear1_component, LinearComponent)
-        Vs = linear1_component.V.detach().cpu()  # (n_features, C)
-        Us = linear1_component.U.detach().cpu()  # (C, n_hidden)
+        Vs = linear1_components.V.detach().cpu()  # (n_features, C)
+        Us = linear1_components.U.detach().cpu()  # (C, n_hidden)
 
         # Calculate subnets: (n_features, C) x (C, n_hidden) -> (C, n_features, n_hidden)
         subnets = torch.einsum("f C, C h -> C f h", Vs, Us)
@@ -404,10 +405,10 @@ class FullNetworkDiagramPlotter:
         # analyzer = TMSAnalyzer(comp_model, target_model, self.config)
 
         # Get subnet decompositions for linear1
-        linear1_component = comp_model.components["linear1"]
-        assert isinstance(linear1_component, LinearComponent)
-        Vs = linear1_component.V.detach().cpu()
-        Us = linear1_component.U.detach().cpu()
+        linear1_components = comp_model.components["linear1"]
+        assert isinstance(linear1_components, Components)
+        Vs = linear1_components.V.detach().cpu()
+        Us = linear1_components.U.detach().cpu()
         linear1_subnets = torch.einsum("f C, C h -> C f h", Vs, Us)
 
         # Get hidden layer decompositions if they exist
@@ -417,7 +418,7 @@ class FullNetworkDiagramPlotter:
             for i in range(target_model.config.n_hidden_layers):
                 hidden_comp_name = f"hidden_layers-{i}"
                 hidden_comp = comp_model.components[hidden_comp_name]
-                assert isinstance(hidden_comp, LinearComponent)
+                assert isinstance(hidden_comp, Components)
                 hidden_V = hidden_comp.V.detach().cpu()
                 hidden_U = hidden_comp.U.detach().cpu()
                 hidden_weights = torch.einsum("h C, C j -> C h j", hidden_V, hidden_U)
@@ -460,7 +461,7 @@ class FullNetworkDiagramPlotter:
                 "title": "Target model",
                 "linear1_weights": target_model.linear1.weight.T.detach().cpu().numpy(),
                 "hidden_weights": [
-                    target_model.hidden_layers[i].weight.T.detach().cpu().numpy()
+                    cast(nn.Linear, target_model.hidden_layers[i]).weight.T.detach().cpu().numpy()
                     for i in range(target_model.config.n_hidden_layers)
                 ]
                 if target_model.config.n_hidden_layers > 0
@@ -740,10 +741,7 @@ class HiddenLayerPlotter:
         # Ensure axs is iterable even for single subplot
         from matplotlib.axes import Axes as AxesType
 
-        if isinstance(axs, AxesType):
-            axs_list = [axs]
-        else:
-            axs_list = list(axs)
+        axs_list: list[AxesType] = [axs] if isinstance(axs, AxesType) else list(axs)
 
         # Plot heatmaps
         self._plot_heatmaps(fig, axs_list, all_weights, subnets_order, n_subnets)
@@ -758,11 +756,11 @@ class HiddenLayerPlotter:
             raise ValueError("Target model must have hidden layers")
 
         hidden_comp_name = "hidden_layers-0"
-        hidden_component = comp_model.components[hidden_comp_name]
-        assert isinstance(hidden_component, LinearComponent)
+        hidden_components = comp_model.components[hidden_comp_name]
+        assert isinstance(hidden_components, Components)
 
-        hidden_V = hidden_component.V.detach().cpu()
-        hidden_U = hidden_component.U.detach().cpu()
+        hidden_V = hidden_components.V.detach().cpu()
+        hidden_U = hidden_components.U.detach().cpu()
         hidden_weights = torch.einsum("f C, C h -> C f h", hidden_V, hidden_U)
 
         # Sort by norm
@@ -771,7 +769,9 @@ class HiddenLayerPlotter:
         hidden_weights = hidden_weights[order]
 
         # Get target weights
-        target_weights = target_model.hidden_layers[0].weight.T.unsqueeze(0).detach().cpu()
+        target_weights = (
+            cast(nn.Linear, target_model.hidden_layers[0]).weight.T.unsqueeze(0).detach().cpu()
+        )
 
         return hidden_weights, target_weights, order
 
@@ -952,8 +952,6 @@ class TMSPlotter:
 
         print(f"Mean L2 ratio: {l2_ratio.mean():.4f}")
         print(f"Std L2 ratio: {l2_ratio.std():.4f}")
-        if hasattr(self.analyzer.target_model, "b_final"):
-            print(f"Mean bias: {self.analyzer.target_model.b_final.mean():.4f}")
 
 
 def main():
@@ -981,7 +979,7 @@ def main():
 
         # Load models
         model = ComponentModel.from_pretrained(run_id)[0]
-        target_model = model.model
+        target_model = model.target_model
         assert isinstance(target_model, TMSModel)
 
         # Get custom config and name for this run

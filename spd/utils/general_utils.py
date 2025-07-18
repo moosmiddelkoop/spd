@@ -95,10 +95,9 @@ def load_config(config_path_or_obj: Path | str | dict[str, Any] | T, config_mode
     return config_model(**config_dict)
 
 
-BaseModelType = TypeVar("BaseModelType", bound=BaseModel)
-
-
-def replace_pydantic_model(model: BaseModelType, *updates: dict[str, Any]) -> BaseModelType:
+def replace_pydantic_model[BaseModelType: BaseModel](
+    model: BaseModelType, *updates: dict[str, Any]
+) -> BaseModelType:
     """Create a new model with (potentially nested) updates in the form of dictionaries.
 
     Args:
@@ -239,9 +238,9 @@ def load_pretrained(
 
 
 def extract_batch_data(
-    batch_item: dict[str, Any] | tuple[torch.Tensor, ...] | torch.Tensor,
+    batch_item: dict[str, Any] | tuple[Tensor, ...] | Tensor,
     input_key: str = "input_ids",
-) -> torch.Tensor:
+) -> Tensor:
     """Extract input data from various batch formats.
 
     This utility function handles different batch formats commonly used across the codebase:
@@ -256,7 +255,7 @@ def extract_batch_data(
     Returns:
         The input tensor extracted from the batch
     """
-    assert isinstance(batch_item, dict | tuple | torch.Tensor), (
+    assert isinstance(batch_item, dict | tuple | Tensor), (
         f"Unsupported batch format: {type(batch_item)}. Must be a dictionary, tuple, or tensor."
     )
     if isinstance(batch_item, dict):
@@ -312,3 +311,13 @@ def apply_nested_updates(base_dict: dict[str, Any], updates: dict[str, Any]) -> 
             result[key] = value
 
     return result
+
+
+T_runtime_cast = TypeVar("T_runtime_cast")
+
+
+def runtime_cast(type_: type[T_runtime_cast], obj: Any) -> T_runtime_cast:
+    """typecast with a runtime check"""
+    if not isinstance(obj, type_):
+        raise TypeError(f"Expected {type_}, got {type(obj)}")
+    return obj
