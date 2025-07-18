@@ -198,11 +198,16 @@ def create_workspace_view(run_id: str, experiment_name: str, project: str = "spd
 
 
 # report generation still pretty basic, needs more work
-def create_wandb_report(run_id: str, experiments_list: list[str], project: str = "spd") -> str:
+def create_wandb_report(
+    report_title: str,
+    run_id: str,
+    experiments_list: list[str],
+    project: str = "spd",
+) -> str:
     """Create a W&B report for the run."""
     report = wr.Report(
         project=project,
-        title=f"SPD Run Report - {run_id}",
+        title=report_title,
         description=f"Experiments: {', '.join(experiments_list)}",
     )
 
@@ -366,6 +371,7 @@ def main(
     job_suffix: str | None = None,
     cpu: bool = False,
     project: str = "spd",
+    report_title: str | None = None,
 ) -> None:
     """SPD runner for experiments with optional parameter sweeps.
 
@@ -449,7 +455,12 @@ def main(
     # Create report if requested
     report_url = None
     if create_report and len(experiments_list) > 1:
-        report_url = create_wandb_report(run_id, experiments_list, project)
+        report_url = create_wandb_report(
+            report_title=report_title or f"SPD Run Report - {run_id}",
+            run_id=run_id,
+            experiments_list=experiments_list,
+            project=project,
+        )
 
     # Print clean summary after wandb messages
     print("\n" + "=" * 60)
