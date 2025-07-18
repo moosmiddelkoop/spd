@@ -143,6 +143,4 @@ def main(
 
 
 if __name__ == "__main__":
-    # main("spd/experiments/tms/tms_5-2_config.yaml")
-
     fire.Fire(main)

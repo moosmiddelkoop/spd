@@ -54,8 +54,6 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
 
-        # target_module_patterns refer to the actual nn.Linear/nn.Embedding modules in the target model
-        # These target_module_paths refer to the ComponentsOrModule objects in the ComponentModel
         self.target_module_paths = self._get_target_module_paths(
             target_model, target_module_patterns
         )
@@ -69,6 +67,7 @@ class ComponentModel(nn.Module):
         )
         self.gates = self.make_gates(gate_type, C, gate_hidden_dims, self.components_or_modules)
 
+        # Register the gates to ComponentModel so they appear in e.g. state_dict()
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
 
     @property
@@ -78,12 +77,16 @@ class ComponentModel(nn.Module):
     def _get_target_module_paths(
         self, model: nn.Module, target_module_patterns: list[str]
     ) -> list[str]:
+        """Find the target_module_patterns that match real modules in the target model.
+
+        e.g. `["layers.*.mlp_in"]` ->  `["layers.1.mlp_in", "layers.2.mlp_in"]`.
+        """
+
         names_out: list[str] = []
         matched_patterns: set[str] = set()
         for name, _ in model.named_modules():
             for pattern in target_module_patterns:
                 if fnmatch.fnmatch(name, pattern):
-                    print(f"Matched {name} to {pattern}")
                     matched_patterns.add(pattern)
                     names_out.append(name)
 
@@ -102,7 +105,45 @@ class ComponentModel(nn.Module):
         target_module_paths: list[str],
         C: int,
     ) -> dict[str, ComponentsOrModule]:
-        """Create target components for the model."""
+        """Replace nn.Modules with ComponentsOrModule objects based on target_module_paths.
+
+        NOTE: This method both mutates the target_model and returns dictionary of references
+        to the newly inserted ComponentsOrModule objects.
+
+        Example:
+            >>> target_model
+            MyModel(
+                (linear): Linear(in_features=10, out_features=10, bias=True)
+            )
+            >>> target_module_paths = ["linear"]
+            >>> components_or_modules = create_components_or_modules(
+            ...     target_model,
+            ...     target_module_paths,
+            ...     C=2,
+            ... )
+            >>> target_model
+            MyModel(
+                (linear): ComponentsOrModule(
+                    (original): Linear(in_features=10, out_features=10, bias=True),
+                    (components): LinearComponents(C=2, d_in=10, d_out=10, bias=True),
+                )
+            )
+            >>> components_or_modules
+            {
+                "linear": ComponentsOrModule(
+                    (original): Linear(in_features=10, out_features=10, bias=True),
+                    (components): LinearComponents(C=2, d_in=10, d_out=10, bias=True),
+                ),
+            }
+
+        Args:
+            target_model: The target model to replace modules in.
+            target_module_paths: The paths to the modules to replace.
+            C: The number of components to use.
+
+        Returns:
+            A reference dictionary mapping module paths to ComponentsOrModule objects.
+        """
         components_or_modules: dict[str, ComponentsOrModule] = {}
 
         for module_path in target_module_paths:
