@@ -205,6 +205,7 @@ def create_wandb_report(
     report_title: str,
     run_id: str,
     experiments_list: list[str],
+    include_run_comparer: bool,
     project: str = "spd",
 ) -> str:
     """Create a W&B report for the run."""
@@ -281,14 +282,15 @@ def create_wandb_report(
             )
             y += kl_height
 
-        run_comparer_height = 10
-        panels.append(
-            wr.RunComparer(
-                diff_only=True,
-                layout=wr.Layout(x=0, y=y, w=REPORT_TOTAL_WIDTH, h=run_comparer_height),
+        if include_run_comparer:
+            run_comparer_height = 10
+            panels.append(
+                wr.RunComparer(
+                    diff_only=True,
+                    layout=wr.Layout(x=0, y=y, w=REPORT_TOTAL_WIDTH, h=run_comparer_height),
+                )
             )
-        )
-        y += run_comparer_height
+            y += run_comparer_height
 
         panel_grid = wr.PanelGrid(
             runsets=[runset],
@@ -483,6 +485,7 @@ def main(
             report_title=report_title or f"SPD Run Report - {run_id}",
             run_id=run_id,
             experiments_list=experiments_list,
+            include_run_comparer=sweep_params_file is not None,
             project=project,
         )
 
