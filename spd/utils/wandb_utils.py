@@ -11,7 +11,7 @@ from spd.log import logger
 from spd.settings import REPO_ROOT
 from spd.utils.general_utils import replace_pydantic_model
 
-T = TypeVar("T", bound=BaseModel)
+T_config = TypeVar("T_config", bound=BaseModel)
 
 
 def fetch_latest_wandb_checkpoint(run: Run, prefix: str | None = None) -> File:
@@ -81,9 +81,9 @@ def download_wandb_file(run: Run, wandb_run_dir: Path, file_name: str) -> Path:
     return path
 
 
-def init_wandb(
-    config: T, project: str, name: str | None = None, tags: list[str] | None = None
-) -> T:
+def init_wandb[T_config: BaseModel](
+    config: T_config, project: str, name: str | None = None, tags: list[str] | None = None
+) -> T_config:
     """Initialize Weights & Biases and return a config updated with sweep hyperparameters.
 
     Args:

@@ -1,4 +1,4 @@
-from typing import cast, override
+from typing import override
 
 import pytest
 import torch
@@ -6,183 +6,140 @@ from jaxtyping import Float
 from torch import Tensor, nn
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, LinearComponent
+from spd.models.components import ComponentsOrModule, EmbeddingComponents, LinearComponents
 
 
 class SimpleTestModel(nn.Module):
-    """Simple test model with Linear and Embedding layers."""
+    """Simple test model with Linear and Embedding layers for unit‑testing."""
 
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(10, 5, bias=True)
         self.linear2 = nn.Linear(5, 3, bias=False)
         self.embedding = nn.Embedding(100, 8)
-        self.other_layer = nn.ReLU()  # Non-target layer
+        self.other_layer = nn.ReLU()  # Non‑target layer (should never be wrapped)
 
     @override
-    def forward(self, x: Float[Tensor, "..."]):
+    def forward(self, x: Float[Tensor, "... 10"]):  # noqa: D401,E501
         return self.linear2(self.linear1(x))
 
 
-def test_component_replacement_context_manager():
-    """Test the _replaced_modules context manager functionality."""
-    # Setup: Create ComponentModel with test model
-    base_model = SimpleTestModel()
-    target_patterns = ["linear1", "linear2", "embedding"]
-
-    comp_model = ComponentModel(
-        base_model=base_model,
-        target_module_patterns=target_patterns,
+@pytest.fixture(scope="function")
+def component_model() -> ComponentModel:
+    """Return a fresh ``ComponentModel`` for each test."""
+    target_model = SimpleTestModel()
+    return ComponentModel(
+        target_model=target_model,
+        target_module_patterns=["linear1", "linear2", "embedding"],
         C=4,
         gate_type="mlp",
-        gate_hidden_dims=[1],
+        gate_hidden_dims=[4],
         pretrained_model_output_attr=None,
     )
 
-    # Get original modules for comparison
-    orig_linear1 = base_model.linear1
-    orig_linear2 = base_model.linear2
-    orig_embedding = base_model.embedding
 
-    comp_linear1 = cast(LinearComponent, comp_model.components["linear1"])
-    comp_linear2 = cast(LinearComponent, comp_model.components["linear2"])
-    comp_embedding = cast(EmbeddingComponent, comp_model.components["embedding"])
-    components_dict: dict[str, LinearComponent | EmbeddingComponent] = {
-        "linear1": comp_linear1,
-        "linear2": comp_linear2,
-        "embedding": comp_embedding,
+def test_no_replacement_masks_means_original_mode(component_model: ComponentModel):
+    cm = component_model
+
+    # Initial state: nothing should be active
+    assert all(comp.forward_mode is None for comp in cm.components_or_modules.values())
+    assert all(comp.mask is None for comp in cm.components_or_modules.values())
+
+    # No masks supplied: everything should stay in "original" mode
+    with cm._replaced_modules({}):
+        assert all(comp.forward_mode == "original" for comp in cm.components_or_modules.values())
+        assert all(comp.mask is None for comp in cm.components_or_modules.values())
+
+    # After the context the state must be fully reset
+    assert all(comp.forward_mode is None for comp in cm.components_or_modules.values())
+    assert all(comp.mask is None for comp in cm.components_or_modules.values())
+
+
+def test_replaced_modules_sets_and_restores_masks(component_model: ComponentModel):
+    cm = component_model
+    full_masks = {
+        name: torch.randn(1, cm.C, dtype=torch.float32) for name in cm.components_or_modules
     }
+    with cm._replaced_modules(full_masks):
+        # All components should now be in replacement‑mode with the given masks
+        for name, comp in cm.components_or_modules.items():
+            assert comp.forward_mode == "components"
+            assert torch.equal(comp.mask, full_masks[name])  # pyright: ignore [reportArgumentType]
 
-    # Test 1: Basic replacement and restoration without masks
-    assert base_model.linear1 is orig_linear1  # Sanity check
-
-    with comp_model._replaced_modules(components_dict):
-        # During context: modules should be replaced with components
-        assert base_model.linear1 is comp_linear1
-        assert base_model.linear2 is comp_linear2
-        assert base_model.embedding is comp_embedding
-
-        # Masks should still be None (not provided)
-        assert comp_linear1.mask is None
-        assert comp_linear2.mask is None
-        assert comp_embedding.mask is None
-
-    # After context: original modules should be restored
-    assert base_model.linear1 is orig_linear1
-    assert base_model.linear2 is orig_linear2
-    assert base_model.embedding is orig_embedding
-
-    # Test 2: Replacement with masks
-    masks = {
-        "linear1": torch.randn(4),
-        "linear2": torch.randn(4),
-        "embedding": torch.randn(4),
-    }
-
-    with comp_model._replaced_modules(components_dict, masks=masks):
-        # During context: modules replaced and masks set
-        assert base_model.linear1 is comp_linear1
-        assert base_model.linear2 is comp_linear2
-        assert base_model.embedding is comp_embedding
-
-        # Masks should be set
-        assert comp_linear1.mask is not None
-        assert comp_linear2.mask is not None
-        assert comp_embedding.mask is not None
-        assert torch.equal(comp_linear1.mask, masks["linear1"])
-        assert torch.equal(comp_linear2.mask, masks["linear2"])
-        assert torch.equal(comp_embedding.mask, masks["embedding"])
-
-    # After context: modules restored and masks cleared
-    assert base_model.linear1 is orig_linear1
-    assert base_model.linear2 is orig_linear2
-    assert base_model.embedding is orig_embedding
-
-    # Masks should be cleared
-    assert comp_linear1.mask is None
-    assert comp_linear2.mask is None
-    assert comp_embedding.mask is None
-
-    # Test 3: Exception handling preserves original state
-    # Set masks initially to verify they get cleared even on exception
-    components_dict["linear1"].mask = torch.randn(4)
-    components_dict["linear2"].mask = torch.randn(4)
-    components_dict["embedding"].mask = torch.randn(4)
-
-    with (
-        pytest.raises(RuntimeError, match="Test exception"),
-        comp_model._replaced_modules(components_dict, masks=masks),
-    ):
-        # Verify replacement occurred
-        assert base_model.linear1 is comp_linear1
-        # Raise exception to test cleanup
-        raise RuntimeError("Test exception")
-
-    # After exception: original modules should still be restored
-    assert base_model.linear1 is orig_linear1
-    assert base_model.linear2 is orig_linear2
-    assert base_model.embedding is orig_embedding
-
-    # Masks should be cleared even after exception
-    assert comp_linear1.mask is None
-    assert comp_linear2.mask is None
-    assert comp_embedding.mask is None
-
-    # Test 4: Single component replacement
-    single_comp_dict = {"linear1": components_dict["linear1"]}
-    single_mask = {"linear1": torch.randn(4)}
-
-    with comp_model._replaced_modules(single_comp_dict, masks=single_mask):
-        # Only linear1 should be replaced
-        assert base_model.linear1 is comp_linear1
-        assert base_model.linear2 is orig_linear2  # Unchanged
-        assert base_model.embedding is orig_embedding  # Unchanged
-
-        # Only linear1 component should have mask
-        assert comp_linear1.mask is not None
-        assert torch.equal(comp_linear1.mask, single_mask["linear1"])
-        assert comp_linear2.mask is None
-        assert comp_embedding.mask is None
-
-    # After context: everything restored/cleared
-    assert base_model.linear1 is orig_linear1
-    assert comp_linear1.mask is None
+    # Back to pristine state
+    assert all(comp.forward_mode is None for comp in cm.components_or_modules.values())
+    assert all(comp.mask is None for comp in cm.components_or_modules.values())
 
 
-def test_component_replacement_nested_contexts():
-    """Test nested context manager calls."""
-    base_model = SimpleTestModel()
-    comp_model = ComponentModel(
-        base_model=base_model,
-        target_module_patterns=["linear1", "linear2"],
-        C=2,
-        gate_type="mlp",
-        gate_hidden_dims=[1],
-        pretrained_model_output_attr=None,
-    )
+def test_replaced_modules_sets_and_restores_masks_partial(component_model: ComponentModel):
+    cm = component_model
+    # Partial masking
+    partial_masks = {"linear1": torch.ones(1, cm.C)}
+    with cm._replaced_modules(partial_masks):
+        assert cm.components_or_modules["linear1"].forward_mode == "components"
+        assert torch.equal(cm.components_or_modules["linear1"].mask, partial_masks["linear1"])  # pyright: ignore [reportArgumentType]
+        # Others fall back to original‑only mode with no masks
+        assert cm.components_or_modules["linear2"].forward_mode == "original"
+        assert cm.components_or_modules["linear2"].mask is None
+        assert cm.components_or_modules["embedding"].forward_mode == "original"
 
-    orig_linear1 = base_model.linear1
-    orig_linear2 = base_model.linear2
+    # Back to pristine state
+    assert all(comp.forward_mode is None for comp in cm.components_or_modules.values())
+    assert all(comp.mask is None for comp in cm.components_or_modules.values())
 
-    comp_linear1: LinearComponent = cast(LinearComponent, comp_model.components["linear1"])
-    comp_linear2: LinearComponent = cast(LinearComponent, comp_model.components["linear2"])
 
-    outer_dict = {"linear1": comp_linear1}
-    inner_dict = {"linear2": comp_linear2}
+def test_replaced_component_forward_linear_matches_modes():
+    B = 5
+    C = 3
+    input_dim = 6
+    output_dim = 4
 
-    with comp_model._replaced_modules(outer_dict):
-        assert base_model.linear1 is comp_linear1
-        assert base_model.linear2 is orig_linear2
+    original = nn.Linear(input_dim, output_dim, bias=True)
+    components = LinearComponents(d_in=input_dim, d_out=output_dim, C=3, bias=original.bias)
+    components_or_module = ComponentsOrModule(original=original, components=components)
 
-        with comp_model._replaced_modules(inner_dict):
-            # Inner context should also work
-            assert base_model.linear1 is comp_linear1  # Still from outer
-            assert base_model.linear2 is comp_linear2  # From inner
+    x = torch.randn(B, input_dim)
 
-        # After inner context: inner replacement undone
-        assert base_model.linear1 is comp_linear1  # Still from outer
-        assert base_model.linear2 is orig_linear2  # Restored
+    # --- Original path ---
+    components_or_module.forward_mode = "original"
+    components_or_module.mask = None
+    out_orig = components_or_module(x)
+    expected_orig = original(x)
+    torch.testing.assert_close(out_orig, expected_orig, rtol=1e-4, atol=1e-5)
 
-    # After outer context: everything restored
-    assert base_model.linear1 is orig_linear1
-    assert base_model.linear2 is orig_linear2
+    # --- Replacement path (with mask) ---
+    mask = torch.rand(B, C)
+    components_or_module.forward_mode = "components"
+    components_or_module.mask = mask
+    out_rep = components_or_module(x)
+    expected_rep = components(x, mask)
+    torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
+
+
+def test_replaced_component_forward_embedding_matches_modes():
+    vocab_size = 50
+    embedding_dim = 16
+    C = 2
+
+    emb = nn.Embedding(vocab_size, embedding_dim)
+    comp = EmbeddingComponents(vocab_size=vocab_size, embedding_dim=embedding_dim, C=C)
+    rep = ComponentsOrModule(original=emb, components=comp)
+
+    batch_size = 4
+    seq_len = 7
+    idx = torch.randint(0, vocab_size, (batch_size, seq_len))  # (batch pos)
+
+    # --- Original path ---
+    rep.forward_mode = "original"
+    rep.mask = None
+    out_orig = rep(idx)
+    expected_orig = emb(idx)
+    torch.testing.assert_close(out_orig, expected_orig, rtol=1e-4, atol=1e-5)
+
+    # --- Replacement path (with mask) ---
+    rep.forward_mode = "components"
+    mask = torch.rand(batch_size, seq_len, C)  # (batch pos C)
+    rep.mask = mask
+    out_rep = rep(idx)
+    expected_rep = comp.forward(idx, mask)
+    torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
