@@ -239,6 +239,7 @@ def merge_iteration(
 		non_diag_costs_max=[],
 		max_considered_cost=[],
 		selected_pair_cost=[],
+		costs_range=[],
 	)
 
 	# iteration counter
@@ -262,6 +263,7 @@ def merge_iteration(
 		merge_costs['non_diag_costs_min'].append(non_diag_costs_range[0])
 		merge_costs['non_diag_costs_max'].append(non_diag_costs_range[1])
 		merge_costs['max_considered_cost'].append(max_considered_cost)
+		merge_costs['costs_range'].append(non_diag_costs_range[1] - non_diag_costs_range[0])
 
 		# consider pairs with costs below the threshold
 		considered_idxs = torch.where(costs <= max_considered_cost)

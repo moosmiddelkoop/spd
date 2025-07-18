@@ -34,6 +34,7 @@ class SweepResult:
     non_diag_costs_min: list[float]
     non_diag_costs_max: list[float] 
     max_considered_cost: list[float]
+    costs_range: list[float]
     selected_pair_cost: list[float]
     total_iterations: int
     final_k_groups: int
@@ -211,6 +212,7 @@ def run_hyperparameter_sweep(raw_activations: torch.Tensor, sweep_config: SweepC
                 non_diag_costs_min=result_dict['non_diag_costs_min'],
                 non_diag_costs_max=result_dict['non_diag_costs_max'],
                 max_considered_cost=result_dict['max_considered_cost'],
+                costs_range=result_dict['costs_range'],
                 selected_pair_cost=result_dict['selected_pair_cost'],
                 total_iterations=result_dict['total_iterations'],
                 final_k_groups=result_dict['final_k_groups'],
