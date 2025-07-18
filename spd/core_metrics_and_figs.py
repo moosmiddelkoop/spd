@@ -15,7 +15,6 @@ from torch.utils.data import DataLoader
 from spd.configs import Config
 from spd.losses import calc_ce_losses
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
 from spd.plotting import (
     create_embed_ci_sample_table,
     get_single_feature_causal_importances,
@@ -38,8 +37,6 @@ except ImportError:
 
 def create_metrics(
     model: ComponentModel,
-    components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_model_out"],
     batch: Tensor,
@@ -51,10 +48,11 @@ def create_metrics(
     """Create metrics for logging."""
     metrics: dict[str, float | int | wandb.Table] = {"misc/step": step}
 
-    masked_component_out = model.forward_with_components(
-        batch, components=components, masks=causal_importances
+    masked_component_out = model.forward_with_components(batch, masks=causal_importances)
+
+    unmasked_component_out = model.forward_with_components(
+        batch, masks={k: torch.ones_like(v) for k, v in causal_importances.items()}
     )
-    unmasked_component_out = model.forward_with_components(batch, components=components, masks=None)
 
     if config.task_config.task_name == "lm":
         metrics["misc/unmasked_kl_loss_vs_target"] = calc_kl_divergence_lm(
@@ -68,7 +66,6 @@ def create_metrics(
         ce_losses = calc_ce_losses(
             model=model,
             batch=batch,
-            components=components,
             masks=causal_importances,
             unmasked_component_logits=unmasked_component_out,
             masked_component_logits=masked_component_out,
@@ -96,8 +93,6 @@ def create_metrics(
         # Get causal importance arrays using single active features
         ci_arrays, _ = get_single_feature_causal_importances(
             model=model,
-            components=components,
-            gates=gates,
             batch_shape=batch.shape,
             device=device,
             input_magnitude=0.75,
@@ -115,8 +110,6 @@ def create_metrics(
     if compute_user_metrics is not None:
         user_metrics = compute_user_metrics(
             model=model,
-            components=components,
-            gates=gates,
             causal_importances=causal_importances,
             unmasked_component_out=unmasked_component_out,
             masked_component_out=masked_component_out,
@@ -133,8 +126,6 @@ def create_metrics(
 
 def create_figures(
     model: ComponentModel,
-    components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_model_out"],
     batch: Int[Tensor, "... d_model_in"] | Float[Tensor, "... d_model_in"],
@@ -150,8 +141,6 @@ def create_figures(
 
     Args:
         model: The ComponentModel
-        components: Dictionary of components
-        gates: Dictionary of gates
         causal_importances: Current causal importances
         target_out: Output of target model
         batch: Current batch tensor
@@ -182,8 +171,6 @@ def create_figures(
     if config.task_config.task_name in ["tms", "residual_mlp"]:
         figures, all_perm_indices = plot_single_feature_causal_importances(
             model=model,
-            components=components,
-            gates=gates,
             batch_shape=batch.shape,
             device=device,
             input_magnitude=0.75,
@@ -193,14 +180,13 @@ def create_figures(
         fig_dict.update(figures)
 
         fig_dict["UV_matrices"] = plot_UV_matrices(
-            components=components, all_perm_indices=all_perm_indices
+            components=model.components,
+            all_perm_indices=all_perm_indices,
         )
 
     if create_user_figures is not None:
         user_figures = create_user_figures(
             model=model,
-            components=components,
-            gates=gates,
             causal_importances=causal_importances,
             target_out=target_out,
             batch=batch,
