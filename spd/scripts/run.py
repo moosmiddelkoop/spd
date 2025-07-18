@@ -47,6 +47,22 @@ WORKSPACE_TEMPLATES = {
 }
 
 
+def generate_run_name(
+    param_combo: dict[str, Any],
+) -> str:
+    def serialize(d: dict[str, Any]) -> str:
+        parts = []
+        for k, v in d.items():
+            if isinstance(v, dict):
+                parts.append(serialize(v))
+            else:
+                parts.append(f"{k}-{v}")
+        return "_".join(parts)
+
+    out = serialize(param_combo)
+    return out
+
+
 def generate_run_id() -> str:
     """Generate a unique run ID based on timestamp."""
     return f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -309,8 +325,10 @@ def generate_commands(
                 # Apply parameter overrides
                 base_config_dict = base_config.model_dump(mode="json")
                 config_dict_with_overrides = apply_nested_updates(base_config_dict, param_combo)
-                # Also override the wandb project
+                # Also override the wandb project and run name
                 config_dict_with_overrides["wandb_project"] = project
+                wandb_run_name = f"{experiment}-{generate_run_name(param_combo)}"
+                config_dict_with_overrides["wandb_run_name"] = wandb_run_name
                 config_with_overrides = Config(**config_dict_with_overrides)
 
                 # Convert to JSON string
