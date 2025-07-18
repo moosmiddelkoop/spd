@@ -213,7 +213,7 @@ def create_workspace_view(run_id: str, experiment_name: str, project: str = "spd
 
     return workspace.url
 
-
+REPORT_TOTAL_WIDTH = 24
 # report generation still pretty basic, needs more work
 def create_wandb_report(
     report_title: str,
@@ -226,12 +226,11 @@ def create_wandb_report(
         project=project,
         title=report_title,
         description=f"Experiments: {', '.join(experiments_list)}",
+        width='fluid',
     )
 
     # Create separate panel grids for each experiment
     for experiment in experiments_list:
-        # Get experiment type to determine which plots to show
-        exp_type = EXPERIMENT_REGISTRY[experiment].experiment_type
 
         # Use run_id and experiment name tags for filtering
         combined_filter = f'(Tags("tags") in ["{run_id}"]) and (Tags("tags") in ["{experiment}"])'
@@ -242,47 +241,53 @@ def create_wandb_report(
             filters=combined_filter,
         )
 
+        CI_HEIGHT = 12
+        
+
         # Build panels list
-        panels: list[wr.interface.PanelTypes] = [
-            wr.MediaBrowser(
-                media_keys=["causal_importances_upper_leaky"],
-                layout=wr.Layout(x=-6, y=0, w=24, h=12),
-            ),
-            wr.LinePlot(
-                x="Step",
-                y=["loss/stochastic_recon_layerwise", "loss/stochastic_recon"],
-                log_y=True,
-                layout=wr.Layout(x=-6, y=12, w=10, h=6),
-            ),
-            wr.LinePlot(
-                x="Step",
-                y=["loss/faithfulness"],
-                log_y=True,
-                layout=wr.Layout(x=4, y=12, w=10, h=6),
-            ),
-            wr.LinePlot(
-                x="Step",
-                y=["loss/importance_minimality"],
-                layout=wr.Layout(x=14, y=12, w=10, h=6),
-            ),
+        panels: list[wr.interface.PanelTypes] = []
+        y = 0 
+
+        panels.append(wr.MediaBrowser(
+            media_keys=["causal_importances_upper_leaky"],
+            layout=wr.Layout(x=0, y=0, w=REPORT_TOTAL_WIDTH, h=CI_HEIGHT),
+        ))
+        y += CI_HEIGHT
+
+        height = 6
+        loss_plots = [
+            ["loss/stochastic_recon_layerwise", "loss/stochastic_recon"],
+            ["loss/faithfulness"],
+            ["loss/importance_minimality"],
         ]
+        for i, y_keys in enumerate(loss_plots):
+            width = REPORT_TOTAL_WIDTH // len(loss_plots)
+            x_offset = i * width
+            panels.append(wr.LinePlot(
+                x="Step",
+                y=y_keys,
+                log_y=True,
+                layout=wr.Layout(x=x_offset, y=y, w=width, h=height),
+            ))
+        y += height
 
         # Only add KL loss plots for language model experiments
-        if exp_type == "lm":
-            panels.extend(
-                [
-                    wr.LinePlot(
-                        x="Step",
-                        y=["misc/masked_kl_loss_vs_target"],
-                        layout=wr.Layout(x=-6, y=18, w=10, h=6),
-                    ),
-                    wr.LinePlot(
-                        x="Step",
-                        y=["misc/unmasked_kl_loss_vs_target"],
-                        layout=wr.Layout(x=4, y=18, w=10, h=6),
-                    ),
-                ]
-            )
+        if EXPERIMENT_REGISTRY[experiment].experiment_type == "lm":
+            height = 6
+            width = REPORT_TOTAL_WIDTH // 2
+            x_offset = 0
+            panels.append(wr.LinePlot(
+                x="Step",
+                y=["misc/masked_kl_loss_vs_target"],
+                layout=wr.Layout(x=x_offset, y=y, w=width, h=height),
+            ))
+            x_offset += width
+            panels.append(wr.LinePlot(
+                x="Step",
+                y=["misc/unmasked_kl_loss_vs_target"],
+                layout=wr.Layout(x=x_offset, y=y, w=width, h=height),
+            ))
+            y += height
 
         panel_grid = wr.PanelGrid(
             runsets=[runset],
@@ -521,10 +526,10 @@ def main(
         )
 
 
-def cli():
-    """Command line interface."""
-    fire.Fire(main)
+# def cli():
+#     """Command line interface."""
+#     fire.Fire(main)
 
 
-if __name__ == "__main__":
-    cli()
+# if __name__ == "__main__":
+#     cli()
