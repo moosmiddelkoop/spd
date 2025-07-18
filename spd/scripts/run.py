@@ -35,7 +35,7 @@ from spd.log import LogFormat, logger
 from spd.registry import EXPERIMENT_REGISTRY
 from spd.settings import REPO_ROOT
 from spd.utils.general_utils import apply_nested_updates, load_config
-from spd.utils.git_utils import create_git_snapshot
+from spd.utils.git_utils import create_git_snapshot, repo_current_branch
 from spd.utils.slurm_utils import create_slurm_array_script, submit_slurm_array
 from spd.utils.wandb_utils import ensure_project_exists
 
@@ -385,7 +385,7 @@ def main(
     project: str = "spd",
     local: bool = False,
     log_format: LogFormat = "default",
-    override_branch: str | None = None,
+    create_snapshot: bool = True,
     use_wandb: bool = True,
 ) -> None:
     """SPD runner for experiments with optional parameter sweeps.
@@ -404,9 +404,9 @@ def main(
         local: Run locally instead of submitting to SLURM (default: False)
         log_format: Logging format for the script output.
             Options are "terse" (no timestamps/level) or "default".
-        override_branch: use the given branch instead of creating a snapshot for the current branch.
-            only relevant if running on SLURM (`local` is False). If None, creates a snapshot branch.
-            (default: None)
+        create_snapshot: Create a git snapshot branch for the run.
+            if False, uses the current branch, as determined by `repo_current_branch`
+            (default: True).
         use_wandb: Use W&B for logging and tracking (default: True).
             If set to false, `create_report` must also be false.
 
@@ -515,12 +515,12 @@ def main(
         run_commands_locally(commands)
     else:
         snapshot_branch: str
-        if override_branch is None:
+        if create_snapshot:
             snapshot_branch = create_git_snapshot(branch_name_prefix="run")
-            logger.info(f"Using git snapshot: {snapshot_branch}")
+            logger.info(f"Created git snapshot branch: {snapshot_branch}")
         else:
-            snapshot_branch = override_branch
-            logger.info(f"Using manually specified branch: {snapshot_branch}")
+            snapshot_branch = repo_current_branch()
+            logger.info(f"Using current branch: {snapshot_branch}")
 
         # Submit to SLURM
         with tempfile.TemporaryDirectory() as temp_dir:
