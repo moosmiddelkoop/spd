@@ -29,7 +29,7 @@ class ParallelLinear(nn.Module):
 class GateMLP(nn.Module):
     """A gate with a hidden layer that maps a scalar input to a scalar output."""
 
-    def __init__(self, C: int, hidden_dims: list[int]):
+    def __init__(self, C: int, hidden_dims: list[int], bias: float = 0.0):
         super().__init__()
 
         self.hidden_dims = hidden_dims
@@ -41,7 +41,7 @@ class GateMLP(nn.Module):
             self.layers.append(ParallelLinear(C, input_dim, output_dim, nonlinearity="relu"))
             self.layers.append(nn.GELU())
         self.layers.append(ParallelLinear(C, hidden_dims[-1], 1, nonlinearity="linear"))
-        cast(ParallelLinear, self.layers[-1]).b.data.fill_(-1.5)
+        cast(list[ParallelLinear], self.layers)[-1].b.data.fill_(bias)
 
     @override
     def forward(self, x: Float[Tensor, "... C"]) -> Float[Tensor, "... C"]:
@@ -54,7 +54,7 @@ class GateMLP(nn.Module):
 class VectorGateMLP(nn.Module):
     """An MLP based gate that maps a vector valued input to a single output."""
 
-    def __init__(self, C: int, input_dim: int, hidden_dims: list[int]):
+    def __init__(self, C: int, input_dim: int, hidden_dims: list[int], bias: float = 0.0):
         super().__init__()
 
         self.hidden_dims = hidden_dims
@@ -67,6 +67,7 @@ class VectorGateMLP(nn.Module):
             self.layers.append(nn.GELU())
 
         self.layers.append(ParallelLinear(C, hidden_dims[-1], 1, nonlinearity="linear"))
+        cast(list[ParallelLinear], self.layers)[-1].b.data.fill_(bias)
 
     @override
     def forward(self, x: Float[Tensor, "... d_in"]) -> Float[Tensor, "... C"]:

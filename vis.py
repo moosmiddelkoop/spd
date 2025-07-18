@@ -61,14 +61,16 @@ plot_idx = 0
 # y = x + (1 - x) * np.random.rand(N)
 # plot_heatmap(x, y, "Uniform-min", axes[plot_idx])
 # plot_idx += 1
-x = np.random.rand(N)#  + 0.5
+x = np.random.rand(N)  #  + 0.5
 # ci = np.clip(x, 0, 1)
-gate = np.clip(x + np.random.randn(N) / 10, 0, 1) # add stochastic noise so there's signal even in the saturated regions
+gate = np.clip(
+    x + np.random.randn(N) / 10, 0, 1
+)  # add stochastic noise so there's signal even in the saturated regions
 plot_heatmap(x, gate, "ReLU(logit) + 0.5", axes[plot_idx])
 plot_idx += 1
 
 # -------- 2. Concrete distributions -------------------------------
-temperatures = [1, 2/3, 0.3]
+temperatures = [1, 2 / 3, 0.3]
 for tau in temperatures:
     x = np.random.rand(N)  # original input on [0,1]
     p_rescaled = x * 0.5 + 0.5  # → [0.5,1]
