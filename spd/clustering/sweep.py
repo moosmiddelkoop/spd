@@ -197,7 +197,7 @@ def run_hyperparameter_sweep(raw_activations: torch.Tensor, sweep_config: SweepC
                 activation_mask=coact_bool,
                 check_threshold=check_thresh,
                 alpha=alpha,
-                rank_cost=rank_func,
+                rank_cost_fn=rank_func,
                 iters=sweep_config.iters,
                 plot_every=None,
                 plot_final=False,

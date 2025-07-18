@@ -5,7 +5,8 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import torch
-from jaxtyping import Bool, Float
+from jaxtyping import Bool, Float, Int
+from muutils.dbg import dbg_tensor
 from torch import Tensor
 
 from spd.clustering.merge_matrix import GroupMerge
@@ -127,7 +128,7 @@ def compute_merge_costs(
 
 
 
-def recompute_coacts(
+def recompute_coacts_merge_pair(
 	coact: Float[Tensor, "k_groups k_groups"],
 	merges: GroupMerge,
 	merge_pair: tuple[int, int],
@@ -147,7 +148,7 @@ def recompute_coacts(
 	# coactivations with the new merged group
 	# dbg_tensor(activation_mask_grp)
 	# dbg_tensor(activation_mask)
-	coact_with_merge: Bool[Tensor, " k_groups"] = (activation_mask_grp.float() @ activation_mask.float()).bool()
+	coact_with_merge: Float[Tensor, " k_groups"] = (activation_mask_grp.float() @ activation_mask.float())
 	new_group_idx: int = min(merge_pair)
 	remove_idx: int = max(merge_pair)
 	new_group_self_coact: float = activation_mask_grp.float().sum().item()
@@ -192,15 +193,95 @@ def recompute_coacts(
 		activation_mask_new,
 	)
 
+
+def recompute_coacts_pop_group(
+	coact: Float[Tensor, "k_groups k_groups"],
+	merges: GroupMerge,
+	group_idx: int,
+	activation_mask: Bool[Tensor, "samples k_groups"],
+	activation_mask_orig: Bool[Tensor, "samples n_components"],
+) -> tuple[
+		GroupMerge,
+		Float[Tensor, "k_groups_new k_groups_new"],
+		Bool[Tensor, "samples k_groups_new"],
+	]:
+
+	dbg_tensor(coact)
+	dbg_tensor(activation_mask)
+	dbg_tensor(activation_mask_orig)
+
+	k_groups: int = coact.shape[0]
+	n_components: int = activation_mask_orig.shape[1]
+	k_groups_new: int = k_groups - 1 + int(merges.components_per_group[group_idx].item())
+	assert coact.shape[1] == k_groups, "Coactivation matrix must be square"
+	assert activation_mask.shape[1] == k_groups, "Activation mask must match coactivation matrix shape"
+
+	# find the components in the group to be popped
+	activation_mask_grp: Bool[Tensor, " samples"] = activation_mask_orig[:, merges.components_in_group_mask(group_idx)]
+	components_in_group: list[int] = merges.components_in_group(group_idx)
+	assert len(components_in_group) > 1, "Group to pop must have > 1 components"
+	print(components_in_group)
+
+	# activations of the components we are popping out
+	activation_mask_pop: Bool[Tensor, " samples"] = activation_mask_orig[:, components_in_group]
+	activation_mask_pop_float: Float[Tensor, " samples"] = activation_mask_pop.float()
+	dbg_tensor(activation_mask_pop)
+	plt.matshow(activation_mask_pop_float.cpu().numpy().T, aspect='auto')
+
+	# coactivations with the new group
+	coact_new_cross: Float[Tensor, " k_groups"] = activation_mask_pop_float.T @ activation_mask.float()
+	coact_new_self: Float[Tensor, " k_groups"] = activation_mask_pop_float.T @ activation_mask_pop_float
+	dbg_tensor(coact_new_cross)
+	dbg_tensor(coact_new_self)
+
+	# assemble the merge pair
+	merge_new: GroupMerge = merges.merge_groups(
+		merge_pair[0],
+		merge_pair[1],
+	)
+	old_to_new_idx: dict[int|None, int| None] = merge_new.old_to_new_idx # type: ignore
+	assert old_to_new_idx[None] == new_group_idx, "New group index should be the minimum of the merge pair"
+	assert old_to_new_idx[new_group_idx] is None
+	assert old_to_new_idx[remove_idx] is None
+	# TODO: check that the rest are in order? probably not necessary
+
+	# reindex coactivations
+	coact_temp: Float[Tensor, "k_groups k_groups"] = coact.clone()
+	# add in the similarities with the new group
+	coact_temp[new_group_idx, :] = coact_with_merge
+	coact_temp[:, new_group_idx] = coact_with_merge
+	# delete the old group
+	mask: Bool[Tensor, " k_groups"] = torch.ones(coact_temp.shape[0], dtype=torch.bool, device=coact_temp.device)
+	mask[remove_idx] = False
+	coact_new: Float[Tensor, "k_groups-1 k_groups-1"] = coact_temp[mask, :][:, mask]
+	# add in the self-coactivation of the new group
+	coact_new[new_group_idx, new_group_idx] = new_group_self_coact
+	# dbg_tensor(coact_new)
+
+	# reindex mask
+	activation_mask_new: Float[Tensor, "samples ..."] = activation_mask.clone()
+	# add in the new group
+	activation_mask_new[:, new_group_idx] = activation_mask_grp
+	# remove the old group
+	activation_mask_new = activation_mask_new[:, mask]
+	
+	# dbg_tensor(activation_mask_new)
+
+	return (
+		merge_new,
+		coact_new,
+		activation_mask_new,
+	)
+
 def merge_iteration(
-	coact: Bool[Tensor, "c_components c_components"],
+	coact: Float[Tensor, "c_components c_components"],
 	activation_mask: Bool[Tensor, "samples c_components"],
 	initial_merge: GroupMerge|None = None,
     alpha: float = 1.0,
 	iters: int = 100,
 	check_threshold: float = 0.05,
 	pop_component_prob: float = 0.0,
-	rank_cost: Callable[[float], float] = lambda _: 1.0,
+	rank_cost_fn: Callable[[float], float] = lambda _: 1.0,
 	stopping_condition: Callable[[dict[str, Any]], bool] | None = None,
 	plot_every: int = 20,
 	plot_every_min: int = 0,
@@ -217,10 +298,11 @@ def merge_iteration(
 	assert coact.shape[1] == c_components, "Coactivation matrix must be square"
 	assert activation_mask.shape[1] == c_components, "Activation mask must match coactivation matrix shape"
 
-
+	# for speed, we precompute whether to pop components and which components to pop
 	do_pop: bool = pop_component_prob > 0.0
 	if do_pop:
 		iter_pop: Bool[Tensor, " iters"] = torch.rand(iters, device=coact.device) < pop_component_prob
+		pop_component_idx: Int[Tensor, " iters"] = torch.randint(0, c_components, (iters,), device=coact.device)
 
 	# start with an identity merge
 	current_merge: GroupMerge
@@ -245,14 +327,33 @@ def merge_iteration(
 	# iteration counter
 	i: int = 0
 	while i < iters:
-		# TODO: re-add popping components
+		# pop components
+		if do_pop and iter_pop[i]:
+			# we split up the group which our chosen component belongs to
+			pop_component_idx_i: int = int(pop_component_idx[i].item())
+			pop_component_group: int = int(current_merge.group_idxs[pop_component_idx_i].item())
+
+			# but, if the component is the only one in its group, there is nothing to do
+			components_in_pop_grp: int = int(current_merge.components_per_group[pop_component_group])
+			if components_in_pop_grp > 1:
+				pass
+				# print(f"need to pop {pop_component_idx_i=} {pop_component_group=}, {components_in_pop_grp=}", flush=True)
+				# print(f"{current_merge.k_groups = }, groups not being popped: {current_merge.k_groups - components_in_pop_grp}")
+				# current_merge, current_coact, current_act_mask = recompute_coacts_pop_group(
+				# 	coact=current_coact,
+				# 	merges=current_merge,
+				# 	group_idx=pop_component_group,
+				# 	activation_mask=current_act_mask,
+				# 	activation_mask_orig=activation_mask,
+				# )
+
 
 		# compute costs
 		costs: Float[Tensor, "c_components c_components"] = compute_merge_costs(
 			coact=current_coact,
 			merges=current_merge,
 			alpha=alpha,
-			rank_cost=rank_cost,
+			rank_cost=rank_cost_fn,
 		)
 
 		# find the maximum cost among non-diagonal elements we should consider
@@ -279,7 +380,7 @@ def merge_iteration(
 		merge_costs['selected_pair_cost'].append(pair_cost)
 
 		# merge the pair
-		current_merge, current_coact, current_act_mask = recompute_coacts(
+		current_merge, current_coact, current_act_mask = recompute_coacts_merge_pair(
 			coact=current_coact,
 			merges=current_merge,
 			merge_pair=min_pair,

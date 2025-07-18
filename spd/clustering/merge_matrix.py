@@ -26,6 +26,16 @@ class GroupMerge:
     @property
     def components_per_group(self) -> Int[Tensor, " k_groups"]:
         return torch.bincount(self.group_idxs, minlength=self.k_groups)
+    
+    def components_in_group_mask(self, group_idx: int) -> Bool[Tensor, "n_components"]:
+        """Returns a boolean mask for components in the specified group."""
+        if group_idx < 0 or group_idx >= self.k_groups:
+            raise ValueError("group index out of range")
+        return self.group_idxs == group_idx
+    
+    def components_in_group(self, group_idx: int) -> list[int]:
+        """Returns a list of component indices in the specified group."""
+        return (self.group_idxs == group_idx).nonzero(as_tuple=False).squeeze().tolist()
 
     def validate(self, *, require_nonempty: bool = True) -> None:
         v_min: int = self.group_idxs.min().item()
