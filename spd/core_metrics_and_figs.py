@@ -88,26 +88,25 @@ def create_metrics(
         metrics[f"{layer_name}/ci_l0"] = layer_ci_l_zero
 
     # Canonical solution metrics
-    if evals_id is not None and config.task_config.task_name in ["tms", "residual_mlp"]:
-        if has_ci_solution(evals_id):
-            # Get causal importance arrays using single active features
-            ci_arrays, _ = get_single_feature_causal_importances(
-                model=model,
-                components=components,
-                gates=gates,
-                batch_shape=batch.shape,
-                device=device,
-                input_magnitude=0.75,
-                sigmoid_type=config.sigmoid_type,
-            )
+    if evals_id is not None and config.task_config.task_name in ["tms", "residual_mlp"] and has_ci_solution(evals_id):
+        # Get causal importance arrays using single active features
+        ci_arrays, _ = get_single_feature_causal_importances(
+            model=model,
+            components=components,
+            gates=gates,
+            batch_shape=batch.shape,
+            device=device,
+            input_magnitude=0.75,
+            sigmoid_type=config.sigmoid_type,
+        )
 
-            target_solution = EXPERIMENT_REGISTRY[evals_id].target_solution
-            assert target_solution is not None  # Guaranteed by has_ci_solution check
-            target_metrics = compute_target_metrics(
-                causal_importances=ci_arrays,
-                target_solution=target_solution,
-            )
-            metrics.update(target_metrics)
+        target_solution = EXPERIMENT_REGISTRY[evals_id].target_solution
+        assert target_solution is not None  # Guaranteed by has_ci_solution check
+        target_metrics = compute_target_metrics(
+            causal_importances=ci_arrays,
+            target_solution=target_solution,
+        )
+        metrics.update(target_metrics)
 
     if compute_user_metrics is not None:
         user_metrics = compute_user_metrics(

@@ -53,9 +53,6 @@ ignore = [
     "F722", # Incompatible with jaxtyping
     "E731" # I think lambda functions are fine in several places
 ]
-exclude = [
-    "spd/utils/linear_sum_assignment.py",  # Vendored code from scipy
-]
 
 [tool.ruff.lint]
 select = [
@@ -82,7 +79,7 @@ known-third-party = ["wandb"]
 
 [tool.pyright]
 include = ["spd", "tests"]
-exclude = ["**/wandb/**", "spd/utils/linear_sum_assignment.py"]
+exclude = ["**/wandb/**"]
 
 strictListInference = true
 strictDictionaryInference = true
