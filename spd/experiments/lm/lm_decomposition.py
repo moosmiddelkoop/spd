@@ -37,6 +37,7 @@ def main(
 
     # Get output directory (automatically uses wandb run ID if available)
     out_dir = get_output_dir()
+    logger.info(f"Output directory: {out_dir}")
 
     set_seed(config.seed)
     logger.info(config)
@@ -60,8 +61,6 @@ def main(
         assert wandb.run, "wandb.run must be initialized before training"
         if config.wandb_run_name:
             wandb.run.name = config.wandb_run_name
-
-    logger.info(f"Output directory: {out_dir}")
 
     # --- Save Config --- #
     save_file(config.model_dump(mode="json"), out_dir / "final_config.yaml")
