@@ -213,7 +213,10 @@ def create_workspace_view(run_id: str, experiment_name: str, project: str = "spd
 
     return workspace.url
 
+
 REPORT_TOTAL_WIDTH = 24
+
+
 # report generation still pretty basic, needs more work
 def create_wandb_report(
     report_title: str,
@@ -226,12 +229,11 @@ def create_wandb_report(
         project=project,
         title=report_title,
         description=f"Experiments: {', '.join(experiments_list)}",
-        width='fluid',
+        width="fluid",
     )
 
     # Create separate panel grids for each experiment
     for experiment in experiments_list:
-
         # Use run_id and experiment name tags for filtering
         combined_filter = f'(Tags("tags") in ["{run_id}"]) and (Tags("tags") in ["{experiment}"])'
 
@@ -241,53 +243,69 @@ def create_wandb_report(
             filters=combined_filter,
         )
 
-        CI_HEIGHT = 12
-        
-
         # Build panels list
         panels: list[wr.interface.PanelTypes] = []
-        y = 0 
+        y = 0
 
-        panels.append(wr.MediaBrowser(
-            media_keys=["causal_importances_upper_leaky"],
-            layout=wr.Layout(x=0, y=0, w=REPORT_TOTAL_WIDTH, h=CI_HEIGHT),
-        ))
-        y += CI_HEIGHT
+        ci_height = 12
+        panels.append(
+            wr.MediaBrowser(
+                media_keys=["causal_importances_upper_leaky"],
+                layout=wr.Layout(x=0, y=0, w=REPORT_TOTAL_WIDTH, h=ci_height),
+                num_columns=6,
+            )
+        )
+        y += ci_height
 
-        height = 6
+        loss_plots_height = 6
         loss_plots = [
             ["loss/stochastic_recon_layerwise", "loss/stochastic_recon"],
             ["loss/faithfulness"],
             ["loss/importance_minimality"],
         ]
         for i, y_keys in enumerate(loss_plots):
-            width = REPORT_TOTAL_WIDTH // len(loss_plots)
-            x_offset = i * width
-            panels.append(wr.LinePlot(
-                x="Step",
-                y=y_keys,
-                log_y=True,
-                layout=wr.Layout(x=x_offset, y=y, w=width, h=height),
-            ))
-        y += height
+            loss_plots_width = REPORT_TOTAL_WIDTH // len(loss_plots)
+            x_offset = i * loss_plots_width
+            panels.append(
+                wr.LinePlot(
+                    x="Step",
+                    y=y_keys,  # pyright: ignore[reportArgumentType]
+                    log_y=True,
+                    layout=wr.Layout(x=x_offset, y=y, w=loss_plots_width, h=loss_plots_height),
+                )
+            )
+        y += loss_plots_height
 
         # Only add KL loss plots for language model experiments
         if EXPERIMENT_REGISTRY[experiment].experiment_type == "lm":
-            height = 6
-            width = REPORT_TOTAL_WIDTH // 2
+            kl_height = 6
+            kl_width = REPORT_TOTAL_WIDTH // 2
             x_offset = 0
-            panels.append(wr.LinePlot(
-                x="Step",
-                y=["misc/masked_kl_loss_vs_target"],
-                layout=wr.Layout(x=x_offset, y=y, w=width, h=height),
-            ))
-            x_offset += width
-            panels.append(wr.LinePlot(
-                x="Step",
-                y=["misc/unmasked_kl_loss_vs_target"],
-                layout=wr.Layout(x=x_offset, y=y, w=width, h=height),
-            ))
-            y += height
+            panels.append(
+                wr.LinePlot(
+                    x="Step",
+                    y=["misc/masked_kl_loss_vs_target"],
+                    layout=wr.Layout(x=x_offset, y=y, w=kl_width, h=kl_height),
+                )
+            )
+            x_offset += kl_width
+            panels.append(
+                wr.LinePlot(
+                    x="Step",
+                    y=["misc/unmasked_kl_loss_vs_target"],
+                    layout=wr.Layout(x=x_offset, y=y, w=kl_width, h=kl_height),
+                )
+            )
+            y += kl_height
+
+        run_comparer_height = 10
+        panels.append(
+            wr.RunComparer(
+                diff_only=True,
+                layout=wr.Layout(x=0, y=y, w=REPORT_TOTAL_WIDTH, h=run_comparer_height),
+            )
+        )
+        y += run_comparer_height
 
         panel_grid = wr.PanelGrid(
             runsets=[runset],
@@ -526,10 +544,10 @@ def main(
         )
 
 
-# def cli():
-#     """Command line interface."""
-#     fire.Fire(main)
+def cli():
+    """Command line interface."""
+    fire.Fire(main)
 
 
-# if __name__ == "__main__":
-#     cli()
+if __name__ == "__main__":
+    cli()
