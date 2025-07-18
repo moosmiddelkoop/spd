@@ -181,6 +181,10 @@ class Config(BaseModel):
     lr: PositiveFloat = Field(..., description="Learning rate for optimiser")
     steps: PositiveInt = Field(..., description="Total number of optimisation steps")
     batch_size: PositiveInt = Field(..., description="Mini-batch size used for optimisation")
+    gradient_accumulation_steps: PositiveInt = Field(
+        default=1,
+        description="Number of steps to accumulate gradients over",
+    )
     lr_schedule: Literal["linear", "constant", "cosine", "exponential"] = Field(
         default="constant",
         description="Type of learning-rate schedule to apply",

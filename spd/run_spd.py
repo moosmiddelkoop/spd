@@ -1,6 +1,7 @@
 """Run SPD on a model."""
 
 import json
+from collections import defaultdict
 from pathlib import Path
 from typing import cast
 
@@ -136,48 +137,58 @@ def optimize(
 
         log_data: dict[str, int | float | wandb.Table] = {"misc/step": step, "misc/lr": step_lr}
 
-        optimizer.zero_grad()
+        loss_terms = defaultdict[str, list[float]](list)
+        for _ in range(config.gradient_accumulation_steps):
+            optimizer.zero_grad()
 
-        try:
-            batch_item = next(data_iter)
-            batch = extract_batch_data(batch_item)
-        except StopIteration:
-            logger.warning("Dataloader exhausted, resetting iterator.")
-            data_iter = iter(train_loader)
-            batch_item = next(data_iter)
-            batch = extract_batch_data(batch_item)
-        batch = batch.to(device)
+            try:
+                batch_item = next(data_iter)
+                batch = extract_batch_data(batch_item)
+            except StopIteration:
+                logger.warning("Dataloader exhausted, resetting iterator.")
+                data_iter = iter(train_loader)
+                batch_item = next(data_iter)
+                batch = extract_batch_data(batch_item)
+            batch = batch.to(device)
 
-        target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-            batch, module_names=list(components.keys())
-        )
-        Vs = {module_name: components[module_name].V for module_name in components}
+            target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+                batch, module_names=list(components.keys())
+            )
+            Vs = {module_name: components[module_name].V for module_name in components}
 
-        causal_importances, causal_importances_upper_leaky = calc_causal_importances(
-            pre_weight_acts=pre_weight_acts,
-            Vs=Vs,
-            gates=gates,
-            detach_inputs=False,
-            sigmoid_type=config.sigmoid_type,
-        )
+            causal_importances, causal_importances_upper_leaky = calc_causal_importances(
+                pre_weight_acts=pre_weight_acts,
+                Vs=Vs,
+                gates=gates,
+                detach_inputs=False,
+                sigmoid_type=config.sigmoid_type,
+            )
 
-        for layer_name, ci in causal_importances.items():
-            alive_components[layer_name] = alive_components[layer_name] | (ci > 0.1).any(dim=(0, 1))
+            for layer_name, ci in causal_importances.items():
+                alive_components[layer_name] = alive_components[layer_name] | (ci > 0.1).any(
+                    dim=(0, 1)
+                )
 
-        total_loss, loss_terms = calculate_losses(
-            model=model,
-            batch=batch,
-            config=config,
-            components=components,
-            causal_importances=causal_importances,
-            causal_importances_upper_leaky=causal_importances_upper_leaky,
-            target_out=target_out,
-            device=device,
-            n_params=n_params,
-        )
+            micro_batch_loss, micro_batch_loss_terms = calculate_losses(
+                model=model,
+                batch=batch,
+                config=config,
+                components=components,
+                causal_importances=causal_importances,
+                causal_importances_upper_leaky=causal_importances_upper_leaky,
+                target_out=target_out,
+                device=device,
+                n_params=n_params,
+            )
 
-        log_data["loss/total"] = total_loss.item()
-        log_data.update(loss_terms)
+            micro_batch_loss.div(config.gradient_accumulation_steps).backward()
+
+            loss_terms["loss/total"].append(micro_batch_loss.item())
+            for name, value in micro_batch_loss_terms.items():
+                loss_terms[name].append(value)
+
+        for name, values in loss_terms.items():
+            log_data[name] = sum(values) / len(values)
 
         with torch.inference_mode():
             # --- Logging --- #
@@ -185,8 +196,8 @@ def optimize(
                 tqdm.write(f"--- Step {step} ---")
                 tqdm.write(f"LR: {step_lr:.6f}")
                 tqdm.write(f"Total Loss: {log_data['loss/total']:.7f}")
-                for name, value in loss_terms.items():
-                    tqdm.write(f"{name}: {value:.7f}")
+                for name in loss_terms:
+                    tqdm.write(f"{name}: {log_data[name]:.7f}")
 
                 if step > 0:
                     for layer_name, layer_alive_components in alive_components.items():
@@ -197,9 +208,9 @@ def optimize(
                     model=model,
                     components=components,
                     gates=gates,
-                    causal_importances=causal_importances,
-                    target_out=target_out,
-                    batch=batch,
+                    causal_importances=causal_importances,  # pyright: ignore [reportPossiblyUnboundVariable]
+                    target_out=target_out,  # pyright: ignore [reportPossiblyUnboundVariable]
+                    batch=batch,  # pyright: ignore [reportPossiblyUnboundVariable]
                     device=device,
                     config=config,
                     step=step,
@@ -229,9 +240,9 @@ def optimize(
                     model=model,
                     components=components,
                     gates=gates,
-                    causal_importances=causal_importances,
-                    target_out=target_out,
-                    batch=batch,
+                    causal_importances=causal_importances,  # pyright: ignore [reportPossiblyUnboundVariable]
+                    target_out=target_out,  # pyright: ignore [reportPossiblyUnboundVariable]
+                    batch=batch,  # pyright: ignore [reportPossiblyUnboundVariable]
                     device=device,
                     config=config,
                     step=step,
@@ -263,7 +274,6 @@ def optimize(
         # --- Backward Pass & Optimize --- #
         # Skip gradient step if we are at the last step (last step just for plotting and logging)
         if step != config.steps:
-            total_loss.backward(retain_graph=True)
             if config.wandb_project:
                 grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
                 for param in component_params + gate_params:
