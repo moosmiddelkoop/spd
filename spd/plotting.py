@@ -1,5 +1,5 @@
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Literal
 
 import matplotlib.ticker as tkr
@@ -13,8 +13,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import Components
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.models.sigmoids import SigmoidTypes
+from spd.utils.component_utils import calc_causal_importances
 
 
 def permute_to_identity(
@@ -128,6 +129,8 @@ def _plot_causal_importances_figure(
 
 def plot_causal_importance_vals(
     model: ComponentModel,
+    components: Mapping[str, LinearComponent | EmbeddingComponent],
+    gates: Mapping[str, GateMLP | VectorGateMLP],
     batch_shape: tuple[int, ...],
     device: str | torch.device,
     input_magnitude: float,
@@ -140,6 +143,8 @@ def plot_causal_importance_vals(
 
     Args:
         model: The ComponentModel
+        components: Dictionary of components
+        gates: Dictionary of gates
         batch_shape: Shape of the batch
         device: Device to use
         input_magnitude: Magnitude of input features
@@ -162,11 +167,14 @@ def plot_causal_importance_vals(
         batch = batch.unsqueeze(1)
 
     pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-        batch, module_names=model.target_module_paths
+        batch, module_names=list(components.keys())
     )[1]
+    Vs = {module_name: v.V for module_name, v in components.items()}
 
-    ci_raw, ci_upper_leaky_raw = model.calc_causal_importances(
+    ci_raw, ci_upper_leaky_raw = calc_causal_importances(
         pre_weight_acts=pre_weight_acts,
+        Vs=Vs,
+        gates=gates,
         detach_inputs=False,
         sigmoid_type=sigmoid_type,
     )
@@ -247,7 +255,7 @@ def plot_subnetwork_attributions_statistics(
 
 def plot_matrix(
     ax: plt.Axes,
-    matrix: Tensor,
+    matrix: torch.Tensor,
     title: str,
     xlabel: str,
     ylabel: str,
@@ -280,7 +288,7 @@ def plot_matrix(
 
 
 def plot_UV_matrices(
-    components: dict[str, Components],
+    components: dict[str, LinearComponent | EmbeddingComponent],
     all_perm_indices: dict[str, Float[Tensor, " C"]] | None = None,
 ) -> plt.Figure:
     """Plot V and U matrices for each instance, grouped by layer."""
