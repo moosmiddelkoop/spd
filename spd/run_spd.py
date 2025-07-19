@@ -18,7 +18,7 @@ from spd.core_metrics_and_figs import create_figures, create_metrics
 from spd.log import logger
 from spd.losses import calculate_losses
 from spd.models.component_model import ComponentModel, init_Vs_and_Us_
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.utils.component_utils import calc_causal_importances
 from spd.utils.general_utils import (
     extract_batch_data,
@@ -71,7 +71,8 @@ def optimize(
         base_model=target_model,
         target_module_patterns=config.target_module_patterns,
         C=config.C,
-        n_ci_mlp_neurons=config.n_ci_mlp_neurons,
+        gate_type=config.gate_type,
+        gate_hidden_dims=config.gate_hidden_dims,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
     )
 
@@ -80,8 +81,8 @@ def optimize(
     logger.info("Target model parameters frozen.")
 
     # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {

@@ -68,7 +68,6 @@ def create_slurm_array_script(
         {gpu_config}
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
-        #SBATCH --partition=all
         #SBATCH --array={array_range}
         #SBATCH --output={slurm_logs_dir}/slurm-%A_%a.out
 
@@ -150,7 +149,6 @@ def create_analysis_slurm_script(
         {gpu_config}
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
-        #SBATCH --partition=all
         #SBATCH --dependency=afterok:{dependency_job_id}
         #SBATCH --output={slurm_logs_dir}/slurm-%j.out
 

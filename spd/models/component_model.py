@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any, override
+from typing import Any, cast, override
 
 import einops
 import torch
@@ -14,7 +14,13 @@ from torch import Tensor, nn
 from wandb.apis.public import Run
 
 from spd.configs import Config
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import (
+    EmbeddingComponent,
+    GateMLP,
+    GateType,
+    LinearComponent,
+    VectorGateMLP,
+)
 from spd.spd_types import WANDB_PATH_PREFIX, ModelPath
 from spd.utils.general_utils import load_pretrained
 from spd.utils.wandb_utils import (
@@ -37,7 +43,8 @@ class ComponentModel(nn.Module):
         base_model: nn.Module,
         target_module_patterns: list[str],
         C: int,
-        n_ci_mlp_neurons: int,
+        gate_type: GateType,
+        gate_hidden_dims: list[int],
         pretrained_model_output_attr: str | None,
     ):
         super().__init__()
@@ -45,15 +52,35 @@ class ComponentModel(nn.Module):
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
         self.components = self.create_target_components(
-            target_module_patterns=target_module_patterns, C=C
+            target_module_patterns=target_module_patterns,
+            C=C,
+        )
+        self.gates = self.make_gates(
+            components=self.components,
+            gate_type=gate_type,
+            gate_hidden_dims=gate_hidden_dims,
+            C=C,
         )
 
-        gate_class = GateMLP if n_ci_mlp_neurons > 0 else Gate
-        gate_kwargs = {"C": C}
-        if n_ci_mlp_neurons > 0:
-            gate_kwargs["n_ci_mlp_neurons"] = n_ci_mlp_neurons
-
-        self.gates = nn.ModuleDict({name: gate_class(**gate_kwargs) for name in self.components})
+    @staticmethod
+    def make_gates(
+        components: nn.ModuleDict, gate_type: GateType, gate_hidden_dims: list[int], C: int
+    ) -> nn.ModuleDict:
+        gates = nn.ModuleDict()
+        for component_name, component in components.items():
+            component = cast(LinearComponent | EmbeddingComponent, component)
+            if gate_type == "mlp":
+                gates[component_name] = GateMLP(C=C, hidden_dims=gate_hidden_dims)
+            else:
+                input_dim = (
+                    component.vocab_size
+                    if isinstance(component, EmbeddingComponent)
+                    else component.d_in
+                )
+                gates[component_name] = VectorGateMLP(
+                    C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims
+                )
+        return gates
 
     def create_target_components(self, target_module_patterns: list[str], C: int) -> nn.ModuleDict:
         """Create target components for the model."""
@@ -263,7 +290,8 @@ class ComponentModel(nn.Module):
             base_model=base_model,
             target_module_patterns=config.target_module_patterns,
             C=config.C,
-            n_ci_mlp_neurons=config.n_ci_mlp_neurons,
+            gate_hidden_dims=config.gate_hidden_dims,
+            gate_type=config.gate_type,
             pretrained_model_output_attr=config.pretrained_model_output_attr,
         )
         comp_model.load_state_dict(model_weights)

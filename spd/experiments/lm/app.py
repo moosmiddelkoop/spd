@@ -23,7 +23,7 @@ from spd.configs import Config, LMTaskConfig
 from spd.data import DatasetConfig
 from spd.log import logger
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.spd_types import ModelPath
 from spd.utils.component_utils import calc_causal_importances
 
@@ -39,7 +39,7 @@ class AppData:
     tokenizer: AutoTokenizer
     config: Config
     dataloader_iter_fn: Callable[[], Iterator[dict[str, Any]]]
-    gates: dict[str, Gate | GateMLP]
+    gates: dict[str, GateMLP | VectorGateMLP]
     components: dict[str, LinearComponent | EmbeddingComponent]
     target_layer_names: list[str]
     device: str
@@ -124,11 +124,11 @@ def initialize(model_path: ModelPath) -> AppData:
             }
 
         # Map over the streaming dataset and return an iterator
-        return map(tokenize_and_prepare, iter(dataset))
+        return map(tokenize_and_prepare, iter(dataset))  # pyright: ignore[reportArgumentType]
 
     # Extract components and gates
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in ss_model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
