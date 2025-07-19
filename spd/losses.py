@@ -17,10 +17,9 @@ from spd.utils.general_utils import calc_kl_divergence_lm
 def calc_embedding_recon_loss(
     model: ComponentModel,
     batch: Int[Tensor, "..."],
-    components: EmbeddingComponents,
     masks: list[dict[str, Float[Tensor, "... C"]]],
-    embed_module_name: str,
-    unembed: bool = False,
+    unembed: bool,
+    device: str,
 ) -> Float[Tensor, ""]:
     """
     recon loss that directly compares the outputs of the (optionally masked)
@@ -33,19 +32,21 @@ def calc_embedding_recon_loss(
     and the target embedding output is used as the loss.
     """
 
+    assert len(model.components_or_modules) == 1, "Only one embedding component is supported"
+    components_or_module = next(iter(model.components_or_modules.values()))
+    components = components_or_module.components
+    original = components_or_module.original
+    assert isinstance(components, EmbeddingComponents)
+
     # --- original embedding output --------------------------------------------------------- #
-    orig_module = model.target_model.get_submodule(embed_module_name)
-    assert isinstance(orig_module, nn.Embedding), (
-        f"Module {embed_module_name} expected to be nn.Embedding, got {type(orig_module)}"
-    )
-    target_out: Float[Tensor, "... d_emb"] = orig_module(batch)
+    target_out: Float[Tensor, "... d_emb"] = original(batch)
 
     # --- masked embedding output ----------------------------------------------------------- #
-    loss = torch.tensor(0.0, device=components.V.device)
+    loss = torch.tensor(0.0, device=device)
     for mask_info in masks:
-        masked_out: Float[Tensor, "... d_emb"] = components(
-            batch, mask=mask_info[embed_module_name]
-        )
+        assert len(mask_info) == 1, "Only one embedding component is supported"
+        mask = next(iter(mask_info.values()))
+        masked_out: Float[Tensor, "... d_emb"] = components(batch, mask=mask)
 
         if unembed:
             assert hasattr(model.target_model, "lm_head"), "Only supports unembedding named lm_head"
@@ -400,16 +401,12 @@ def calculate_losses(
         stochastic_masks = calc_stochastic_masks(
             causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
         )
-        assert len(model.components) == 1, "Only one embedding component is supported"
-        component_name, components = next(iter(model.components.items()))
-        assert isinstance(components, EmbeddingComponents)
         embedding_recon_loss = calc_embedding_recon_loss(
             model=model,
             batch=batch,
-            components=components,
             masks=stochastic_masks,
-            embed_module_name=component_name,
             unembed=config.is_embed_unembed_recon,
+            device=device,
         )
         total_loss += config.embedding_recon_coeff * embedding_recon_loss
         loss_terms["loss/embedding_recon"] = embedding_recon_loss.item()
