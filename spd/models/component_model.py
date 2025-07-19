@@ -153,13 +153,7 @@ class ComponentModel(nn.Module):
 
             if isinstance(module, nn.Linear):
                 d_out, d_in = module.weight.shape
-                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
-                    assert not module.bias.requires_grad
-                component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
-                assert component.U.requires_grad
-                assert component.V.requires_grad
-                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
-                    assert not module.bias.requires_grad
+                component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias.data)
                 component.init_from_target_weight(module.weight.T)
             elif isinstance(module, nn.Embedding):
                 component = EmbeddingComponents(
@@ -167,9 +161,6 @@ class ComponentModel(nn.Module):
                     vocab_size=module.num_embeddings,
                     embedding_dim=module.embedding_dim,
                 )
-                assert component.U.requires_grad
-                assert component.V.requires_grad
-                # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
                 component.init_from_target_weight(module.weight)
             else:
                 raise ValueError(
@@ -194,21 +185,16 @@ class ComponentModel(nn.Module):
     ) -> dict[str, nn.Module]:
         gates: dict[str, nn.Module] = {}
         for module_path, component in components_or_modules.items():
-            # get input dim in case we're creating a vector gate
-            if isinstance(component.original, nn.Linear):
-                input_dim = component.original.weight.shape[1]
-            elif isinstance(component.original, nn.Embedding):  # pyright: ignore[reportUnnecessaryIsInstance]
-                input_dim = component.original.num_embeddings
-            else:
-                raise ValueError(f"Unknown component type: {type(component)}")
-
             if gate_type == "mlp":
                 gate = GateMLPs(C=C, hidden_dims=gate_hidden_dims)
             else:
+                if isinstance(component.original, nn.Linear):
+                    input_dim = component.original.weight.shape[1]
+                else:
+                    assert isinstance(component.original, nn.Embedding)  # pyright: ignore[reportUnnecessaryIsInstance]
+                    input_dim = component.original.num_embeddings
                 gate = VectorGateMLPs(C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims)
-
             gates[module_path] = gate
-
         return gates
 
     @override
