@@ -153,7 +153,12 @@ class ComponentModel(nn.Module):
 
             if isinstance(module, nn.Linear):
                 d_out, d_in = module.weight.shape
-                component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias.data)
+                component = LinearComponents(
+                    C=C,
+                    d_in=d_in,
+                    d_out=d_out,
+                    bias=module.bias.data if module.bias is not None else None, # pyright: ignore[reportUnnecessaryComparison]
+                )
                 component.init_from_target_weight(module.weight.T)
             elif isinstance(module, nn.Embedding):
                 component = EmbeddingComponents(
