@@ -191,7 +191,7 @@ class ComponentModel(nn.Module):
                 if isinstance(component.original, nn.Linear):
                     input_dim = component.original.weight.shape[1]
                 else:
-                    assert isinstance(component.original, nn.Embedding)  # pyright: ignore[reportUnnecessaryIsInstance]
+                    assert isinstance(component.original, nn.Embedding)
                     input_dim = component.original.num_embeddings
                 gate = VectorGateMLPs(C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims)
             gates[module_path] = gate

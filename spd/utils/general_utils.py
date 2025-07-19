@@ -5,7 +5,7 @@ import random
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal
 
 import einops
 import numpy as np
@@ -20,8 +20,6 @@ from torch import Tensor
 
 from spd.log import logger
 from spd.spd_types import ModelPath
-
-T = TypeVar("T", bound=BaseModel)
 
 # Avoid seaborn package installation (sns.color_palette("colorblind").as_hex())
 COLOR_PALETTE = [
@@ -56,7 +54,9 @@ def generate_sweep_id() -> str:
     return f"sweep_id-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 
-def load_config(config_path_or_obj: Path | str | dict[str, Any] | T, config_model: type[T]) -> T:
+def load_config[T: BaseModel](
+    config_path_or_obj: Path | str | dict[str, Any] | T, config_model: type[T]
+) -> T:
     """Load the config of class `config_model`, from various sources.
 
     Args:
@@ -313,10 +313,7 @@ def apply_nested_updates(base_dict: dict[str, Any], updates: dict[str, Any]) -> 
     return result
 
 
-T_runtime_cast = TypeVar("T_runtime_cast")
-
-
-def runtime_cast(type_: type[T_runtime_cast], obj: Any) -> T_runtime_cast:
+def runtime_cast[T](type_: type[T], obj: Any) -> T:
     """typecast with a runtime check"""
     if not isinstance(obj, type_):
         raise TypeError(f"Expected {type_}, got {type(obj)}")
