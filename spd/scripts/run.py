@@ -205,6 +205,7 @@ def create_wandb_report(
     report_title: str,
     run_id: str,
     branch_name: str,
+    commit_hash: str,
     experiments_list: list[str],
     include_run_comparer: bool,
     project: str = "spd",
@@ -217,7 +218,7 @@ def create_wandb_report(
         width="fluid",
     )
 
-    report.blocks.append(wr.MarkdownBlock(text=f"Branch: `{branch_name}`"))
+    report.blocks.append(wr.MarkdownBlock(text=f"Branch: `{branch_name}`\nCommit: `{commit_hash}`"))
 
     # Create separate panel grids for each experiment
     for experiment in experiments_list:
@@ -468,8 +469,8 @@ def main(
         project=project,
     )
 
-    snapshot_branch = create_git_snapshot(branch_name_prefix="run")
-    print(f"\nUsing git snapshot: {snapshot_branch}")
+    snapshot_branch, commit_hash = create_git_snapshot(branch_name_prefix="run")
+    print(f"\nUsing git snapshot: {snapshot_branch} ({commit_hash[:8]})")
 
     # Ensure the W&B project exists
     ensure_project_exists(project)
@@ -488,6 +489,7 @@ def main(
             report_title=report_title or f"SPD Run Report - {run_id}",
             run_id=run_id,
             branch_name=snapshot_branch,
+            commit_hash=commit_hash,
             experiments_list=experiments_list,
             include_run_comparer=sweep_params_file is not None,
             project=project,
