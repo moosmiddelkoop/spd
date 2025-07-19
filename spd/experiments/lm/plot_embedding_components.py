@@ -1,6 +1,7 @@
 """Visualize embedding component masks."""
 
 from pathlib import Path
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,22 +11,34 @@ from torch import Tensor
 from tqdm import tqdm
 
 from spd.models.component_model import ComponentModel
+from spd.models.components import EmbeddingComponent, GateMLP, VectorGateMLP
+from spd.utils.component_utils import calc_causal_importances
 
 
 def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor, "vocab C"]:
     """Collect masks for each vocab token.
 
     Args:
-        model: The trained ComponentModel
+        model: The trained LinearComponent
         device: Device to run computation on
 
     Returns:
         Tensor of shape (vocab_size, C) containing masks for each vocab token
     """
-    assert len(model.components) == 1, "Expected exactly one embedding component"
-    component_name = model.target_module_paths[0]
+    # We used "-" instead ofGateMLP module names can't have "." in them
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
+        for k, v in model.gates.items()
+    }
+    components: dict[str, EmbeddingComponent] = {
+        k.removeprefix("components.").replace("-", "."): cast(EmbeddingComponent, v)
+        for k, v in model.components.items()
+    }
 
-    vocab_size = model.target_model.get_parameter("transformer.wte.weight").shape[0]
+    assert len(components) == 1, "Expected exactly one embedding component"
+    component_name = next(iter(components.keys()))
+
+    vocab_size = model.model.get_parameter("transformer.wte.weight").shape[0]
 
     all_masks = torch.zeros((vocab_size, model.C), device=device)
 
@@ -37,8 +50,12 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
             token_tensor, module_names=[component_name]
         )
 
-        masks, _ = model.calc_causal_importances(
+        Vs = {module_name: v.V for module_name, v in components.items()}
+
+        masks, _ = calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
+            Vs=Vs,
+            gates=gates,
             detach_inputs=True,
         )
 
