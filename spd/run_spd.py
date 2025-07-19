@@ -63,6 +63,10 @@ def optimize(
     logger.info(f"Output directory: {out_dir}")
     metrics_file = out_dir / "metrics.jsonl" if out_dir is not None else None
 
+    for param in target_model.parameters():
+        param.requires_grad = False
+    logger.info("Target model parameters frozen.")
+
     model = ComponentModel(
         target_model=target_model,
         target_module_patterns=config.target_module_patterns,
@@ -71,12 +75,14 @@ def optimize(
         gate_hidden_dims=config.gate_hidden_dims,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
     )
+    model.freeze_target_model()
 
-    for param in target_model.parameters():
-        param.requires_grad = False
-    logger.info("Target model parameters frozen.")
-
-    model.to(device)
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            logger.info(f"Parameter {name} is trainable.")
+        else:
+            logger.info(f"Parameter {name} is frozen.")
+    logger.info("Model parameters un-frozen.")
 
     if tied_weights is not None:
         # Tie component weights. Assume that the first element is a transpose of the second element
