@@ -208,9 +208,9 @@ def recompute_coacts_pop_group(
 
 	# sanity check dims
 	# ==================================================
-	dbg_tensor(coact)
-	dbg_tensor(activation_mask)
-	dbg_tensor(activation_mask_orig)
+	# dbg_tensor(coact)
+	# dbg_tensor(activation_mask)
+	# dbg_tensor(activation_mask_orig)
 
 	k_groups: int = coact.shape[0]
 	n_samples: int = activation_mask.shape[0]
@@ -240,9 +240,9 @@ def recompute_coacts_pop_group(
 		group_size_new=group_size_new,
 		n_components=n_components,
 	)
-	dbg_auto(dims)
-	dbg_tensor(acts_pop)
-	dbg_tensor(merges.components_in_group(group_idx))
+	# dbg_auto(dims)
+	# dbg_tensor(acts_pop)
+	# dbg_tensor(merges.components_in_group(group_idx))
 
 	acts_remainder: Bool[Tensor, " samples"] = activation_mask_orig[
 		:, [
@@ -250,7 +250,6 @@ def recompute_coacts_pop_group(
 			if i != component_idx
 		]
 	].max(dim=-1).values
-	dbg_tensor(acts_remainder)
 
 
 	# assemble the new activation mask
@@ -262,7 +261,9 @@ def recompute_coacts_pop_group(
 	)
 	# then replace the group we are popping out of with the remainder
 	activation_mask_new[:, group_idx] = acts_remainder
-	dbg_tensor(activation_mask_new)
+	
+	# dbg_tensor(acts_remainder)
+	# dbg_tensor(activation_mask_new)
 
 	# assemble the new coactivation matrix
 	# ==================================================
@@ -278,10 +279,10 @@ def recompute_coacts_pop_group(
 	coact_pop: Float[Tensor, " k_groups"] = acts_pop.float() @ activation_mask_new.float()
 	coact_remainder: Float[Tensor, " k_groups"] = acts_remainder.float() @ activation_mask_new.float()
 
-	dbg_tensor(coact)
-	dbg_tensor(coact_new)
-	dbg_tensor(coact_pop)
-	dbg_tensor(coact_remainder)
+	# dbg_tensor(coact)
+	# dbg_tensor(coact_new)
+	# dbg_tensor(coact_pop)
+	# dbg_tensor(coact_remainder)
 
 	# replace the relevant rows and columns
 	coact_new[group_idx, :] = coact_remainder
