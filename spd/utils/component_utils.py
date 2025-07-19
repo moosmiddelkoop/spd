@@ -60,9 +60,7 @@ def component_activation_statistics(
         batch = extract_batch_data(next(data_iter))
         batch = batch.to(device)
 
-        _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-            batch, module_names=model.target_module_paths
-        )
+        _, pre_weight_acts = model.forward_with_component_pre_forward_cache_hooks(batch)
 
         causal_importances, _ = model.calc_causal_importances(pre_weight_acts, detach_inputs=False)
         for module_name, ci in causal_importances.items():

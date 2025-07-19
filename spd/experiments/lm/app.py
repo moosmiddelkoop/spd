@@ -203,8 +203,8 @@ def load_next_prompt() -> None:
 
     # Calculate activations and masks
     with torch.no_grad():
-        _, pre_weight_acts = app_data.model.forward_with_pre_forward_cache_hooks(
-            input_ids, module_names=app_data.model.target_module_paths
+        _, pre_weight_acts = app_data.model.forward_with_component_pre_forward_cache_hooks(
+            input_ids
         )
         masks, _ = app_data.model.calc_causal_importances(
             pre_weight_acts=pre_weight_acts,

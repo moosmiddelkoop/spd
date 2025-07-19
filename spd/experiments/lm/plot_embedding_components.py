@@ -23,7 +23,6 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
         Tensor of shape (vocab_size, C) containing masks for each vocab token
     """
     assert len(model.components) == 1, "Expected exactly one embedding component"
-    component_name = model.target_module_paths[0]
 
     vocab_size = model.target_model.get_parameter("transformer.wte.weight").shape[0]
 
@@ -33,16 +32,15 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
         # Create single token input
         token_tensor = torch.tensor([[token_id]], device=device)
 
-        _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-            token_tensor, module_names=[component_name]
-        )
+        _, pre_weight_acts = model.forward_with_component_pre_forward_cache_hooks(token_tensor)
 
         masks, _ = model.calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
             detach_inputs=True,
         )
+        assert len(masks) == 1, "Expected exactly one mask"
 
-        all_masks[token_id] = masks[component_name].squeeze()
+        all_masks[token_id] = next(iter(masks.values())).squeeze()
 
     return all_masks
 

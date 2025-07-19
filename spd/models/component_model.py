@@ -50,6 +50,7 @@ class ComponentModel(nn.Module):
         pretrained_model_output_attr: str | None,
     ):
         super().__init__()
+        target_model.requires_grad_(False)
         self.target_model = target_model
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
@@ -152,7 +153,13 @@ class ComponentModel(nn.Module):
 
             if isinstance(module, nn.Linear):
                 d_out, d_in = module.weight.shape
+                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                    assert not module.bias.requires_grad
                 component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
+                assert component.U.requires_grad
+                assert component.V.requires_grad
+                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                    assert not module.bias.requires_grad
                 component.init_from_target_weight(module.weight.T)
             elif isinstance(module, nn.Embedding):
                 component = EmbeddingComponents(
@@ -160,6 +167,8 @@ class ComponentModel(nn.Module):
                     vocab_size=module.num_embeddings,
                     embedding_dim=module.embedding_dim,
                 )
+                assert component.U.requires_grad
+                assert component.V.requires_grad
                 # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
                 component.init_from_target_weight(module.weight)
             else:
@@ -257,8 +266,8 @@ class ComponentModel(nn.Module):
         with self._replaced_modules(masks):
             return self(*args, **kwargs)
 
-    def forward_with_pre_forward_cache_hooks(
-        self, *args: Any, module_names: list[str], **kwargs: Any
+    def forward_with_component_pre_forward_cache_hooks(
+        self, *args: Any, **kwargs: Any
     ) -> tuple[Any, dict[str, Tensor]]:
         """Forward pass with caching at the input to the modules given by `module_names`.
 
@@ -275,7 +284,7 @@ class ComponentModel(nn.Module):
             cache[param_name] = input[0]
 
         # Register hooks
-        for module_name in module_names:
+        for module_name in self.target_module_paths:
             module = self.target_model.get_submodule(module_name)
             assert module is not None, f"Module {module_name} not found"
             handles.append(

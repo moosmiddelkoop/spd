@@ -161,9 +161,7 @@ def plot_causal_importance_vals(
         # NOTE: For now, we only plot the mask of the first pos dim
         batch = batch.unsqueeze(1)
 
-    pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
-        batch, module_names=model.target_module_paths
-    )[1]
+    pre_weight_acts = model.forward_with_component_pre_forward_cache_hooks(batch)[1]
 
     ci_raw, ci_upper_leaky_raw = model.calc_causal_importances(
         pre_weight_acts=pre_weight_acts,
