@@ -1,0 +1,350 @@
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index e188df9..5321b7c 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -9,26 +9,17 @@ repos:
+   #         - commit
+   - repo: local
+     hooks:
+-      - id: basedpyright
+-        name: BasedPyright
+-        entry: basedpyright
++      - id: format
++        name: Ruff lint and format
++        entry: make format
+         language: system
+         types: [python]
+         stages:
+           - pre-commit
+ 
+-      - id: ruff-lint
+-        name: Ruff lint
+-        entry: ruff check
+-        args: ["--fix-only"]
+-        language: system
+-        types: [python]
+-        stages:
+-          - pre-commit
+-
+-      - id: ruff-format
+-        name: Ruff format
+-        entry: ruff format
++      - id: type
++        name: "Type check with BasedPyright"
++        entry: make type
+         language: system
+         types: [python]
+         stages:
+diff --git a/Makefile b/Makefile
+index 6a8112a..a4d1e5f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,19 +1,15 @@
++# setup
+ .PHONY: install
+-install:
++install: copy-templates
+ 	uv sync --no-dev
+-	@if [ ! -f spd/user_metrics_and_figs.py ]; then \
+-		cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py; \
+-		echo "Created spd/user_metrics_and_figs.py from template"; \
+-	fi
+-	@if [ ! -f spd/scripts/sweep_params.yaml ]; then \
+-		cp spd/scripts/sweep_params.yaml.example spd/scripts/sweep_params.yaml; \
+-		echo "Created spd/scripts/sweep_params.yaml from template"; \
+-	fi
+ 
+ .PHONY: install-dev
+-install-dev:
++install-dev: copy-templates
+ 	uv sync
+ 	pre-commit install
++
++.PHONY: copy-templates
++copy-templates:
+ 	@if [ ! -f spd/user_metrics_and_figs.py ]; then \
+ 		cp spd/user_metrics_and_figs.py.example spd/user_metrics_and_figs.py; \
+ 		echo "Created spd/user_metrics_and_figs.py from template"; \
+@@ -23,24 +19,30 @@ install-dev:
+ 		echo "Created spd/scripts/sweep_params.yaml from template"; \
+ 	fi
+ 
++
++# checks
+ .PHONY: type
+ type:
+-	SKIP=no-commit-to-branch pre-commit run -a basedpyright
++	basedpyright
+ 
+ .PHONY: format
+ format:
+ 	# Fix all autofixable problems (which sorts imports) then format errors
+-	SKIP=no-commit-to-branch pre-commit run -a ruff-lint
+-	SKIP=no-commit-to-branch pre-commit run -a ruff-format
++	ruff check --fix
++	ruff format
+ 
+ .PHONY: check
+-check:
++check: format type
++
++.PHONY: check-pre-commit
++check-pre-commit:
+ 	SKIP=no-commit-to-branch pre-commit run -a --hook-stage commit
+ 
++# tests
+ .PHONY: test
+ test:
+-	uv run pytest tests/
++	pytest tests/
+ 
+ .PHONY: test-all
+ test-all:
+-	uv run pytest tests/ --runslow
+\ No newline at end of file
++	pytest tests/ --runslow
+\ No newline at end of file
+diff --git a/pyproject.toml b/pyproject.toml
+index 9f7945f..b776e73 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -53,7 +53,8 @@ fix = true
+ [tool.ruff.lint]
+ ignore = [
+     "F722", # Incompatible with jaxtyping
+-    "E731" # I think lambda functions are fine in several places
++    "E731", # I think lambda functions are fine in several places
++    "E501", # there are a lot of long lines in the codebase
+ ]
+ select = [
+     # pycodestyle
+diff --git a/spd/experiments/tms/plotting.py b/spd/experiments/tms/plotting.py
+index b2b7047..93c9078 100644
+--- a/spd/experiments/tms/plotting.py
++++ b/spd/experiments/tms/plotting.py
+@@ -741,10 +741,7 @@ class HiddenLayerPlotter:
+         # Ensure axs is iterable even for single subplot
+         from matplotlib.axes import Axes as AxesType
+ 
+-        if isinstance(axs, AxesType):
+-            axs_list = [axs]
+-        else:
+-            axs_list = list(axs)
++        axs_list: list[AxesType] = [axs] if isinstance(axs, AxesType) else list(axs)
+ 
+         # Plot heatmaps
+         self._plot_heatmaps(fig, axs_list, all_weights, subnets_order, n_subnets)
+diff --git a/spd/models/component_model.py b/spd/models/component_model.py
+index 12738c2..702bb56 100644
+--- a/spd/models/component_model.py
++++ b/spd/models/component_model.py
+@@ -153,13 +153,12 @@ class ComponentModel(nn.Module):
+ 
+             if isinstance(module, nn.Linear):
+                 d_out, d_in = module.weight.shape
+-                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+-                    assert not module.bias.requires_grad
+-                component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
+-                assert component.U.requires_grad
+-                assert component.V.requires_grad
+-                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+-                    assert not module.bias.requires_grad
++                component = LinearComponents(
++                    C=C,
++                    d_in=d_in,
++                    d_out=d_out,
++                    bias=module.bias.data if module.bias is not None else None, # pyright: ignore[reportUnnecessaryComparison]
++                )
+                 component.init_from_target_weight(module.weight.T)
+             elif isinstance(module, nn.Embedding):
+                 component = EmbeddingComponents(
+@@ -167,9 +166,6 @@ class ComponentModel(nn.Module):
+                     vocab_size=module.num_embeddings,
+                     embedding_dim=module.embedding_dim,
+                 )
+-                assert component.U.requires_grad
+-                assert component.V.requires_grad
+-                # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
+                 component.init_from_target_weight(module.weight)
+             else:
+                 raise ValueError(
+@@ -194,21 +190,16 @@ class ComponentModel(nn.Module):
+     ) -> dict[str, nn.Module]:
+         gates: dict[str, nn.Module] = {}
+         for module_path, component in components_or_modules.items():
+-            # get input dim in case we're creating a vector gate
+-            if isinstance(component.original, nn.Linear):
+-                input_dim = component.original.weight.shape[1]
+-            elif isinstance(component.original, nn.Embedding):  # pyright: ignore[reportUnnecessaryIsInstance]
+-                input_dim = component.original.num_embeddings
+-            else:
+-                raise ValueError(f"Unknown component type: {type(component)}")
+-
+             if gate_type == "mlp":
+                 gate = GateMLPs(C=C, hidden_dims=gate_hidden_dims)
+             else:
++                if isinstance(component.original, nn.Linear):
++                    input_dim = component.original.weight.shape[1]
++                else:
++                    assert isinstance(component.original, nn.Embedding)
++                    input_dim = component.original.num_embeddings
+                 gate = VectorGateMLPs(C=C, input_dim=input_dim, hidden_dims=gate_hidden_dims)
+-
+             gates[module_path] = gate
+-
+         return gates
+ 
+     @override
+diff --git a/spd/run_spd.py b/spd/run_spd.py
+index 2180e77..a7c19fb 100644
+--- a/spd/run_spd.py
++++ b/spd/run_spd.py
+@@ -71,7 +71,6 @@ def optimize(
+         gate_hidden_dims=config.gate_hidden_dims,
+         pretrained_model_output_attr=config.pretrained_model_output_attr,
+     )
+-    # model.freeze_target_model()
+     model.to(device)
+ 
+     if tied_weights is not None:
+@@ -106,8 +105,6 @@ def optimize(
+     alive_components: dict[str, Bool[Tensor, " C"]] = {
+         layer_name: torch.zeros(config.C, device=device).bool() for layer_name in model.components
+     }
+-    for name, param in model.named_parameters():
+-        print(f"{name}: {param.shape} {param.requires_grad}")
+ 
+     # Iterate one extra step for final logging/plotting/saving
+     for step in tqdm(range(config.steps + 1), ncols=0):
+@@ -240,7 +237,7 @@ def optimize(
+         # --- Backward Pass & Optimize --- #
+         # Skip gradient step if we are at the last step (last step just for plotting and logging)
+         if step != config.steps:
+-            total_loss.backward(retain_graph=True)
++            total_loss.backward()
+             if config.wandb_project:
+                 grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
+                 for param in component_params + gate_params:
+diff --git a/spd/utils/data_utils.py b/spd/utils/data_utils.py
+index 6e0df43..4822d38 100644
+--- a/spd/utils/data_utils.py
++++ b/spd/utils/data_utils.py
+@@ -1,15 +1,13 @@
+ from collections.abc import Iterator
+-from typing import Generic, Literal, TypeVar, override
++from typing import Literal, override
+ 
+ import torch
+ from jaxtyping import Float
+ from torch import Tensor
+ from torch.utils.data import DataLoader, Dataset
+ 
+-Q = TypeVar("Q")
+ 
+-
+-class DatasetGeneratedDataLoader(DataLoader[Q], Generic[Q]):
++class DatasetGeneratedDataLoader[Q](DataLoader[Q]):
+     """DataLoader that generates batches by calling the dataset's `generate_batch` method."""
+ 
+     def __init__(
+@@ -31,7 +29,7 @@ class DatasetGeneratedDataLoader(DataLoader[Q], Generic[Q]):
+             yield self.dataset.generate_batch(self.batch_size)  # pyright: ignore[reportAttributeAccessIssue]
+ 
+ 
+-class BatchedDataLoader(DataLoader[Q], Generic[Q]):
++class BatchedDataLoader[Q](DataLoader[Q]):
+     """DataLoader that unpacks the batch in __getitem__.
+ 
+     This is used for datasets which generate a whole batch in one call to __getitem__.
+diff --git a/spd/utils/general_utils.py b/spd/utils/general_utils.py
+index 92203fb..1e90c0d 100644
+--- a/spd/utils/general_utils.py
++++ b/spd/utils/general_utils.py
+@@ -5,7 +5,7 @@ import random
+ from collections.abc import Callable
+ from datetime import datetime
+ from pathlib import Path
+-from typing import Any, Literal, TypeVar
++from typing import Any, Literal
+ 
+ import einops
+ import numpy as np
+@@ -21,8 +21,6 @@ from torch import Tensor
+ from spd.log import logger
+ from spd.spd_types import ModelPath
+ 
+-T = TypeVar("T", bound=BaseModel)
+-
+ # Avoid seaborn package installation (sns.color_palette("colorblind").as_hex())
+ COLOR_PALETTE = [
+     "#0173B2",
+@@ -56,7 +54,9 @@ def generate_sweep_id() -> str:
+     return f"sweep_id-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+ 
+ 
+-def load_config(config_path_or_obj: Path | str | dict[str, Any] | T, config_model: type[T]) -> T:
++def load_config[T: BaseModel](
++    config_path_or_obj: Path | str | dict[str, Any] | T, config_model: type[T]
++) -> T:
+     """Load the config of class `config_model`, from various sources.
+ 
+     Args:
+@@ -95,10 +95,9 @@ def load_config(config_path_or_obj: Path | str | dict[str, Any] | T, config_mode
+     return config_model(**config_dict)
+ 
+ 
+-BaseModelType = TypeVar("BaseModelType", bound=BaseModel)
+-
+-
+-def replace_pydantic_model(model: BaseModelType, *updates: dict[str, Any]) -> BaseModelType:
++def replace_pydantic_model[BaseModelType: BaseModel](
++    model: BaseModelType, *updates: dict[str, Any]
++) -> BaseModelType:
+     """Create a new model with (potentially nested) updates in the form of dictionaries.
+ 
+     Args:
+@@ -314,10 +313,7 @@ def apply_nested_updates(base_dict: dict[str, Any], updates: dict[str, Any]) ->
+     return result
+ 
+ 
+-T_runtime_cast = TypeVar("T_runtime_cast")
+-
+-
+-def runtime_cast(type_: type[T_runtime_cast], obj: Any) -> T_runtime_cast:
++def runtime_cast[T](type_: type[T], obj: Any) -> T:
+     """typecast with a runtime check"""
+     if not isinstance(obj, type_):
+         raise TypeError(f"Expected {type_}, got {type(obj)}")
+diff --git a/spd/utils/wandb_utils.py b/spd/utils/wandb_utils.py
+index b0fe460..d0ab939 100644
+--- a/spd/utils/wandb_utils.py
++++ b/spd/utils/wandb_utils.py
+@@ -1,6 +1,5 @@
+ import os
+ from pathlib import Path
+-from typing import TypeVar
+ 
+ import wandb
+ from dotenv import load_dotenv
+@@ -10,8 +9,6 @@ from wandb.apis.public import File, Run
+ from spd.settings import REPO_ROOT
+ from spd.utils.general_utils import replace_pydantic_model
+ 
+-T = TypeVar("T", bound=BaseModel)
+-
+ 
+ def fetch_latest_wandb_checkpoint(run: Run, prefix: str | None = None) -> File:
+     """Fetch the latest checkpoint from a wandb run.
+@@ -80,9 +77,9 @@ def download_wandb_file(run: Run, wandb_run_dir: Path, file_name: str) -> Path:
+     return path
+ 
+ 
+-def init_wandb(
+-    config: T, project: str, name: str | None = None, tags: list[str] | None = None
+-) -> T:
++def init_wandb[T_config: BaseModel](
++    config: T_config, project: str, name: str | None = None, tags: list[str] | None = None
++) -> T_config:
+     """Initialize Weights & Biases and return a config updated with sweep hyperparameters.
+ 
+     Args:
