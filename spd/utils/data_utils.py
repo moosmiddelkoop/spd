@@ -1,15 +1,13 @@
 from collections.abc import Iterator
-from typing import Generic, Literal, TypeVar, override
+from typing import Literal, override
 
 import torch
 from jaxtyping import Float
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-Q = TypeVar("Q")
 
-
-class DatasetGeneratedDataLoader(DataLoader[Q], Generic[Q]):
+class DatasetGeneratedDataLoader[Q](DataLoader[Q]):
     """DataLoader that generates batches by calling the dataset's `generate_batch` method."""
 
     def __init__(
@@ -31,7 +29,7 @@ class DatasetGeneratedDataLoader(DataLoader[Q], Generic[Q]):
             yield self.dataset.generate_batch(self.batch_size)  # pyright: ignore[reportAttributeAccessIssue]
 
 
-class BatchedDataLoader(DataLoader[Q], Generic[Q]):
+class BatchedDataLoader[Q](DataLoader[Q]):
     """DataLoader that unpacks the batch in __getitem__.
 
     This is used for datasets which generate a whole batch in one call to __getitem__.

@@ -95,10 +95,9 @@ def load_config(config_path_or_obj: Path | str | dict[str, Any] | T, config_mode
     return config_model(**config_dict)
 
 
-BaseModelType = TypeVar("BaseModelType", bound=BaseModel)
-
-
-def replace_pydantic_model(model: BaseModelType, *updates: dict[str, Any]) -> BaseModelType:
+def replace_pydantic_model[BaseModelType: BaseModel](
+    model: BaseModelType, *updates: dict[str, Any]
+) -> BaseModelType:
     """Create a new model with (potentially nested) updates in the form of dictionaries.
 
     Args:
