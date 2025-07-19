@@ -71,11 +71,7 @@ def optimize(
         gate_hidden_dims=config.gate_hidden_dims,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
     )
-
-    for param in target_model.parameters():
-        param.requires_grad = False
-    logger.info("Target model parameters frozen.")
-
+    model.freeze_target_model()
     model.to(device)
 
     if tied_weights is not None:

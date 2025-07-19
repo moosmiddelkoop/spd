@@ -13,6 +13,7 @@ from torch.utils.hooks import RemovableHandle
 from wandb.apis.public import Run
 
 from spd.configs import Config
+from spd.log import logger
 from spd.models.components import (
     Components,
     ComponentsOrModule,
@@ -69,6 +70,34 @@ class ComponentModel(nn.Module):
 
         # Register the gates to ComponentModel so they appear in e.g. state_dict()
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
+
+    def freeze_target_model(self) -> None:
+        # handle gate first - they're simple as they're independent of the target model
+        for param in self.gates.values():
+            for p in param.parameters():
+                if not p.requires_grad:
+                    logger.warning(f"Gate {param} was frozen. This is weird, unfreezing")
+                p.requires_grad_(True)
+
+        # Handle the target model:
+        # First: freeze all target model parameters. This will freeze the contained components
+        # which we'll undo below.
+        for param in self.target_model.parameters():
+            param.requires_grad_(False)
+
+        # unfreeze the components
+        for component in self.components.values():
+            for param in component.parameters():
+                assert not param.requires_grad, "sanity check"
+                param.requires_grad_(True)
+
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                logger.info(f"Parameter {name} is trainable.")
+            else:
+                logger.info(f"Parameter {name} is frozen.")
+        logger.info("Model parameters un-frozen.")
+
 
     @property
     def components(self) -> dict[str, Components]:
