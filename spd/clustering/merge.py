@@ -27,7 +27,6 @@ def plot_merge_iteration(
 	current_merge: GroupMerge,
 	current_coact: Float[Tensor, "k_groups k_groups"],
 	costs: Float[Tensor, "k_groups k_groups"],
-	min_pair: tuple[int, int],
 	pair_cost: float,
 	iteration: int,
 	component_labels: list[str] | None = None,
@@ -362,8 +361,10 @@ def merge_iteration(
 	# iteration counter
 	i: int = 0
 	while i < iters:
+
 		# pop components
 		if do_pop and iter_pop[i]:
+			print(f"init pop {i=}")
 			# we split up the group which our chosen component belongs to
 			pop_component_idx_i: int = int(pop_component_idx[i].item())
 			components_in_pop_grp: int = int(
@@ -374,6 +375,7 @@ def merge_iteration(
 
 			# but, if the component is the only one in its group, there is nothing to do
 			if components_in_pop_grp > 1:
+				print(f"popping {pop_component_idx_i=} from group {current_merge.group_idxs[pop_component_idx_i].item()} with {components_in_pop_grp} components", flush=True)
 				current_merge, current_coact, current_act_mask = recompute_coacts_pop_group(
 					coact=current_coact,
 					merges=current_merge,
@@ -411,6 +413,20 @@ def merge_iteration(
 		# randomly select one of the considered pairs
 		min_pair: tuple[int, int] = tuple(considered_idxs[random.randint(0, considered_idxs.shape[0] - 1)].tolist())
 		pair_cost: float = costs[min_pair[0], min_pair[1]].item()
+
+		if plot_every and (i >= plot_every_min) and (i % plot_every == 0):
+			plot_merge_iteration(
+				current_merge=current_merge,
+				current_coact=current_coact,
+				costs=costs,
+				pair_cost=pair_cost,
+				iteration=i,
+				component_labels=component_labels,
+				figsize=figsize,
+				save_pdf=save_pdf,
+				pdf_prefix=pdf_prefix,
+				tick_spacing=tick_spacing,
+			)
 		
 		# Track the selected pair cost
 		merge_costs['selected_pair_cost'].append(pair_cost)
@@ -459,21 +475,6 @@ def merge_iteration(
 			}
 			if stopping_condition(iteration_stats):
 				break
-
-		if plot_every and (i >= plot_every_min) and (i % plot_every == 0):
-			plot_merge_iteration(
-				current_merge=current_merge,
-				current_coact=current_coact,
-				costs=costs,
-				min_pair=min_pair,
-				pair_cost=pair_cost,
-				iteration=i,
-				component_labels=component_labels,
-				figsize=figsize,
-				save_pdf=save_pdf,
-				pdf_prefix=pdf_prefix,
-				tick_spacing=tick_spacing,
-			)
 
 		i += 1
 

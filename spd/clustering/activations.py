@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from jaxtyping import Float, Int
-from muutils.dbg import dbg, dbg_auto
+from muutils.dbg import dbg, dbg_auto, dbg_tensor
 from torch import Tensor
 from torch.utils.data import DataLoader
 
@@ -323,7 +323,7 @@ def process_activations(
 			dbg((len(dead_components_lst), len(labels)))
 
 	# compute coactivations
-	coact: Float[Tensor, " c c"] = act_concat.T @ act_concat / act_concat.shape[0]
+	coact: Float[Tensor, " c c"] = act_concat.T @ act_concat
 
 	# return the output
 	output: dict[str, Any] = dict(
