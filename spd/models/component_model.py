@@ -13,6 +13,7 @@ from torch.utils.hooks import RemovableHandle
 from wandb.apis.public import Run
 
 from spd.configs import Config
+from spd.log import logger
 from spd.models.components import (
     Components,
     ComponentsOrModule,
@@ -50,6 +51,7 @@ class ComponentModel(nn.Module):
         pretrained_model_output_attr: str | None,
     ):
         super().__init__()
+        target_model.requires_grad_(False)
         self.target_model = target_model
         self.C = C
         self.pretrained_model_output_attr = pretrained_model_output_attr
@@ -69,6 +71,22 @@ class ComponentModel(nn.Module):
 
         # Register the gates to ComponentModel so they appear in e.g. state_dict()
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
+
+        for name, cm in self.components_or_modules.items():
+            if isinstance(cm.original, nn.Linear):
+                assert not cm.original.weight.requires_grad
+                if cm.original.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                    assert not cm.original.bias.requires_grad
+                assert isinstance(cm.components, LinearComponents)
+                if cm.components.bias is not None:
+                    assert not cm.components.bias.requires_grad
+                assert cm.components.U.requires_grad
+                assert cm.components.V.requires_grad
+            elif isinstance(cm.original, nn.Embedding):
+                assert not cm.original.weight.requires_grad
+                assert isinstance(cm.components, EmbeddingComponents)
+                assert cm.components.U.requires_grad
+                assert cm.components.V.requires_grad
 
     @property
     def components(self) -> dict[str, Components]:
@@ -152,7 +170,13 @@ class ComponentModel(nn.Module):
 
             if isinstance(module, nn.Linear):
                 d_out, d_in = module.weight.shape
+                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                    assert not module.bias.requires_grad
                 component = LinearComponents(C=C, d_in=d_in, d_out=d_out, bias=module.bias)
+                assert component.U.requires_grad
+                assert component.V.requires_grad
+                if module.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                    assert not module.bias.requires_grad
                 component.init_from_target_weight(module.weight.T)
             elif isinstance(module, nn.Embedding):
                 component = EmbeddingComponents(
@@ -160,6 +184,8 @@ class ComponentModel(nn.Module):
                     vocab_size=module.num_embeddings,
                     embedding_dim=module.embedding_dim,
                 )
+                assert component.U.requires_grad
+                assert component.V.requires_grad
                 # NOTE(oli): Ensure that we're doing the right thing wrt how the old code does .T
                 component.init_from_target_weight(module.weight)
             else:

@@ -71,11 +71,7 @@ def optimize(
         gate_hidden_dims=config.gate_hidden_dims,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
     )
-
-    for param in target_model.parameters():
-        param.requires_grad = False
-    logger.info("Target model parameters frozen.")
-
+    # model.freeze_target_model()
     model.to(device)
 
     if tied_weights is not None:
@@ -110,6 +106,8 @@ def optimize(
     alive_components: dict[str, Bool[Tensor, " C"]] = {
         layer_name: torch.zeros(config.C, device=device).bool() for layer_name in model.components
     }
+    for name, param in model.named_parameters():
+        print(f"{name}: {param.shape} {param.requires_grad}")
 
     # Iterate one extra step for final logging/plotting/saving
     for step in tqdm(range(config.steps + 1), ncols=0):
