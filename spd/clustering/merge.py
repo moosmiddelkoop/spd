@@ -6,7 +6,6 @@ from typing import Any
 import matplotlib.pyplot as plt
 import torch
 from jaxtyping import Bool, Float, Int
-from muutils.dbg import dbg, dbg_tensor, dbg_auto
 from torch import Tensor
 
 from spd.clustering.merge_matrix import GroupMerge
