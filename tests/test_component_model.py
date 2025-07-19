@@ -145,7 +145,7 @@ def test_replaced_component_forward_embedding_matches_modes():
     torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
 
 
-def test_correct_parameter_requires_grad():
+def test_correct_parameters_require_grad():
     target_model = SimpleTestModel()
     component_model = ComponentModel(
         target_model=target_model,
