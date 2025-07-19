@@ -143,3 +143,32 @@ def test_replaced_component_forward_embedding_matches_modes():
     out_rep = rep(idx)
     expected_rep = comp.forward(idx, mask)
     torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
+
+
+def test_correct_parameter_requires_grad():
+    target_model = SimpleTestModel()
+    component_model = ComponentModel(
+        target_model=target_model,
+        target_module_patterns=["linear1", "linear2", "embedding"],
+        C=4,
+        gate_type="mlp",
+        gate_hidden_dims=[4],
+        pretrained_model_output_attr=None,
+    )
+
+    for cm in component_model.components_or_modules.values():
+        if isinstance(cm.original, nn.Linear):
+            assert not cm.original.weight.requires_grad
+            if cm.original.bias is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                assert not cm.original.bias.requires_grad
+            assert isinstance(cm.components, LinearComponents)
+            if cm.components.bias is not None:
+                assert not cm.components.bias.requires_grad
+            assert cm.components.U.requires_grad
+            assert cm.components.V.requires_grad
+        else:
+            assert isinstance(cm.original, nn.Embedding), "sanity check"
+            assert not cm.original.weight.requires_grad
+            assert isinstance(cm.components, EmbeddingComponents)
+            assert cm.components.U.requires_grad
+            assert cm.components.V.requires_grad
