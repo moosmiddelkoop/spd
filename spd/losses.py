@@ -145,10 +145,19 @@ def calc_masked_recon_layerwise_loss(
                 masks={component_name: mask_info[component_name]},
             )
             if loss_type == "mse":
-                loss = ((modified_out - target_out) ** 2).mean()
+                loss = ((modified_out - batch) ** 2).mean()
             else:
-                loss = calc_kl_divergence_lm(pred=modified_out, target=target_out)
+                flat_modified_out = einops.rearrange(
+                    modified_out, "... d_model_out -> (...) d_model_out"
+                )
+                flat_batch = batch.flatten()
+                loss = F.cross_entropy(flat_modified_out[:-1], flat_batch[1:])
             total_loss += loss
+            # if loss_type == "mse":
+            #     loss = ((modified_out - target_out) ** 2).mean()
+            # else:
+            #     loss = calc_kl_divergence_lm(pred=modified_out, target=target_out)
+            # total_loss += loss
     n_modified_components = len(masks[0])
     return total_loss / (n_modified_components * len(masks))
 
