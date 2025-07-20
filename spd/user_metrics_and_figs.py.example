@@ -13,10 +13,13 @@ from torch import Tensor
 
 from spd.configs import Config
 from spd.models.component_model import ComponentModel
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 
 
 def compute_user_metrics(
     model: ComponentModel,
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    gates: dict[str, GateMLP | VectorGateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     unmasked_component_out: Float[Tensor, "... d_model_out"],
     masked_component_out: Float[Tensor, "... d_model_out"],
@@ -29,6 +32,8 @@ def compute_user_metrics(
     """Compute custom metrics during SPD optimization.
        Args:
         model: The ComponentModel
+        components: Dict of component modules
+        gates: Dict of gate modules
         causal_importances: Dict of causal importance tensors
         unmasked_component_out: Output of model with all components unmasked
         masked_component_out: Output of model with components masked by causal importances
@@ -47,6 +52,8 @@ def compute_user_metrics(
 
 def create_user_figures(
     model: ComponentModel,
+    components: dict[str, LinearComponent | EmbeddingComponent],
+    gates: dict[str, GateMLP | VectorGateMLP],
     causal_importances: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_model_out"],
     batch: Int[Tensor, "... d_model_in"],
@@ -58,6 +65,8 @@ def create_user_figures(
 
     Args:
         model: The ComponentModel
+        components: Dict of component modules
+        gates: Dict of gate modules
         causal_importances: Dict of causal importance tensors
         target_out: Output of target model
         batch: Current batch tensor
