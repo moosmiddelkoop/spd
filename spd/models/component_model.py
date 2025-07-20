@@ -157,7 +157,7 @@ class ComponentModel(nn.Module):
                     C=C,
                     d_in=d_in,
                     d_out=d_out,
-                    bias=module.bias.data if module.bias is not None else None, # pyright: ignore[reportUnnecessaryComparison]
+                    bias=module.bias.data if module.bias is not None else None,  # pyright: ignore[reportUnnecessaryComparison]
                 )
                 component.init_from_target_weight(module.weight.T)
             elif isinstance(module, nn.Embedding):
@@ -257,8 +257,8 @@ class ComponentModel(nn.Module):
         with self._replaced_modules(masks):
             return self(*args, **kwargs)
 
-    def forward_with_component_pre_forward_cache_hooks(
-        self, *args: Any, **kwargs: Any
+    def forward_with_pre_forward_cache_hooks(
+        self, *args: Any, module_names: list[str], **kwargs: Any
     ) -> tuple[Any, dict[str, Tensor]]:
         """Forward pass with caching at the input to the modules given by `module_names`.
 
@@ -275,7 +275,7 @@ class ComponentModel(nn.Module):
             cache[param_name] = input[0]
 
         # Register hooks
-        for module_name in self.target_module_paths:
+        for module_name in module_names:
             module = self.target_model.get_submodule(module_name)
             assert module is not None, f"Module {module_name} not found"
             handles.append(

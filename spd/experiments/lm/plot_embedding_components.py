@@ -32,7 +32,9 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
         # Create single token input
         token_tensor = torch.tensor([[token_id]], device=device)
 
-        _, pre_weight_acts = model.forward_with_component_pre_forward_cache_hooks(token_tensor)
+        _, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+            token_tensor, module_names=model.target_module_paths
+        )
 
         masks, _ = model.calc_causal_importances(
             pre_weight_acts=pre_weight_acts,

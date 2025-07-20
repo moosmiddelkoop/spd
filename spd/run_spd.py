@@ -132,7 +132,9 @@ def optimize(
             batch = extract_batch_data(batch_item)
         batch = batch.to(device)
 
-        target_out, pre_weight_acts = model.forward_with_component_pre_forward_cache_hooks(batch)
+        target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
+            batch, module_names=model.target_module_paths
+        )
 
         causal_importances, causal_importances_upper_leaky = model.calc_causal_importances(
             pre_weight_acts=pre_weight_acts,
