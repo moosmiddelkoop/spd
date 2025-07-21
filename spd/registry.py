@@ -122,36 +122,30 @@ EXPERIMENT_REGISTRY: dict[str, ExperimentConfig] = {
         decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
         config_path=Path("spd/experiments/memorization/decomp_config_32-128-1x_pnl.yaml"),
         expected_runtime=30,
-        target_solution=TargetCISolution(
-            {
-                "linear": IdentityCIPattern(n_features=128),
-                "output": IdentityCIPattern(n_features=128),
-            }
-        ),
     ),
     "mem_32_2x": ExperimentConfig(
         experiment_type="memorization",
         decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
         config_path=Path("spd/experiments/memorization/decomp_config_32-128-2x_pnl.yaml"),
         expected_runtime=60,
-        target_solution=TargetCISolution(
-            {
-                "linear": IdentityCIPattern(n_features=256),
-                "output": IdentityCIPattern(n_features=256),
-            }
-        ),
     ),
     "mem_32_2p8x": ExperimentConfig(
         experiment_type="memorization",
         decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
         config_path=Path("spd/experiments/memorization/decomp_config_32-128-2p8x_pnl.yaml"),
         expected_runtime=90,
-        target_solution=TargetCISolution(
-            {
-                "linear": IdentityCIPattern(n_features=361),
-                "output": IdentityCIPattern(n_features=361),
-            }
-        ),
+    ),
+    "mem_32_2x_task": ExperimentConfig(
+        experiment_type="memorization",
+        decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
+        config_path=Path("spd/experiments/memorization/decomp_config_32-128-2x_task_pnl.yaml"),
+        expected_runtime=60,
+    ),
+    "mem_32_2x_no_anneal": ExperimentConfig(
+        experiment_type="memorization",
+        decomp_script=Path("spd/experiments/memorization/memorization_decomposition.py"),
+        config_path=Path("spd/experiments/memorization/decomp_config_32-128-2x.yaml"),
+        expected_runtime=60,
     ),
 }
 

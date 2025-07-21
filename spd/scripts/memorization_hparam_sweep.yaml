@@ -4,4 +4,4 @@ global:
     values: [3e-2, 1e-2, 3e-3, 1e-3, 3e-4, 1e-4, 3e-5, 1e-5, 3e-6, 1e-6]
 
   faithfulness_coeff:
-    values: [4.0, 2.0, 1.0, 0.5, 0.25, 0.1]
+    values: [100, 10.0, 3.0, 1.0, 0.1]

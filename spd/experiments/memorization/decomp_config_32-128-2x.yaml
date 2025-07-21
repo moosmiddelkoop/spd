@@ -1,12 +1,12 @@
 # Single Layer Memorization Model
 # --- WandB ---
-wandb_project: nathu-memorization
+wandb_project: nathu-memorization-spd
 wandb_run_name: null
 wandb_run_name_prefix: ""
 
 # --- General ---
 seed: 0
-C: 250
+C: 500
 n_mask_samples: 1
 gate_type: "mlp"
 gate_hidden_dims: [128]
@@ -16,7 +16,7 @@ target_module_patterns:
   - "output"
 
 # --- Loss Coefficients ---
-faithfulness_coeff: 1.0
+faithfulness_coeff: 2.0
 out_recon_coeff: 0.0
 recon_coeff: null
 stochastic_recon_coeff: 1.0
@@ -24,14 +24,12 @@ recon_layerwise_coeff: null
 stochastic_recon_layerwise_coeff: 1.0
 importance_minimality_coeff: 3e-4
 pnorm: 2
-p_anneal_start_frac: 0.25 
-p_anneal_final_p: 1 
 output_loss_type: mse
 
 # --- Training ---
 batch_size: 2048
-steps: 75_000
-lr: 1e-3
+steps: 200_000
+lr: 3e-4
 lr_schedule: cosine
 lr_warmup_pct: 0.1
 n_eval_steps: 100
@@ -46,7 +44,7 @@ metrics_fns: ["ci_l0"]
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.memorization.models.SingleLayerMemorizationMLP"
-pretrained_model_path: "wandb:goodfire/spd-gf-spd_experiments_memorization/runs/qo8a937i"
+pretrained_model_path: "wandb:goodfire/spd-gf-spd_experiments_memorization/runs/gkqn4tc1"
 
 # --- Task Specific ---
 task_config:
