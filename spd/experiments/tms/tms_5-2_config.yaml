@@ -39,7 +39,6 @@ figures_fns:
   - name: "ci_histograms"
   - name: "mean_component_activation_counts"
   - name: "uv_and_identity_ci"
-  - name: "test"
     extra_kwargs:
       print_str: "Hello, world!"
 metrics_fns:
