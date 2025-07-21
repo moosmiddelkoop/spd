@@ -5,12 +5,12 @@ These are separate from user-defined metrics/figures to allow for easier compari
 """
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 
 import torch
 import wandb
 from jaxtyping import Float, Int
 from matplotlib import pyplot as plt
-from pydantic import BaseModel
 from torch import Tensor
 from torch.utils.data import DataLoader
 
@@ -29,7 +29,8 @@ from spd.utils.component_utils import calc_ci_l_zero, component_activation_stati
 from spd.utils.general_utils import calc_kl_divergence_lm
 
 
-class CreateMetricsInputs(BaseModel):
+@dataclass
+class CreateMetricsInputs:
     model: ComponentModel
     components: dict[str, LinearComponent | EmbeddingComponent]
     gates: dict[str, GateMLP | VectorGateMLP]
@@ -144,7 +145,8 @@ def create_metrics(
     return metrics
 
 
-class CreateFiguresInputs(BaseModel):
+@dataclass
+class CreateFiguresInputs:
     model: ComponentModel
     components: dict[str, LinearComponent | EmbeddingComponent]
     gates: dict[str, GateMLP | VectorGateMLP]

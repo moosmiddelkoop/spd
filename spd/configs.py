@@ -254,10 +254,6 @@ class Config(BaseModel):
         description="Interval (in steps) at which to save model checkpoints (None disables saving "
         "until the end of training).",
     )
-    log_ce_losses: bool = Field(
-        default=False,
-        description="If True, additionally track cross-entropy losses during training",
-    )
     metrics_fns: list[FnConfig] = Field(
         default=[],
         description="List of local names of functions to use for computing metrics. These functions must be defined in the `spd.metrics_and_figs` module.",
