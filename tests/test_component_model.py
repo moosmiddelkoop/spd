@@ -28,6 +28,7 @@ class SimpleTestModel(nn.Module):
 def component_model() -> ComponentModel[SimpleTestModel]:
     """Return a fresh ``ComponentModel`` for each test."""
     target_model = SimpleTestModel()
+    target_model.requires_grad_(False)
     return ComponentModel(
         target_model=target_model,
         target_module_patterns=["linear1", "linear2", "embedding"],
@@ -147,17 +148,7 @@ def test_replaced_component_forward_embedding_matches_modes():
     torch.testing.assert_close(out_rep, expected_rep, rtol=1e-4, atol=1e-5)
 
 
-def test_correct_parameters_require_grad():
-    target_model = SimpleTestModel()
-    component_model = ComponentModel(
-        target_model=target_model,
-        target_module_patterns=["linear1", "linear2", "embedding"],
-        C=4,
-        gate_type="mlp",
-        gate_hidden_dims=[4],
-        pretrained_model_output_attr=None,
-    )
-
+def test_correct_parameters_require_grad(component_model: ComponentModel[SimpleTestModel]):
     for cm in component_model.components_or_modules.values():
         if isinstance(cm.original, nn.Linear):
             assert not cm.original.weight.requires_grad

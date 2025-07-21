@@ -51,8 +51,11 @@ class ComponentModel[T: nn.Module](nn.Module):
     ):
         super().__init__()
 
-        for param in target_model.parameters():
-            assert not param.requires_grad, "Target model should not have any trainable parameters"
+        for name, param in target_model.named_parameters():
+            assert not param.requires_grad, (
+                f"Target model should not have any trainable parameters. "
+                f"Found {param.requires_grad} for {name}"
+            )
 
         target_module_paths = ComponentModel._get_target_module_paths(
             target_model, target_module_patterns

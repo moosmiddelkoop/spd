@@ -63,6 +63,7 @@ def optimize(
     logger.info(f"Output directory: {out_dir}")
     metrics_file = out_dir / "metrics.jsonl" if out_dir is not None else None
 
+    target_model.requires_grad_(False)
     model = ComponentModel(
         target_model=target_model,
         target_module_patterns=config.target_module_patterns,
