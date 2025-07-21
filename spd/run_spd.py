@@ -13,9 +13,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from spd.configs import Config
-from spd.core_metrics_and_figs import create_figures, create_metrics
 from spd.log import logger
 from spd.losses import calculate_losses
+from spd.metrics_and_figs import create_figures, create_metrics
 from spd.models.component_model import ComponentModel
 from spd.utils.general_utils import (
     extract_batch_data,
@@ -154,7 +154,8 @@ def optimize(
                         alive_components[layer_name] = torch.zeros(config.C, device=device).bool()
 
                 metrics = create_metrics(
-                    model=model,
+                    components=model.components,
+                    gates=model.gates,
                     causal_importances=causal_importances,
                     target_out=target_out,
                     batch=batch,
