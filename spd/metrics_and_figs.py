@@ -5,12 +5,12 @@ These are separate from user-defined metrics/figures to allow for easier compari
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 
 import torch
 import wandb
 from jaxtyping import Float, Int
 from matplotlib import pyplot as plt
+from pydantic import BaseModel
 from torch import Tensor
 from torch.utils.data import DataLoader
 
@@ -29,8 +29,7 @@ from spd.utils.component_utils import calc_ci_l_zero, component_activation_stati
 from spd.utils.general_utils import calc_kl_divergence_lm
 
 
-@dataclass
-class CreateMetricsInputs:
+class CreateMetricsInputs(BaseModel):
     model: ComponentModel
     components: dict[str, LinearComponent | EmbeddingComponent]
     gates: dict[str, GateMLP | VectorGateMLP]
@@ -44,7 +43,7 @@ class CreateMetricsInputs:
     step: int
 
 
-def lm_kl(inputs: CreateMetricsInputs):
+def lm_kl(inputs: CreateMetricsInputs) -> Mapping[str, float | int | wandb.Table]:
     kl_vs_target = calc_kl_divergence_lm(
         pred=inputs.unmasked_component_out, target=inputs.target_out
     )
@@ -87,12 +86,15 @@ def ci_l0(inputs: CreateMetricsInputs) -> Mapping[str, float | int | wandb.Table
     return l0_metrics
 
 
-METRICS_FNS = [
-    ci_l0,
-    lm_kl,
-    lm_embed,
-    lm_ce_losses,
-]
+METRICS_FNS: dict[str, Callable[..., Mapping[str, float | int | wandb.Table]]] = {
+    fn.__name__: fn
+    for fn in [
+        ci_l0,
+        lm_kl,
+        lm_embed,
+        lm_ce_losses,
+    ]
+}
 
 
 def create_metrics(
@@ -128,20 +130,21 @@ def create_metrics(
         step=step,
     )
 
-    for fn in METRICS_FNS:
-        if fn.__name__ not in config.metrics_fns:
+    for fn_cfg in config.metrics_fns:
+        if (fn := METRICS_FNS.get(fn_cfg.fn_name)) is None:
             continue
 
-        if set(fn(inputs).keys()) & set(metrics.keys()):
-            raise ValueError(f"Metric {fn.__name__} already exists in metrics")
+        result = fn(inputs, **fn_cfg.extra_fn_kwargs)
 
-        metrics.update(fn(inputs))
+        if already_present_keys := set(result.keys()).intersection(metrics.keys()):
+            raise ValueError(f"Metric keys {already_present_keys} already exists in metrics")
+
+        metrics.update(result)
 
     return metrics
 
 
-@dataclass
-class CreateFiguresInputs:
+class CreateFiguresInputs(BaseModel):
     model: ComponentModel
     components: dict[str, LinearComponent | EmbeddingComponent]
     gates: dict[str, GateMLP | VectorGateMLP]
@@ -195,11 +198,14 @@ def uv_and_identity_ci(inputs: CreateFiguresInputs) -> Mapping[str, plt.Figure]:
     }
 
 
-FIGURES_FNS: list[Callable[[CreateFiguresInputs], Mapping[str, plt.Figure]]] = [
-    ci_histograms,
-    mean_component_activation_counts,
-    uv_and_identity_ci,
-]
+FIGURES_FNS: dict[str, Callable[[CreateFiguresInputs], Mapping[str, plt.Figure]]] = {
+    fn.__name__: fn
+    for fn in [
+        ci_histograms,
+        mean_component_activation_counts,
+        uv_and_identity_ci,
+    ]
+}
 
 
 def create_figures(
@@ -249,13 +255,15 @@ def create_figures(
         eval_loader=eval_loader,
         n_eval_steps=n_eval_steps,
     )
-    for fn in FIGURES_FNS:
-        if fn.__name__ not in config.figures_fns:
-            continue
+    for fn_cfg in config.figures_fns:
+        if (fn := FIGURES_FNS.get(fn_cfg.fn_name)) is None:
+            raise ValueError(f"Figure {fn_cfg.fn_name} not found in FIGURES_FNS")
 
-        if set(fn(inputs).keys()) & set(fig_dict.keys()):
-            raise ValueError(f"Figure {fn.__name__} already exists in fig_dict")
+        result = fn(inputs, **fn_cfg.extra_fn_kwargs)
 
-        fig_dict.update(fn(inputs))
+        if already_present_keys := set(result.keys()).intersection(fig_dict.keys()):
+            raise ValueError(f"Figure keys {already_present_keys} already exists in fig_dict")
+
+        fig_dict.update(result)
 
     return fig_dict

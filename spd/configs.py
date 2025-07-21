@@ -1,5 +1,8 @@
 """Config classes of various types"""
 
+import importlib
+import inspect
+from collections.abc import Callable
 from typing import Any, ClassVar, Literal, Self
 
 from pydantic import (
@@ -16,6 +19,41 @@ from pydantic import (
 from spd.log import logger
 from spd.models.components import GateType
 from spd.spd_types import ModelPath, Probability
+
+
+class FnConfig(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
+    fn_name: str = Field(
+        ...,
+        description="Name of the function to call",
+    )
+    extra_fn_kwargs: dict[str, Any] = Field(
+        default={},
+        description="Keyword arguments to pass to the function",
+    )
+
+    @model_validator(mode="after")
+    def validate_fn_kwargs(self) -> Self:
+        # look up the real fn
+        mod = importlib.import_module("spd.metrics_and_figs")
+        real_fn = getattr(mod, self.fn_name)
+        if not isinstance(real_fn, Callable):
+            raise ValueError(f"Function {self.fn_name!r} is not a valid metric function")
+
+        # get its signature and drop the first 'inputs' parameter
+        sig = inspect.signature(real_fn)
+        params_after_inputs = list(sig.parameters.values())[1:]
+        sig_extra_only = inspect.Signature(params_after_inputs)
+
+        # see if our kwargs are valid
+        try:
+            sig_extra_only.bind_partial(**self.extra_fn_kwargs)
+        except TypeError as e:
+            # replace the error as e will include something like
+            # "unexpected parameter 'foo'" or "missing a required argument: 'bar'"
+            raise ValueError(f"Invalid kwargs for {self.fn_name!r}: {e}") from None
+
+        return self
 
 
 class TMSTaskConfig(BaseModel):
@@ -220,11 +258,11 @@ class Config(BaseModel):
         default=False,
         description="If True, additionally track cross-entropy losses during training",
     )
-    metrics_fns: list[str] = Field(
+    metrics_fns: list[FnConfig] = Field(
         default=[],
         description="List of local names of functions to use for computing metrics. These functions must be defined in the `spd.metrics_and_figs` module.",
     )
-    figures_fns: list[str] = Field(
+    figures_fns: list[FnConfig] = Field(
         default=[],
         description="List of local names of functions to use for creating figures. These functions must be defined in the `spd.metrics_and_figs` module.",
     )
