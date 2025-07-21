@@ -146,7 +146,7 @@ def get_single_feature_causal_importances(
 def plot_single_feature_causal_importances(
     model: ComponentModel,
     components: Mapping[str, LinearComponent | EmbeddingComponent],
-    gates: Mapping[str, Gate | GateMLP],
+    gates: Mapping[str, GateMLP | VectorGateMLP],
     batch_shape: tuple[int, ...],
     device: str | torch.device,
     input_magnitude: float,
