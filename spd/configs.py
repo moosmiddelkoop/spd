@@ -158,20 +158,20 @@ class Config(BaseModel):
         default=None,
         description="Coefficient for per-layer recon loss with stochastically sampled masks",
     )
-    task_recon_coeff: NonNegativeFloat | None = Field(
-        default=None,
+    task_recon_coeff: NonNegativeFloat = Field(
+        default=0.0,
         description="Coefficient for task reconstruction loss against ground truth targets",
     )
-    task_recon_layerwise_coeff: NonNegativeFloat | None = Field(
-        default=None,
+    task_recon_layerwise_coeff: NonNegativeFloat = Field(
+        default=0.0,
         description="Coefficient for per-layer task reconstruction loss against ground truth targets",
     )
-    stochastic_task_recon_coeff: NonNegativeFloat | None = Field(
-        default=None,
+    stochastic_task_recon_coeff: NonNegativeFloat = Field(
+        default=0.0,
         description="Coefficient for stochastic task reconstruction loss against ground truth targets",
     )
-    stochastic_task_recon_layerwise_coeff: NonNegativeFloat | None = Field(
-        default=None,
+    stochastic_task_recon_layerwise_coeff: NonNegativeFloat = Field(
+        default=0.0,
         description="Coefficient for per-layer stochastic task reconstruction loss against ground truth targets",
     )
     importance_minimality_coeff: NonNegativeFloat = Field(
@@ -185,6 +185,10 @@ class Config(BaseModel):
     out_recon_coeff: NonNegativeFloat | None = Field(
         default=None,
         description="Coefficient for output recon loss",
+    )
+    out_task_recon_coeff: NonNegativeFloat = Field(
+        default=0.0,
+        description="Coefficient for task recon loss when all masks are set to 1 against ground truth targets",
     )
     embedding_recon_coeff: float | None = Field(
         default=None,

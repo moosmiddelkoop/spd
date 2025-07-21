@@ -388,7 +388,7 @@ def calculate_losses(
         loss_terms["loss/stochastic_recon_layerwise"] = stochastic_recon_layerwise_loss.item()
 
     # Task reconstruction loss
-    if targets is not None and config.task_recon_coeff is not None:
+    if targets is not None:
         task_recon_loss = calc_masked_recon_loss(
             model=model,
             batch=batch,
@@ -401,7 +401,7 @@ def calculate_losses(
         loss_terms["loss/task_recon"] = task_recon_loss.item()
 
     # Stochastic task reconstruction loss
-    if targets is not None and config.stochastic_task_recon_coeff is not None:
+    if targets is not None:
         stochastic_masks = calc_stochastic_masks(
             causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
         )
@@ -417,10 +417,10 @@ def calculate_losses(
             )
         stochastic_task_recon_loss = stochastic_task_recon_loss / len(stochastic_masks)
         total_loss += config.stochastic_task_recon_coeff * stochastic_task_recon_loss
-        loss_terms["loss/stochastic_task_recon"] = stochastic_task_recon_loss.item()
+        loss_terms["loss/task_stochastic_recon"] = stochastic_task_recon_loss.item()
 
     # Task reconstruction layerwise loss
-    if targets is not None and config.task_recon_layerwise_coeff is not None:
+    if targets is not None:
         task_recon_layerwise_loss = calc_masked_recon_layerwise_loss(
             model=model,
             batch=batch,
@@ -434,7 +434,7 @@ def calculate_losses(
         loss_terms["loss/task_recon_layerwise"] = task_recon_layerwise_loss.item()
 
     # Stochastic task reconstruction layerwise loss
-    if targets is not None and config.stochastic_task_recon_layerwise_coeff is not None:
+    if targets is not None:
         layerwise_stochastic_masks = calc_stochastic_masks(
             causal_importances=causal_importances, n_mask_samples=config.n_mask_samples
         )
@@ -448,7 +448,7 @@ def calculate_losses(
             loss_type=config.output_loss_type,
         )
         total_loss += config.stochastic_task_recon_layerwise_coeff * stochastic_task_recon_layerwise_loss
-        loss_terms["loss/stochastic_task_recon_layerwise"] = stochastic_task_recon_layerwise_loss.item()
+        loss_terms["loss/task_stochastic_recon_layerwise"] = stochastic_task_recon_layerwise_loss.item()
 
     # Importance minimality loss
     pnorm_value = current_p if current_p is not None else config.pnorm
@@ -482,6 +482,20 @@ def calculate_losses(
         )
         total_loss += config.out_recon_coeff * out_recon_loss
         loss_terms["loss/output_recon"] = out_recon_loss.item()
+
+    # Output task reconstruction loss
+    if targets is not None:
+        masks_all_ones = {k: torch.ones_like(v) for k, v in causal_importances.items()}
+        out_task_recon_loss = calc_masked_recon_loss(
+            model=model,
+            batch=batch,
+            components=components,
+            masks=masks_all_ones,
+            target_out=targets,
+            loss_type=config.output_loss_type,
+        )
+        total_loss += config.out_task_recon_coeff * out_task_recon_loss
+        loss_terms["loss/task_output_recon"] = out_task_recon_loss.item()
 
     # Embedding reconstruction loss
     if config.embedding_recon_coeff is not None:
