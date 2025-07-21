@@ -33,7 +33,7 @@ DEFAULT_MODEL_PATH: ModelPath = "wandb:spd-gf-lm/runs/151bsctx"
 # -----------------------------------------------------------
 @dataclass(frozen=True)
 class AppData:
-    model: ComponentModel
+    model: ComponentModel[Any]
     tokenizer: AutoTokenizer
     config: Config
     dataloader_iter_fn: Callable[[], Iterator[dict[str, Any]]]

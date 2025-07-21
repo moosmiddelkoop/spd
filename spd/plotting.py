@@ -1,6 +1,6 @@
 import math
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal
 
 import matplotlib.ticker as tkr
 import numpy as np
@@ -127,7 +127,7 @@ def _plot_causal_importances_figure(
 
 
 def plot_causal_importance_vals(
-    model: ComponentModel,
+    model: ComponentModel[Any],
     batch_shape: tuple[int, ...],
     device: str | torch.device,
     input_magnitude: float,

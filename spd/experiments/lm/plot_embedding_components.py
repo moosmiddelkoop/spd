@@ -6,13 +6,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from jaxtyping import Float
-from torch import Tensor
+from torch import Tensor, nn
 from tqdm import tqdm
 
 from spd.models.component_model import ComponentModel
 
 
-def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor, "vocab C"]:
+def collect_embedding_masks(
+    model: ComponentModel[nn.Module], device: str
+) -> Float[Tensor, "vocab C"]:
     """Collect masks for each vocab token.
 
     Args:
@@ -24,7 +26,7 @@ def collect_embedding_masks(model: ComponentModel, device: str) -> Float[Tensor,
     """
     assert len(model.components) == 1, "Expected exactly one embedding component"
 
-    vocab_size = model.target_model.get_parameter("transformer.wte.weight").shape[0]
+    vocab_size = model.patched_model.get_parameter("transformer.wte.weight").shape[0]
 
     all_masks = torch.zeros((vocab_size, model.C), device=device)
 

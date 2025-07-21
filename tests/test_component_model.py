@@ -25,7 +25,7 @@ class SimpleTestModel(nn.Module):
 
 
 @pytest.fixture(scope="function")
-def component_model() -> ComponentModel:
+def component_model() -> ComponentModel[SimpleTestModel]:
     """Return a fresh ``ComponentModel`` for each test."""
     target_model = SimpleTestModel()
     return ComponentModel(
@@ -38,7 +38,7 @@ def component_model() -> ComponentModel:
     )
 
 
-def test_no_replacement_masks_means_original_mode(component_model: ComponentModel):
+def test_no_replacement_masks_means_original_mode(component_model: ComponentModel[SimpleTestModel]):
     cm = component_model
 
     # Initial state: nothing should be active
@@ -55,7 +55,7 @@ def test_no_replacement_masks_means_original_mode(component_model: ComponentMode
     assert all(comp.mask is None for comp in cm.components_or_modules.values())
 
 
-def test_replaced_modules_sets_and_restores_masks(component_model: ComponentModel):
+def test_replaced_modules_sets_and_restores_masks(component_model: ComponentModel[SimpleTestModel]):
     cm = component_model
     full_masks = {
         name: torch.randn(1, cm.C, dtype=torch.float32) for name in cm.components_or_modules
@@ -71,7 +71,9 @@ def test_replaced_modules_sets_and_restores_masks(component_model: ComponentMode
     assert all(comp.mask is None for comp in cm.components_or_modules.values())
 
 
-def test_replaced_modules_sets_and_restores_masks_partial(component_model: ComponentModel):
+def test_replaced_modules_sets_and_restores_masks_partial(
+    component_model: ComponentModel[SimpleTestModel],
+):
     cm = component_model
     # Partial masking
     partial_masks = {"linear1": torch.ones(1, cm.C)}

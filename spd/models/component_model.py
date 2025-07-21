@@ -2,7 +2,7 @@ import fnmatch
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any, override
+from typing import Any, cast, override
 
 import torch
 import wandb
@@ -32,7 +32,7 @@ from spd.utils.wandb_utils import (
 )
 
 
-class ComponentModel(nn.Module):
+class ComponentModel[T: nn.Module](nn.Module):
     """Wrapper around an arbitrary model for running SPD.
 
     The underlying *base model* can be any subclass of `nn.Module` (e.g.
@@ -42,7 +42,7 @@ class ComponentModel(nn.Module):
 
     def __init__(
         self,
-        target_model: nn.Module,
+        target_model: T,
         target_module_patterns: list[str],
         C: int,
         gate_type: GateType,
@@ -50,34 +50,43 @@ class ComponentModel(nn.Module):
         pretrained_model_output_attr: str | None,
     ):
         super().__init__()
-        target_model.requires_grad_(False)
-        self.target_model = target_model
-        self.C = C
-        self.pretrained_model_output_attr = pretrained_model_output_attr
 
-        self.target_module_paths = self._get_target_module_paths(
+        for param in target_model.parameters():
+            assert not param.requires_grad, "Target model should not have any trainable parameters"
+
+        target_module_paths = ComponentModel._get_target_module_paths(
             target_model, target_module_patterns
         )
 
-        # We just keep components_or_modules as a plain dict. State_dict will pick the
-        # components up because they're attached to the target_model via set_submodule
-        self.components_or_modules = self.create_components_or_modules(
-            target_model=target_model,
-            target_module_paths=self.target_module_paths,
+        patched_model, components_or_modules = ComponentModel[T]._patch_modules(
+            model=target_model,
+            module_paths=target_module_paths,
             C=C,
         )
-        self.gates = self.make_gates(gate_type, C, gate_hidden_dims, self.components_or_modules)
 
-        # Register the gates to ComponentModel so they appear in e.g. state_dict()
+        gates = ComponentModel._make_gates(gate_type, C, gate_hidden_dims, components_or_modules)
+
+        self.C = C
+        self.pretrained_model_output_attr = pretrained_model_output_attr
+        self.target_module_paths = target_module_paths
+
+        # We keep components_or_modules around to easily access the nested, inserted components
+        # State_dict will pick the components up because they're attached to the target_model
+        # via set_submodule
+        self.components_or_modules = components_or_modules
+        # We keep gates as a plain dict so it's properly typed, as ModuleDict isn't generic
+        self.gates = gates
+
+        # these are the actual registered submodules
+        self.patched_model = patched_model
         self._gates = nn.ModuleDict({k.replace(".", "-"): v for k, v in self.gates.items()})
 
     @property
     def components(self) -> dict[str, Components]:
         return {name: cm.components for name, cm in self.components_or_modules.items()}
 
-    def _get_target_module_paths(
-        self, model: nn.Module, target_module_patterns: list[str]
-    ) -> list[str]:
+    @staticmethod
+    def _get_target_module_paths(model: nn.Module, target_module_patterns: list[str]) -> list[str]:
         """Find the target_module_patterns that match real modules in the target model.
 
         e.g. `["layers.*.mlp_in"]` ->  `["layers.1.mlp_in", "layers.2.mlp_in"]`.
@@ -101,28 +110,28 @@ class ComponentModel(nn.Module):
         return names_out
 
     @staticmethod
-    def create_components_or_modules(
-        target_model: nn.Module,
-        target_module_paths: list[str],
+    def _patch_modules(
+        model: T,
+        module_paths: list[str],
         C: int,
-    ) -> dict[str, ComponentsOrModule]:
+    ) -> tuple[T, dict[str, ComponentsOrModule]]:
         """Replace nn.Modules with ComponentsOrModule objects based on target_module_paths.
 
-        NOTE: This method both mutates the target_model and returns dictionary of references
+        NOTE: This method mutates and returns `model`, and returns a dictionary of references
         to the newly inserted ComponentsOrModule objects.
 
         Example:
-            >>> target_model
+            >>> model
             MyModel(
                 (linear): Linear(in_features=10, out_features=10, bias=True)
             )
             >>> target_module_paths = ["linear"]
             >>> components_or_modules = create_components_or_modules(
-            ...     target_model,
+            ...     model,
             ...     target_module_paths,
             ...     C=2,
             ... )
-            >>> print(target_model)
+            >>> print(model)
             MyModel(
                 (linear): ComponentsOrModule(
                     (original): Linear(in_features=10, out_features=10, bias=True),
@@ -138,18 +147,18 @@ class ComponentModel(nn.Module):
             }
 
         Args:
-            target_model: The target model to replace modules in.
-            target_module_paths: The paths to the modules to replace.
+            model: The model to replace modules in.
+            module_paths: The paths to the modules to replace.
             C: The number of components to use.
 
         Returns:
             A dictionary mapping module paths to the newly inserted ComponentsOrModule objects
-            within target_model.
+            within `model`.
         """
         components_or_modules: dict[str, ComponentsOrModule] = {}
 
-        for module_path in target_module_paths:
-            module = target_model.get_submodule(module_path)
+        for module_path in module_paths:
+            module = model.get_submodule(module_path)
 
             if isinstance(module, nn.Linear):
                 d_out, d_in = module.weight.shape
@@ -175,14 +184,14 @@ class ComponentModel(nn.Module):
 
             replacement = ComponentsOrModule(original=module, components=component)
 
-            target_model.set_submodule(module_path, replacement)
+            model.set_submodule(module_path, replacement)
 
             components_or_modules[module_path] = replacement
 
-        return components_or_modules
+        return model, components_or_modules
 
     @staticmethod
-    def make_gates(
+    def _make_gates(
         gate_type: GateType,
         C: int,
         gate_hidden_dims: list[int],
@@ -204,11 +213,11 @@ class ComponentModel(nn.Module):
 
     @override
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """Regular forward pass of the (target) model.
+        """Forward pass of the patched model.
 
-        If `model_output_attr` is set, return the attribute of the model's output.
+        If `pretrained_model_output_attr` is set, return the attribute of the model's output.
         """
-        raw_out = self.target_model(*args, **kwargs)
+        raw_out = self.patched_model(*args, **kwargs)
         if self.pretrained_model_output_attr is None:
             out = raw_out
         else:
@@ -249,7 +258,9 @@ class ComponentModel(nn.Module):
         masks: dict[str, Float[Tensor, "... C"]],
         **kwargs: Any,
     ) -> Any:
-        """Forward pass with temporary component replacements.
+        """Forward pass with temporary component replacements. `masks` is a dictionary mapping
+        component paths to masks. A mask being present means that the module will be replaced
+        with components, and the value of the mask will be used as the mask for the components.
 
         Args:
             masks: Optional dictionary mapping component names to masks
@@ -276,7 +287,7 @@ class ComponentModel(nn.Module):
 
         # Register hooks
         for module_name in module_names:
-            module = self.target_model.get_submodule(module_name)
+            module = self.patched_model.get_submodule(module_name)
             assert module is not None, f"Module {module_name} not found"
             handles.append(
                 module.register_forward_pre_hook(partial(cache_hook, param_name=module_name))
@@ -315,7 +326,7 @@ class ComponentModel(nn.Module):
         return checkpoint_path, final_config_path
 
     @classmethod
-    def from_pretrained(cls, path: ModelPath) -> tuple["ComponentModel", Config, Path]:
+    def from_pretrained(cls, path: ModelPath) -> tuple["ComponentModel[T]", Config, Path]:
         """Load a trained ComponentModel checkpoint along with its original config.
 
         The method supports two storage schemes:
@@ -328,35 +339,34 @@ class ComponentModel(nn.Module):
             wandb_path = path.removeprefix(WANDB_PATH_PREFIX)
             api = wandb.Api()
             run: Run = api.run(wandb_path)
-            model_path, config_path = cls._download_wandb_files(wandb_path)
+            comp_model_path, config_path = cls._download_wandb_files(wandb_path)
             out_dir = fetch_wandb_run_dir(run.id)
         else:
-            model_path = Path(path)
+            comp_model_path = Path(path)
             config_path = Path(path).parent / "final_config.yaml"
             out_dir = Path(path).parent
 
-        model_weights = torch.load(model_path, map_location="cpu", weights_only=True)
         with open(config_path) as f:
             config = Config(**yaml.safe_load(f))
 
         assert config.pretrained_model_class is not None
-
-        base_model_raw = load_pretrained(
+        target_model_unpatched = load_pretrained(
             path_to_class=config.pretrained_model_class,
-            model_path=config.pretrained_model_path,
+            comp_model_path=config.pretrained_model_path,
             model_name_hf=config.pretrained_model_name_hf,
         )
-        target_model = base_model_raw[0] if isinstance(base_model_raw, tuple) else base_model_raw
 
-        comp_model = ComponentModel(
-            target_model=target_model,
+        comp_model = ComponentModel[T](
+            target_model=cast(T, target_model_unpatched),
             target_module_patterns=config.target_module_patterns,
             C=config.C,
             gate_hidden_dims=config.gate_hidden_dims,
             gate_type=config.gate_type,
             pretrained_model_output_attr=config.pretrained_model_output_attr,
         )
-        comp_model.load_state_dict(model_weights)
+
+        comp_model_weights = torch.load(comp_model_path, map_location="cpu", weights_only=True)
+        comp_model.load_state_dict(comp_model_weights)
         return comp_model, config, out_dir
 
     def calc_causal_importances(
