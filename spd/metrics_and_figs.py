@@ -176,7 +176,9 @@ def uv_and_identity_ci(inputs: CreateFiguresInputs) -> Mapping[str, plt.Figure]:
         sigmoid_type=inputs.config.sigmoid_type,
     )
 
-    uv_matrices = plot_UV_matrices(components=inputs.model.components, all_perm_indices=all_perm_indices)
+    uv_matrices = plot_UV_matrices(
+        components=inputs.model.components, all_perm_indices=all_perm_indices
+    )
 
     return {
         **figures,

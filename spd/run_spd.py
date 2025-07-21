@@ -154,8 +154,7 @@ def optimize(
                         alive_components[layer_name] = torch.zeros(config.C, device=device).bool()
 
                 metrics = create_metrics(
-                    components=model.components,
-                    gates=model.gates,
+                    model=model,
                     causal_importances=causal_importances,
                     target_out=target_out,
                     batch=batch,
