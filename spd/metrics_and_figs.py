@@ -132,10 +132,10 @@ def create_metrics(
     )
 
     for fn_cfg in config.metrics_fns:
-        if (fn := METRICS_FNS.get(fn_cfg.fn_name)) is None:
+        if (fn := METRICS_FNS.get(fn_cfg.name)) is None:
             continue
 
-        result = fn(inputs, **fn_cfg.extra_fn_kwargs)
+        result = fn(inputs, **fn_cfg.extra_kwargs)
 
         if already_present_keys := set(result.keys()).intersection(metrics.keys()):
             raise ValueError(f"Metric keys {already_present_keys} already exists in metrics")
@@ -200,7 +200,7 @@ def uv_and_identity_ci(inputs: CreateFiguresInputs) -> Mapping[str, plt.Figure]:
     }
 
 
-FIGURES_FNS: dict[str, Callable[[CreateFiguresInputs], Mapping[str, plt.Figure]]] = {
+FIGURES_FNS: dict[str, Callable[..., Mapping[str, plt.Figure]]] = {
     fn.__name__: fn
     for fn in [
         ci_histograms,
@@ -258,10 +258,10 @@ def create_figures(
         n_eval_steps=n_eval_steps,
     )
     for fn_cfg in config.figures_fns:
-        if (fn := FIGURES_FNS.get(fn_cfg.fn_name)) is None:
-            raise ValueError(f"Figure {fn_cfg.fn_name} not found in FIGURES_FNS")
+        if (fn := FIGURES_FNS.get(fn_cfg.name)) is None:
+            raise ValueError(f"Figure {fn_cfg.name} not found in FIGURES_FNS")
 
-        result = fn(inputs, **fn_cfg.extra_fn_kwargs)
+        result = fn(inputs, **fn_cfg.extra_kwargs)
 
         if already_present_keys := set(result.keys()).intersection(fig_dict.keys()):
             raise ValueError(f"Figure keys {already_present_keys} already exists in fig_dict")

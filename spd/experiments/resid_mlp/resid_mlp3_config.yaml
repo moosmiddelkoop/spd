@@ -40,11 +40,11 @@ image_on_first_step: true
 print_freq: 500
 save_freq: null
 figures_fns:
-  - fn_name: "ci_histograms"
-  - fn_name: "mean_component_activation_counts"
-  - fn_name: "uv_and_identity_ci"
+  - name: "ci_histograms"
+  - name: "mean_component_activation_counts"
+  - name: "uv_and_identity_ci"
 metrics_fns:
-  - fn_name: "ci_l0"
+  - name: "ci_l0"
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.resid_mlp.models.ResidualMLP"

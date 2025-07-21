@@ -23,11 +23,11 @@ from spd.spd_types import ModelPath, Probability
 
 class FnConfig(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
-    fn_name: str = Field(
+    name: str = Field(
         ...,
         description="Name of the function to call",
     )
-    extra_fn_kwargs: dict[str, Any] = Field(
+    extra_kwargs: dict[str, Any] = Field(
         default={},
         description="Keyword arguments to pass to the function",
     )
@@ -36,9 +36,9 @@ class FnConfig(BaseModel):
     def validate_fn_kwargs(self) -> Self:
         # look up the real fn
         mod = importlib.import_module("spd.metrics_and_figs")
-        real_fn = getattr(mod, self.fn_name)
+        real_fn = getattr(mod, self.name)
         if not isinstance(real_fn, Callable):
-            raise ValueError(f"Function {self.fn_name!r} is not a valid metric function")
+            raise ValueError(f"Function {self.name!r} is not a valid metric function")
 
         # get its signature and drop the first 'inputs' parameter
         sig = inspect.signature(real_fn)
@@ -47,11 +47,11 @@ class FnConfig(BaseModel):
 
         # see if our kwargs are valid
         try:
-            sig_extra_only.bind_partial(**self.extra_fn_kwargs)
+            sig_extra_only.bind_partial(**self.extra_kwargs)
         except TypeError as e:
             # replace the error as e will include something like
             # "unexpected parameter 'foo'" or "missing a required argument: 'bar'"
-            raise ValueError(f"Invalid kwargs for {self.fn_name!r}: {e}") from None
+            raise ValueError(f"Invalid kwargs for {self.name!r}: {e}") from None
 
         return self
 

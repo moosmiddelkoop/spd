@@ -64,12 +64,12 @@ def test_resid_mlp_decomposition_happy_path() -> None:
         print_freq=50,  # Print at step 0, 50, and 100
         save_freq=None,
         figures_fns=[
-            FnConfig(fn_name="ci_histograms"),
-            FnConfig(fn_name="mean_component_activation_counts"),
-            FnConfig(fn_name="uv_and_identity_ci"),
+            FnConfig(name="ci_histograms"),
+            FnConfig(name="mean_component_activation_counts"),
+            FnConfig(name="uv_and_identity_ci"),
         ],
         metrics_fns=[
-            FnConfig(fn_name="ci_l0"),
+            FnConfig(name="ci_l0"),
         ],
         # Pretrained model info
         pretrained_model_class="spd.experiments.resid_mlp.models.ResidualMLP",
