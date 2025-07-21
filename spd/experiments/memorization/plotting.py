@@ -4,7 +4,7 @@ import torch
 from matplotlib import pyplot as plt
 
 from spd.models.component_model import ComponentModel
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.plotting import (
     _plot_causal_importances_figure,
     plot_UV_matrices,
@@ -16,7 +16,7 @@ from spd.utils.target_ci_solutions import permute_to_identity_hungarian
 def create_memorization_plot_results(
     model: ComponentModel,
     components: dict[str, LinearComponent | EmbeddingComponent],
-    gates: dict[str, Gate | GateMLP],
+    gates: dict[str, GateMLP | VectorGateMLP],
     batch_shape: tuple[int, ...],
     device: str | torch.device,
     dataset,  # KeyValueMemorizationDataset # type: ignore
@@ -47,11 +47,7 @@ def create_memorization_plot_results(
 
     # Determine how many keys to plot
     n_pairs = dataset.n_pairs
-    d_model = dataset.d_model
-    if n_keys_to_plot is None:
-        n_keys_to_plot = n_pairs
-    else:
-        n_keys_to_plot = min(n_keys_to_plot, n_pairs)
+    n_keys_to_plot = n_pairs if n_keys_to_plot is None else min(n_keys_to_plot, n_pairs)
 
     # Get a batch of keys from the dataset
     # We'll use the first n_keys_to_plot keys for visualization
