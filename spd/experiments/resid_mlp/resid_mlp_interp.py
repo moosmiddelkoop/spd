@@ -14,7 +14,7 @@ from spd.experiments.resid_mlp.models import ResidualMLP
 from spd.experiments.tms.models import TMSModel
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
-from spd.plotting import plot_causal_importance_vals
+from spd.plotting import plot_single_feature_causal_importances
 from spd.utils.general_utils import get_device, set_seed
 from spd.utils.run_utils import get_output_dir
 
@@ -56,7 +56,7 @@ def extract_ci_val_figures(run_id: str, input_magnitude: float = 0.75) -> dict[s
     device = next(model.parameters()).device
 
     # Get mask values without plotting regular masks
-    figures, all_perm_indices_ci_vals = plot_causal_importance_vals(
+    figures, all_perm_indices_ci_vals = plot_single_feature_causal_importances(
         model=model,
         components=components,
         gates=gates,
@@ -699,7 +699,7 @@ def main():
             for k, v in model.gates.items()
         }
         batch_shape = (1, target_model.config.n_features)
-        figs_causal = plot_causal_importance_vals(
+        figs_causal = plot_single_feature_causal_importances(
             model=model,
             components=components,
             gates=gates,
