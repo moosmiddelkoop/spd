@@ -14,9 +14,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from spd.configs import Config
-from spd.core_metrics_and_figs import create_figures, create_metrics
 from spd.log import logger
 from spd.losses import calculate_losses
+from spd.metrics_and_figs import create_figures, create_metrics
 from spd.models.component_model import ComponentModel, init_Vs_and_Us_
 from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.utils.component_utils import calc_causal_importances
