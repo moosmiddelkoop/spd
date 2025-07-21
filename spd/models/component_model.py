@@ -355,9 +355,11 @@ class ComponentModel[T: nn.Module](nn.Module):
         assert config.pretrained_model_class is not None
         target_model_unpatched = load_pretrained(
             path_to_class=config.pretrained_model_class,
-            comp_model_path=config.pretrained_model_path,
+            model_path=config.pretrained_model_path,
             model_name_hf=config.pretrained_model_name_hf,
         )
+        target_model_unpatched.eval()
+        target_model_unpatched.requires_grad_(False)
 
         comp_model = ComponentModel[T](
             target_model=cast(T, target_model_unpatched),

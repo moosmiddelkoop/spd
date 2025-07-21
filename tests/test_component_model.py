@@ -1,27 +1,41 @@
-from typing import override
+import tempfile
+from pathlib import Path
+from typing import Self, override
 
 import pytest
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
+from spd.configs import Config, TMSTaskConfig
 from spd.models.component_model import ComponentModel
 from spd.models.components import ComponentsOrModule, EmbeddingComponents, LinearComponents
+from spd.utils.run_utils import save_file
 
 
 class SimpleTestModel(nn.Module):
     """Simple test model with Linear and Embedding layers for unit‑testing."""
 
+    LINEAR_1_SHAPE = (10, 5)
+    LINEAR_2_SHAPE = (5, 3)
+    EMBEDDING_SHAPE = (100, 8)
+
     def __init__(self):
         super().__init__()
-        self.linear1 = nn.Linear(10, 5, bias=True)
-        self.linear2 = nn.Linear(5, 3, bias=False)
-        self.embedding = nn.Embedding(100, 8)
+        self.linear1 = nn.Linear(*self.LINEAR_1_SHAPE, bias=True)
+        self.linear2 = nn.Linear(*self.LINEAR_2_SHAPE, bias=False)
+        self.embedding = nn.Embedding(*self.EMBEDDING_SHAPE)
         self.other_layer = nn.ReLU()  # Non‑target layer (should never be wrapped)
 
     @override
     def forward(self, x: Float[Tensor, "... 10"]):  # noqa: D401,E501
         return self.linear2(self.linear1(x))
+
+    @classmethod
+    def from_pretrained(cls, path: Path) -> Self:
+        model = cls()
+        model.load_state_dict(torch.load(path))
+        return model
 
 
 @pytest.fixture(scope="function")
@@ -165,3 +179,62 @@ def test_correct_parameters_require_grad(component_model: ComponentModel[SimpleT
             assert isinstance(cm.components, EmbeddingComponents)
             assert cm.components.U.requires_grad
             assert cm.components.V.requires_grad
+
+
+def test_from_pretrained_model_works():
+    target_model = SimpleTestModel()
+    target_model.eval()
+    target_model.requires_grad_(False)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        base_dir = Path(tmp_dir)
+        base_model_dir = base_dir / "test_model"
+        base_model_dir.mkdir(parents=True, exist_ok=True)
+        comp_model_dir = base_dir / "comp_model"
+        comp_model_dir.mkdir(parents=True, exist_ok=True)
+
+        base_model_path = base_model_dir / "model.pth"
+        save_file(target_model.state_dict(), base_model_path)
+        # save_file(target_model.state_dict(), base_model_path)
+
+        config = Config(
+            pretrained_model_class="tests.test_component_model.SimpleTestModel",
+            pretrained_model_path=base_model_path,
+            pretrained_model_name_hf=None,
+            target_module_patterns=["linear1", "linear2", "embedding"],
+            C=4,
+            gate_type="mlp",
+            gate_hidden_dims=[4],
+            batch_size=1,
+            steps=1,
+            lr=1e-3,
+            n_eval_steps=1,
+            importance_minimality_coeff=1.0,
+            pnorm=1.0,
+            output_loss_type="mse",
+            print_freq=1,
+            n_mask_samples=1,
+            task_config=TMSTaskConfig(
+                task_name="tms",
+                feature_probability=0.5,
+                data_generation_type="exactly_one_active",
+            ),
+        )
+
+        cm = ComponentModel(
+            target_model=target_model,
+            target_module_patterns=["linear1", "linear2", "embedding"],
+            C=4,
+            gate_type="mlp",
+            gate_hidden_dims=[4],
+            pretrained_model_output_attr=None,
+        )
+
+        save_file(cm.state_dict(), comp_model_dir / "model.pth")
+        save_file(config.model_dump(mode="json"), comp_model_dir / "final_config.yaml")
+
+        cm_loaded, config_loaded, _ = ComponentModel.from_pretrained(comp_model_dir / "model.pth")
+
+        assert config == config_loaded
+        for k, v in cm_loaded.state_dict().items():
+            torch.testing.assert_close(v, cm.state_dict()[k])
