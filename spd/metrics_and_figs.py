@@ -20,7 +20,7 @@ from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.plotting import (
     create_embed_ci_sample_table,
-    plot_causal_importance_vals,
+    plot_single_feature_causal_importances,
     plot_ci_histograms,
     plot_mean_component_activation_counts,
     plot_UV_matrices,
@@ -42,6 +42,8 @@ class CreateMetricsInputs:
     device: str
     config: Config
     step: int
+    evals_id: str | None = None
+    targets: Float[Tensor, "..."] | None = None
 
 
 def lm_kl(inputs: CreateMetricsInputs):
@@ -105,6 +107,8 @@ def create_metrics(
     device: str,
     config: Config,
     step: int,
+    evals_id: str | None = None,
+    targets: Float[Tensor, "..."] | None = None,
 ) -> Mapping[str, float | int | wandb.Table]:
     """Create metrics for logging."""
     metrics: dict[str, float | int | wandb.Table] = {"misc/step": step}
@@ -126,6 +130,8 @@ def create_metrics(
         device=device,
         config=config,
         step=step,
+        evals_id=evals_id,
+        targets=targets,
     )
 
     for fn in METRICS_FNS:
@@ -177,7 +183,7 @@ def mean_component_activation_counts(inputs: CreateFiguresInputs) -> Mapping[str
 
 
 def uv_and_identity_ci(inputs: CreateFiguresInputs) -> Mapping[str, plt.Figure]:
-    figures, all_perm_indices = plot_causal_importance_vals(
+    figures, all_perm_indices = plot_single_feature_causal_importances(
         model=inputs.model,
         components=inputs.components,
         gates=inputs.gates,
