@@ -222,11 +222,11 @@ class Config(BaseModel):
     )
     metrics_fns: list[str] = Field(
         default=[],
-        description="List of local names of functions to use for computing metrics. These functions must be defined in the `spd.core_metrics_and_figs` module.",
+        description="List of local names of functions to use for computing metrics. These functions must be defined in the `spd.metrics_and_figs` module.",
     )
     figures_fns: list[str] = Field(
         default=[],
-        description="List of local names of functions to use for creating figures. These functions must be defined in the `spd.core_metrics_and_figs` module.",
+        description="List of local names of functions to use for creating figures. These functions must be defined in the `spd.metrics_and_figs` module.",
     )
 
     # --- Pretrained model info ---

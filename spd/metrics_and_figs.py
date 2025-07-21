@@ -129,8 +129,13 @@ def create_metrics(
     )
 
     for fn in METRICS_FNS:
-        if fn.__name__ in config.metrics_fns:
-            metrics.update(fn(inputs))
+        if fn.__name__ not in config.metrics_fns:
+            continue
+
+        if set(fn(inputs).keys()) & set(metrics.keys()):
+            raise ValueError(f"Metric {fn.__name__} already exists in metrics")
+
+        metrics.update(fn(inputs))
 
     return metrics
 
@@ -247,6 +252,9 @@ def create_figures(
     for fn in FIGURES_FNS:
         if fn.__name__ not in config.figures_fns:
             continue
+
+        if set(fn(inputs).keys()) & set(fig_dict.keys()):
+            raise ValueError(f"Figure {fn.__name__} already exists in fig_dict")
 
         fig_dict.update(fn(inputs))
 
