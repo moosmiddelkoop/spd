@@ -12,21 +12,13 @@ from spd.configs import Config, MemorizationTaskConfig
 from spd.experiments.memorization.memorization_dataset import KeyValueMemorizationDataset
 from spd.experiments.memorization.models import SingleLayerMemorizationMLP
 from spd.log import logger
-from spd.run_spd import get_common_run_name_suffix, optimize
+from spd.run_spd import optimize
 from spd.utils.data_utils import DatasetGeneratedDataLoader
 from spd.utils.general_utils import get_device, load_config, set_seed
 from spd.utils.run_utils import get_output_dir, save_file
 from spd.utils.wandb_utils import init_wandb
 
 
-def get_run_name(config: Config, n_pairs: int, d_model: int, d_hidden: int) -> str:
-    """Generate a run name based on the config."""
-    if config.wandb_run_name:
-        run_suffix = config.wandb_run_name
-    else:
-        run_suffix = get_common_run_name_suffix(config)
-        run_suffix += f"pairs{n_pairs}_d{d_model}_dh{d_hidden}"
-    return config.wandb_run_name_prefix + "memorization_" + run_suffix
 
 
 def save_target_model_info(
@@ -89,15 +81,10 @@ def main(
     target_model = target_model.to(device)
     target_model.eval()
 
-    run_name = get_run_name(
-        config=config,
-        n_pairs=target_model.config.n_pairs,
-        d_model=target_model.config.d_model,
-        d_hidden=target_model.config.d_hidden,
-    )
     if config.wandb_project:
         assert wandb.run, "wandb.run must be initialized before training"
-        wandb.run.name = run_name
+        if config.wandb_run_name:
+            wandb.run.name = config.wandb_run_name
 
     save_file(config.model_dump(mode="json"), out_dir / "final_config.yaml")
     if config.wandb_project:
