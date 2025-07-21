@@ -154,6 +154,22 @@ class Config(BaseModel):
         default=None,
         description="Coefficient for per-layer recon loss with stochastically sampled masks",
     )
+    task_recon_coeff: NonNegativeFloat | None = Field(
+        default=None,
+        description="Coefficient for task reconstruction loss against ground truth targets",
+    )
+    task_recon_layerwise_coeff: NonNegativeFloat | None = Field(
+        default=None,
+        description="Coefficient for per-layer task reconstruction loss against ground truth targets",
+    )
+    stochastic_task_recon_coeff: NonNegativeFloat | None = Field(
+        default=None,
+        description="Coefficient for stochastic task reconstruction loss against ground truth targets",
+    )
+    stochastic_task_recon_layerwise_coeff: NonNegativeFloat | None = Field(
+        default=None,
+        description="Coefficient for per-layer stochastic task reconstruction loss against ground truth targets",
+    )
     importance_minimality_coeff: NonNegativeFloat = Field(
         ...,
         description="Coefficient for importance minimality loss",

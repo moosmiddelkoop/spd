@@ -277,6 +277,38 @@ def extract_batch_data(
     return tensor
 
 
+def extract_batch_targets(
+    batch_item: dict[str, Any] | tuple[torch.Tensor, ...] | torch.Tensor,
+    target_key: str = "labels",
+) -> torch.Tensor | None:
+    """Extract target data from various batch formats.
+
+    This utility function handles different batch formats commonly used across the codebase:
+    1. Dictionary format: {"input_ids": tensor, "labels": tensor, ...} - common in LM tasks
+    2. Tuple format: (input_tensor, target_tensor) - common in memorization/supervised tasks
+    3. Direct tensor: returns None (no targets available)
+
+    Args:
+        batch_item: The batch item from a data loader
+        target_key: Key to use for dictionary format (default: "labels")
+
+    Returns:
+        The target tensor extracted from the batch, or None if no targets available
+    """
+    assert isinstance(batch_item, dict | tuple | torch.Tensor), (
+        f"Unsupported batch format: {type(batch_item)}. Must be a dictionary, tuple, or tensor."
+    )
+    if isinstance(batch_item, dict):
+        # Dictionary format: extract the specified key (may not exist)
+        return batch_item.get(target_key, None)
+    elif isinstance(batch_item, tuple) and len(batch_item) >= 2:
+        # Assume target is the second element
+        return batch_item[1]
+    else:
+        # Direct tensor format or single-element tuple - no targets available
+        return None
+
+
 def calc_kl_divergence_lm(
     pred: Float[Tensor, "... vocab"],
     target: Float[Tensor, "... vocab"],

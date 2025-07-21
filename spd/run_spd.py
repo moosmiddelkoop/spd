@@ -22,6 +22,7 @@ from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearCompo
 from spd.utils.component_utils import calc_causal_importances
 from spd.utils.general_utils import (
     extract_batch_data,
+    extract_batch_targets,
     get_annealed_p,
     get_lr_schedule_fn,
     get_lr_with_warmup,
@@ -145,12 +146,16 @@ def optimize(
         try:
             batch_item = next(data_iter)
             batch = extract_batch_data(batch_item)
+            targets = extract_batch_targets(batch_item)
         except StopIteration:
             logger.warning("Dataloader exhausted, resetting iterator.")
             data_iter = iter(train_loader)
             batch_item = next(data_iter)
             batch = extract_batch_data(batch_item)
+            targets = extract_batch_targets(batch_item)
         batch = batch.to(device)
+        if targets is not None:
+            targets = targets.to(device)
 
         target_out, pre_weight_acts = model.forward_with_pre_forward_cache_hooks(
             batch, module_names=list(components.keys())
@@ -188,6 +193,7 @@ def optimize(
             device=device,
             n_params=n_params,
             current_p=current_p,
+            targets=targets,
         )
 
         log_data["loss/total"] = total_loss.item()
@@ -222,6 +228,7 @@ def optimize(
                     config=config,
                     step=step,
                     evals_id=evals_id,
+                    targets=targets,
                 )
                 log_data.update(metrics)
 

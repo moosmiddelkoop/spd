@@ -47,6 +47,7 @@ def create_metrics(
     config: Config,
     step: int,
     evals_id: str | None = None,
+    targets: Tensor | None = None,
 ) -> dict[str, float | int | wandb.Table]:
     """Create metrics for logging."""
     metrics: dict[str, float | int | wandb.Table] = {"misc/step": step}
