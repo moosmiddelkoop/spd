@@ -220,6 +220,14 @@ class Config(BaseModel):
         default=False,
         description="If True, additionally track cross-entropy losses during training",
     )
+    metrics_fns: list[str] = Field(
+        default=[],
+        description="List of local names of functions to use for computing metrics. These functions must be defined in the `spd.core_metrics_and_figs` module.",
+    )
+    figures_fns: list[str] = Field(
+        default=[],
+        description="List of local names of functions to use for creating figures. These functions must be defined in the `spd.core_metrics_and_figs` module.",
+    )
 
     # --- Pretrained model info ---
     pretrained_model_class: str = Field(
