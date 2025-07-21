@@ -43,8 +43,13 @@ image_freq: 2000
 image_on_first_step: true
 print_freq: 1000
 save_freq: null
-figures_fns: ["ci_histograms", "mean_component_activation_counts"]
-metrics_fns: ["ci_l0", "lm_kl", "lm_ce_losses"]
+figures_fns:
+  - fn_name: "ci_histograms"
+  - fn_name: "mean_component_activation_counts"
+metrics_fns:
+  - fn_name: "ci_l0"
+  - fn_name: "lm_kl"
+  - fn_name: "lm_ce_losses"
 
 
 # --- Pretrained model info ---
