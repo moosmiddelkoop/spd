@@ -35,8 +35,9 @@ class FnConfig(BaseModel):
     @model_validator(mode="after")
     def validate_fn_kwargs(self) -> Self:
         # look up the real fn
-        mod = importlib.import_module("spd.metrics_and_figs")
-        real_fn = getattr(mod, self.name)
+        figures = importlib.import_module("spd.figures")
+        metrics = importlib.import_module("spd.metrics")
+        real_fn = getattr(figures, self.name, None) or getattr(metrics, self.name, None)
         if not isinstance(real_fn, Callable):
             raise ValueError(f"Function {self.name!r} is not a valid metric function")
 
@@ -47,7 +48,7 @@ class FnConfig(BaseModel):
 
         # see if our kwargs are valid
         try:
-            sig_extra_only.bind_partial(**self.extra_kwargs)
+            sig_extra_only.bind(**self.extra_kwargs)
         except TypeError as e:
             # replace the error as e will include something like
             # "unexpected parameter 'foo'" or "missing a required argument: 'bar'"
