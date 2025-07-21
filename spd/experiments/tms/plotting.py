@@ -7,12 +7,14 @@ sparse decompositions, including vector plots, network diagrams, and weight heat
 from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import zip_longest
+from typing import cast
 
 import matplotlib.collections as mc
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import torch
+import torch.nn as nn
 from jaxtyping import Float
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap
@@ -460,7 +462,7 @@ class FullNetworkDiagramPlotter:
                 "title": "Target model",
                 "linear1_weights": target_model.linear1.weight.T.detach().cpu().numpy(),
                 "hidden_weights": [
-                    target_model.hidden_layers[i].weight.T.detach().cpu().numpy()
+                    cast(nn.Linear, target_model.hidden_layers[i]).weight.T.detach().cpu().numpy()
                     for i in range(target_model.config.n_hidden_layers)
                 ]
                 if target_model.config.n_hidden_layers > 0
@@ -740,10 +742,7 @@ class HiddenLayerPlotter:
         # Ensure axs is iterable even for single subplot
         from matplotlib.axes import Axes as AxesType
 
-        if isinstance(axs, AxesType):
-            axs_list = [axs]
-        else:
-            axs_list = list(axs)
+        axs_list: list[AxesType] = [axs] if isinstance(axs, AxesType) else list(axs)
 
         # Plot heatmaps
         self._plot_heatmaps(fig, axs_list, all_weights, subnets_order, n_subnets)
@@ -771,7 +770,9 @@ class HiddenLayerPlotter:
         hidden_weights = hidden_weights[order]
 
         # Get target weights
-        target_weights = target_model.hidden_layers[0].weight.T.unsqueeze(0).detach().cpu()
+        target_weights = (
+            cast(nn.Linear, target_model.hidden_layers[0]).weight.T.unsqueeze(0).detach().cpu()
+        )
 
         return hidden_weights, target_weights, order
 
@@ -952,8 +953,6 @@ class TMSPlotter:
 
         print(f"Mean L2 ratio: {l2_ratio.mean():.4f}")
         print(f"Std L2 ratio: {l2_ratio.std():.4f}")
-        if hasattr(self.analyzer.target_model, "b_final"):
-            print(f"Mean bias: {self.analyzer.target_model.b_final.mean():.4f}")
 
 
 def main():

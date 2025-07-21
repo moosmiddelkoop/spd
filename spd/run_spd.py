@@ -14,11 +14,11 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from spd.configs import Config
-from spd.core_metrics_and_figs import create_figures, create_metrics
 from spd.log import logger
 from spd.losses import calculate_losses
+from spd.metrics_and_figs import create_figures, create_metrics
 from spd.models.component_model import ComponentModel, init_Vs_and_Us_
-from spd.models.components import EmbeddingComponent, Gate, GateMLP, LinearComponent
+from spd.models.components import EmbeddingComponent, GateMLP, LinearComponent, VectorGateMLP
 from spd.utils.component_utils import calc_causal_importances
 from spd.utils.general_utils import (
     extract_batch_data,
@@ -28,30 +28,6 @@ from spd.utils.general_utils import (
     get_lr_with_warmup,
 )
 from spd.utils.run_utils import save_file
-
-
-def get_common_run_name_suffix(config: Config) -> str:
-    """Generate a run suffix based on Config that is common to all experiments."""
-    run_suffix = ""
-    run_suffix += f"nmasks{config.n_mask_samples}_"
-    if config.stochastic_recon_coeff is not None:
-        run_suffix += f"stochrecon{config.stochastic_recon_coeff:.2e}_"
-    if config.stochastic_recon_layerwise_coeff is not None:
-        run_suffix += f"stochreconlayer{config.stochastic_recon_layerwise_coeff:.2e}_"
-    if config.schatten_coeff is not None:
-        run_suffix += f"schatten{config.schatten_coeff:.2e}_"
-    if config.embedding_recon_coeff is not None:
-        run_suffix += f"embedrecon{config.embedding_recon_coeff:.2e}_"
-    run_suffix += f"p{config.pnorm:.2e}_"
-    # Add p-annealing info if active
-    if config.p_anneal_final_p is not None and config.p_anneal_start_frac < 1.0:
-        run_suffix += f"panneal{config.p_anneal_start_frac:.2f}-{config.p_anneal_final_p:.2f}_"
-    run_suffix += f"impmin{config.importance_minimality_coeff:.2e}_"
-    run_suffix += f"C{config.C}_"
-    run_suffix += f"sd{config.seed}_"
-    run_suffix += f"lr{config.lr:.2e}_"
-    run_suffix += f"bs{config.batch_size}_"
-    return run_suffix
 
 
 def optimize(
@@ -76,7 +52,8 @@ def optimize(
         base_model=target_model,
         target_module_patterns=config.target_module_patterns,
         C=config.C,
-        n_ci_mlp_neurons=config.n_ci_mlp_neurons,
+        gate_type=config.gate_type,
+        gate_hidden_dims=config.gate_hidden_dims,
         pretrained_model_output_attr=config.pretrained_model_output_attr,
     )
 
@@ -85,8 +62,8 @@ def optimize(
     logger.info("Target model parameters frozen.")
 
     # We used "-" instead of "." as module names can't have "." in them
-    gates: dict[str, Gate | GateMLP] = {
-        k.removeprefix("gates.").replace("-", "."): cast(Gate | GateMLP, v)
+    gates: dict[str, GateMLP | VectorGateMLP] = {
+        k.removeprefix("gates.").replace("-", "."): cast(GateMLP | VectorGateMLP, v)
         for k, v in model.gates.items()
     }
     components: dict[str, LinearComponent | EmbeddingComponent] = {
@@ -290,7 +267,7 @@ def optimize(
         # --- Backward Pass & Optimize --- #
         # Skip gradient step if we are at the last step (last step just for plotting and logging)
         if step != config.steps:
-            total_loss.backward(retain_graph=True)
+            total_loss.backward()
             if config.wandb_project:
                 grad_norm: Float[Tensor, ""] = torch.zeros((), device=device)
                 for param in component_params + gate_params:

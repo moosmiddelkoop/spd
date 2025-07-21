@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from spd.log import logger
+from spd.models.components import GateType
 from spd.spd_types import ModelPath, Probability
 
 
@@ -117,10 +118,13 @@ class Config(BaseModel):
         ...,
         description="Number of stochastic masks to sample when using stochastic recon losses",
     )
-    n_ci_mlp_neurons: NonNegativeInt = Field(
-        default=0,
-        description="Number of hidden neurons in the MLP used to calculate the causal importance."
-        "If 0, use a single-layer gate.",
+    gate_type: GateType = Field(
+        default="vector_mlp",
+        description="Type of gate used to calculate the causal importance.",
+    )
+    gate_hidden_dims: list[NonNegativeInt] = Field(
+        default=[8],
+        description="Hidden dimensions for the gate used to calculate the causal importance",
     )
     sigmoid_type: Literal[
         "normal", "hard", "leaky_hard", "upper_leaky_hard", "swish_hard", "scaled"
@@ -250,6 +254,14 @@ class Config(BaseModel):
         default=False,
         description="If True, additionally track cross-entropy losses during training",
     )
+    metrics_fns: list[str] = Field(
+        default=[],
+        description="List of local names of functions to use for computing metrics. These functions must be defined in the `spd.metrics_and_figs` module.",
+    )
+    figures_fns: list[str] = Field(
+        default=[],
+        description="List of local names of functions to use for creating figures. These functions must be defined in the `spd.metrics_and_figs` module.",
+    )
 
     # --- Pretrained model info ---
     pretrained_model_class: str = Field(
@@ -318,4 +330,5 @@ class Config(BaseModel):
             assert self.lr_exponential_halflife is not None, (
                 "lr_exponential_halflife must be set if lr_schedule is exponential"
             )
+
         return self

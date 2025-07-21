@@ -45,7 +45,7 @@ def create_slurm_array_script(
         partition: SLURM partition to use (default: "all")
     """
     if snapshot_branch is None:
-        snapshot_branch = create_git_snapshot(branch_name_prefix="snapshot")
+        snapshot_branch, _ = create_git_snapshot(branch_name_prefix="snapshot")
 
     gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
     slurm_logs_dir = Path.home() / "slurm_logs"
@@ -70,7 +70,6 @@ def create_slurm_array_script(
         {gpu_config}
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
-        #SBATCH --partition={partition}
         #SBATCH --array={array_range}
         #SBATCH --output={slurm_logs_dir}/slurm-%A_%a.out
 
@@ -140,7 +139,7 @@ def create_analysis_slurm_script(
         snapshot_branch: Git branch to checkout. If None, creates a new snapshot.
     """
     if snapshot_branch is None:
-        snapshot_branch = create_git_snapshot(branch_name_prefix="analysis")
+        snapshot_branch, _ = create_git_snapshot(branch_name_prefix="analysis")
 
     gpu_config = "#SBATCH --gres=gpu:0" if cpu else "#SBATCH --gres=gpu:1"
     slurm_logs_dir = Path.home() / "slurm_logs"
@@ -152,7 +151,6 @@ def create_analysis_slurm_script(
         {gpu_config}
         #SBATCH --time={time_limit}
         #SBATCH --job-name={job_name}
-        #SBATCH --partition=all
         #SBATCH --dependency=afterok:{dependency_job_id}
         #SBATCH --output={slurm_logs_dir}/slurm-%j.out
 
