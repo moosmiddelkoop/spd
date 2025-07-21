@@ -170,6 +170,8 @@ class IdentityCIPattern(TargetCIPattern):
     def distance_from(self, ci_array: Float[Tensor, "batch C"], tolerance: float = 0.1) -> int:
         self._verify_inputs(ci_array)
         if self.apply_permutation:
+            # Hungarian algorithm is O(n^3) complexity. Sample CPU runtimes: ~0.15s for 250x250, ~1.5s for 500x500, ~26s for 1000x1000.
+            # By default, we use Hungarian for small matrices (min dimension < 500) and greedy for larger matrices.
             if self.method == "hungarian" or (self.method == "auto" and min(ci_array.shape) < 500):
                 ci_array = permute_to_identity_hungarian(ci_array)[0]
             else:
