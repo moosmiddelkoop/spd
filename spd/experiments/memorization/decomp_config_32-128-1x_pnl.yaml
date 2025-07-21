@@ -8,7 +8,8 @@ wandb_run_name_prefix: ""
 seed: 0
 C: 250
 n_mask_samples: 1
-n_ci_mlp_neurons: 128
+gate_type: "mlp"
+gate_hidden_dims: [128]
 sigmoid_type: "leaky_hard"
 target_module_patterns:
   - "linear"
@@ -40,6 +41,8 @@ image_freq: 5_000
 image_on_first_step: true
 print_freq: 500
 save_freq: null
+figures_fns: ["ci_histograms", "mean_component_activation_counts", "memorization_ci_plots"]
+metrics_fns: ["ci_l0", "full_recon_loss", "full_task_recon_loss"]
 
 # --- Pretrained model info ---
 pretrained_model_class: "spd.experiments.memorization.models.SingleLayerMemorizationMLP"
