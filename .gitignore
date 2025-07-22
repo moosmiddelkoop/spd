@@ -10,6 +10,7 @@ neuronpedia_outputs/
 wandb/
 .data/
 .checkpoints/
+*.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -18,7 +18,7 @@ class ExperimentConfig:
         target_solution: Optional target solution for evaluating SPD convergence.
     """
 
-    experiment_type: Literal["tms", "resid_mlp", "lm", "memorization"]
+    experiment_type: Literal["tms", "resid_mlp", "lm", "memorization", "modular_addition"]
     decomp_script: Path
     config_path: Path
     expected_runtime: int
@@ -152,6 +152,18 @@ EXPERIMENT_REGISTRY: dict[str, ExperimentConfig] = {
                 "output": IdentityCIPattern(n_features=361),
             }
         ),
+    ),
+    "modular_addition": ExperimentConfig(
+        experiment_type="modular_addition",
+        decomp_script=Path("spd/experiments/modular_addition/modular_addition_decomposition.py"),
+        config_path=Path("spd/experiments/modular_addition/modular_addition_config.yaml"),
+        expected_runtime=500,
+    ),
+    "modular_addition_pnl": ExperimentConfig(
+        experiment_type="modular_addition",
+        decomp_script=Path("spd/experiments/modular_addition/modular_addition_decomposition.py"),
+        config_path=Path("spd/experiments/modular_addition/modular_addition_config_pnl.yaml"),
+        expected_runtime=500,
     ),
 }
 

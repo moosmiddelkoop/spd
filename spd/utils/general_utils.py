@@ -320,6 +320,22 @@ def calc_kl_divergence_lm(
     return kl.sum(dim=-1).mean()  # Σ_vocab / (batch·seq)
 
 
+def calc_kl_divergence_lm_final_only(
+    pred: Float[Tensor, "... seq vocab"],
+    target: Float[Tensor, "... seq vocab"],
+) -> Float[Tensor, ""]:
+    """Calculate the KL divergence between two logits on the final position only."""
+    assert pred.shape == target.shape
+    # Only use the final position
+    pred_final = pred[..., -1, :]  # (..., vocab)
+    target_final = target[..., -1, :]  # (..., vocab)
+    
+    log_q = torch.log_softmax(pred_final, dim=-1)  # log Q
+    p = torch.softmax(target_final, dim=-1)  # P
+    kl = F.kl_div(log_q, p, reduction="none")  # P · (log P − log Q)
+    return kl.sum(dim=-1).mean()  # Σ_vocab / batch
+
+
 def apply_nested_updates(base_dict: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
     """Apply nested updates to a dictionary."""
     result = copy.deepcopy(base_dict)

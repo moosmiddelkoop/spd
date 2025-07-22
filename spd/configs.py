@@ -92,6 +92,14 @@ class MemorizationTaskConfig(BaseModel):
     )
 
 
+class ModularAdditionTaskConfig(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
+    task_name: Literal["modular_addition"] = Field(
+        default="modular_addition",
+        description="Identifier for the modular addition decomposition task",
+    )
+
+
 class Config(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
     # --- WandB
@@ -206,7 +214,7 @@ class Config(BaseModel):
         default=None,
         description="Final p value to anneal to (None = no annealing)",
     )
-    output_loss_type: Literal["mse", "kl"] = Field(
+    output_loss_type: Literal["mse", "kl", "kl_final_only"] = Field(
         ...,
         description="Metric used to measure recon error between model outputs and targets",
     )
@@ -289,7 +297,7 @@ class Config(BaseModel):
     )
 
     # --- Task Specific ---
-    task_config: TMSTaskConfig | ResidualMLPTaskConfig | LMTaskConfig | MemorizationTaskConfig = (
+    task_config: TMSTaskConfig | ResidualMLPTaskConfig | LMTaskConfig | MemorizationTaskConfig | ModularAdditionTaskConfig = (
         Field(
             ...,
             discriminator="task_name",

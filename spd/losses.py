@@ -11,7 +11,7 @@ from spd.configs import Config
 from spd.models.component_model import ComponentModel
 from spd.models.components import EmbeddingComponent, LinearComponent
 from spd.utils.component_utils import calc_stochastic_masks
-from spd.utils.general_utils import calc_kl_divergence_lm
+from spd.utils.general_utils import calc_kl_divergence_lm, calc_kl_divergence_lm_final_only
 
 
 def calc_embedding_recon_loss(
@@ -132,10 +132,10 @@ def calc_masked_recon_layerwise_loss(
     components: dict[str, LinearComponent | EmbeddingComponent],
     masks: list[dict[str, Float[Tensor, "... C"]]],
     target_out: Float[Tensor, "... d_model_out"],
-    loss_type: Literal["mse", "kl"] = "kl",
+    loss_type: Literal["mse", "kl", "kl_final_only"] = "kl",
 ) -> Float[Tensor, ""]:
     """Calculate the recon loss when augmenting the model one (masked) component at a time."""
-    assert loss_type in ["mse", "kl"], f"Invalid loss type: {loss_type}"
+    assert loss_type in ["mse", "kl", "kl_final_only"], f"Invalid loss type: {loss_type}"
     total_loss = torch.tensor(0.0, device=device)
     for mask_info in masks:
         for component_name, component in components.items():
@@ -146,8 +146,10 @@ def calc_masked_recon_layerwise_loss(
             )
             if loss_type == "mse":
                 loss = ((modified_out - target_out) ** 2).mean()
-            else:
+            elif loss_type == "kl":
                 loss = calc_kl_divergence_lm(pred=modified_out, target=target_out)
+            else:  # kl_final_only
+                loss = calc_kl_divergence_lm_final_only(pred=modified_out, target=target_out)
             total_loss += loss
     n_modified_components = len(masks[0])
     return total_loss / (n_modified_components * len(masks))
@@ -159,16 +161,18 @@ def calc_masked_recon_loss(
     components: dict[str, LinearComponent | EmbeddingComponent],
     masks: dict[str, Float[Tensor, "... C"]],
     target_out: Float[Tensor, "... d_mdoel_out"],
-    loss_type: Literal["mse", "kl"] = "mse",
+    loss_type: Literal["mse", "kl", "kl_final_only"] = "mse",
 ) -> Float[Tensor, ""]:
     """Calculate the MSE over all masks."""
     # Do a forward pass with all components
     out = model.forward_with_components(batch, components=components, masks=masks)
-    assert loss_type in ["mse", "kl"], f"Invalid loss type: {loss_type}"
+    assert loss_type in ["mse", "kl", "kl_final_only"], f"Invalid loss type: {loss_type}"
     if loss_type == "mse":
         loss = ((out - target_out) ** 2).mean()
-    else:
+    elif loss_type == "kl":
         loss = calc_kl_divergence_lm(pred=out, target=target_out)
+    else:  # kl_final_only
+        loss = calc_kl_divergence_lm_final_only(pred=out, target=target_out)
 
     return loss
 
